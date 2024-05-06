@@ -1,0 +1,3 @@
+[submodule "Engine/Latest"]
+	path = Engine/Latest
+	url = https://github.com/mediaz/nodos
