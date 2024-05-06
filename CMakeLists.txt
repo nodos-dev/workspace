@@ -53,7 +53,7 @@ foreach(val RANGE 1 ${NOS_SDK_END_RANGE})
     set_target_properties(nosSubsystemSDK_${version_target_suffix} PROPERTIES EXCLUDE_FROM_ALL TRUE)
 endforeach()
 
-macro(find_nodos version out_nos_plugin_sdk out_nos_subsystem_sdk)
+macro(find_nodos version out_nos_plugin_sdk out_nos_subsystem_sdk out_sdk_dir)
     # Search for that specific version. If not found, warn the user about using the latest compatible version.
     list(FIND NOS_VERSIONS ${version} version_index)
     if(version_index EQUAL -1)
@@ -76,6 +76,8 @@ macro(find_nodos version out_nos_plugin_sdk out_nos_subsystem_sdk)
             message(FATAL_ERROR "No compatible version found.")
         else()
             list(GET NOS_VERSIONS ${out_version_index} nos_version)
+			list(GET NOS_SDK_DIRS ${out_version_index} nos_sdk_dir)
+			set(${out_sdk_dir} ${nos_sdk_dir})
             string(REPLACE "." "_" version_target_suffix ${nos_version})
             set(${out_nos_plugin_sdk} nosPluginSDK_${version_target_suffix})
             set(${out_nos_subsystem_sdk} nosSubsystemSDK_${version_target_suffix})
@@ -83,6 +85,8 @@ macro(find_nodos version out_nos_plugin_sdk out_nos_subsystem_sdk)
     endif()
     message(STATUS "Using Nodos version ${version}")
     list(GET NOS_VERSIONS ${version_index} nos_version)
+	list(GET NOS_SDK_DIRS ${version_index} nos_sdk_dir)
+	set(${out_sdk_dir} ${nos_sdk_dir})
     string(REPLACE "." "_" version_target_suffix ${nos_version})
     set(${out_nos_plugin_sdk} nosPluginSDK_${version_target_suffix})
     set(${out_nos_subsystem_sdk} nosSubsystemSDK_${version_target_suffix})
@@ -143,7 +147,6 @@ function(add_folder_as_plugin_project NAME DEPENDENCIES INCLUDE_FOLDERS)
 	endforeach()
 
 	target_include_directories(${NAME} PRIVATE ${INCLUDE_FOLDERS})
-
 	target_link_libraries(${NAME} PRIVATE ${DEPENDENCIES})
 endfunction()
 
@@ -208,7 +211,6 @@ function(add_folder_as_subsystem_project NAME DEPENDENCIES INCLUDE_FOLDERS)
 	endforeach()
 
 	target_include_directories(${NAME} PRIVATE ${INCLUDE_FOLDERS} ${SOURCE_FOLDERS})
-
 	target_link_libraries(${NAME} PRIVATE ${DEPENDENCIES})
 endfunction()
 
