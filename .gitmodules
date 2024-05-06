@@ -1,6 +1,0 @@
-[submodule "Engine/Latest"]
-	path = Engine/Latest
-	url = https://github.com/mediaz/nodos
-[submodule "Module/Latest"]
-	path = Module/Latest
-	url = https://github.com/mediaz/modules.git
