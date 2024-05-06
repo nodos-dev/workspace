@@ -1,4 +1,6 @@
-Engine/**
-Module/**
+Engine/*
+Module/*
+!Engine/README.md
+!Module/README.md
 Build/
 Project/
