@@ -1,6 +1,7 @@
 Engine/*
 Module/*
 !Engine/Latest
+!Module/Latest
 !Engine/README.md
 !Module/README.md
 Build/
