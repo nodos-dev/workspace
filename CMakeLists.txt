@@ -12,84 +12,85 @@ file(GLOB ENGINE_DIRS "${ENGINE_FOLDER}/*")
 set(WITH_NODOS_WORKSPACE ON)
 
 foreach(ENGINE_DIR ${ENGINE_DIRS})
-    if(IS_DIRECTORY ${ENGINE_DIR})
-        add_subdirectory(${ENGINE_DIR})
-    endif()
-endforeach()
-
-foreach(NOS_VERSION ${NOS_VERSIONS})
-    message(STATUS "NOS_VERSION: ${NOS_VERSION}")
-endforeach()
-
-foreach(NOS_SDK_DIR ${NOS_SDK_DIRS})
-    message(STATUS "NOS_SDK_DIR: ${NOS_SDK_DIR}")
+	if(IS_DIRECTORY ${ENGINE_DIR})
+		add_subdirectory(${ENGINE_DIR})
+	endif()
 endforeach()
 
 # Prepare targets
 list(LENGTH NOS_VERSIONS NOS_SDK_COUNT)
 math(EXPR NOS_SDK_END_RANGE "${NOS_SDK_COUNT} - 1")
 message(STATUS "Found ${NOS_SDK_END_RANGE} Nodos SDKs")
+
 foreach(val RANGE 1 ${NOS_SDK_END_RANGE})
-    list(GET NOS_VERSIONS ${val} nos_version)
-    list(GET NOS_SDK_DIRS ${val} nos_sdk_dir)
+	list(GET NOS_VERSIONS ${val} nos_version)
+	list(GET NOS_SDK_DIRS ${val} nos_sdk_dir)
 
-    message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} at ${nos_sdk_dir}")
-    
-    # Convert version 1.2.3 to 1_2_3
-    string(REPLACE "." "_" version_target_suffix "${nos_version}")
-    
-    # Create nosPluginSDK target
-    add_library(nosPluginSDK_${version_target_suffix} INTERFACE)
-    target_compile_definitions(nosPluginSDK_${version_target_suffix} INTERFACE "-DNOMINMAX")
-    target_include_directories(nosPluginSDK_${version_target_suffix} INTERFACE ${nos_sdk_dir}/include)
+	message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} at ${nos_sdk_dir}")
 
-    # Create nosSubsystemSDK target
-    add_library(nosSubsystemSDK_${version_target_suffix} INTERFACE)
-    target_compile_definitions(nosSubsystemSDK_${version_target_suffix} INTERFACE "-DNOMINMAX")
-    target_include_directories(nosSubsystemSDK_${version_target_suffix} INTERFACE ${nos_sdk_dir}/include)
-    
-    # Exclude from all
-    set_target_properties(nosPluginSDK_${version_target_suffix} PROPERTIES EXCLUDE_FROM_ALL TRUE)
-    set_target_properties(nosSubsystemSDK_${version_target_suffix} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+	# Convert version 1.2.3 to 1_2_3
+	string(REPLACE "." "_" version_target_suffix "${nos_version}")
+
+	# Create nosPluginSDK target
+	if(TARGET nosPluginSDK_${version_target_suffix})
+		message(FATAL_ERROR "Multiple Nodos SDKs with the same version found under Engine folder. This is not supported.")
+	endif()
+
+	add_library(nosPluginSDK_${version_target_suffix} INTERFACE)
+	target_compile_definitions(nosPluginSDK_${version_target_suffix} INTERFACE "-DNOMINMAX")
+	target_include_directories(nosPluginSDK_${version_target_suffix} INTERFACE ${nos_sdk_dir}/include)
+
+	# Create nosSubsystemSDK target
+	add_library(nosSubsystemSDK_${version_target_suffix} INTERFACE)
+	target_compile_definitions(nosSubsystemSDK_${version_target_suffix} INTERFACE "-DNOMINMAX")
+	target_include_directories(nosSubsystemSDK_${version_target_suffix} INTERFACE ${nos_sdk_dir}/include)
+
+	# Exclude from all
+	set_target_properties(nosPluginSDK_${version_target_suffix} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+	set_target_properties(nosSubsystemSDK_${version_target_suffix} PROPERTIES EXCLUDE_FROM_ALL TRUE)
 endforeach()
 
 macro(find_nodos version out_nos_plugin_sdk out_nos_subsystem_sdk out_sdk_dir)
-    # Search for that specific version. If not found, warn the user about using the latest compatible version.
-    list(FIND NOS_VERSIONS ${version} version_index)
-    if(version_index EQUAL -1)
-        message(WARNING "Nodos version ${version} not found. Using the latest compatible version.")
-        set(max_compatible_version -1)
-        set(out_version_index -1)
-        foreach(index RANGE 1 ${NOS_SDK_END_RANGE})
-            list(GET NOS_VERSIONS ${index} nos_version)
-            string(REPLACE "." ";" nos_version_components ${nos_version})
-            list(GET nos_version_components 0 major)
-            list(GET nos_version_components 1 minor)
-            if(major EQUAL version)
-                if(minor GREATER max_compatible_version)
-                    set(max_compatible_version ${NOS_MINOR})
-                    set(out_version_index ${index})
-                endif()
-            endif()
-        endforeach()
-        if(index EQUAL -1)
-            message(FATAL_ERROR "No compatible version found.")
-        else()
-            list(GET NOS_VERSIONS ${out_version_index} nos_version)
-			list(GET NOS_SDK_DIRS ${out_version_index} nos_sdk_dir)
+	# Search for that specific version. If not found, warn the user about using the latest compatible version.
+	list(FIND NOS_VERSIONS ${version} version_index)
+
+	if(version_index EQUAL -1)
+		message(WARNING "Nodos version ${version} not found. Using the latest compatible version.")
+		set(max_compatible_version -1)
+
+		foreach(index RANGE 1 ${NOS_SDK_END_RANGE})
+			list(GET NOS_VERSIONS ${index} nos_version)
+			string(REPLACE "." ";" nos_version_components ${nos_version})
+			list(GET nos_version_components 0 major)
+			list(GET nos_version_components 1 minor)
+
+			if(major EQUAL version)
+				if(minor GREATER max_compatible_version)
+					set(max_compatible_version ${NOS_MINOR})
+					set(version_index ${index})
+				endif()
+			endif()
+		endforeach()
+
+		if(index EQUAL -1)
+			message(FATAL_ERROR "No compatible version found.")
+		else()
+			list(GET NOS_VERSIONS ${version_index} nos_version)
+			list(GET NOS_SDK_DIRS ${version_index} nos_sdk_dir)
 			set(${out_sdk_dir} ${nos_sdk_dir})
-            string(REPLACE "." "_" version_target_suffix ${nos_version})
-            set(${out_nos_plugin_sdk} nosPluginSDK_${version_target_suffix})
-            set(${out_nos_subsystem_sdk} nosSubsystemSDK_${version_target_suffix})
-        endif()
-    endif()
-    message(STATUS "Using Nodos version ${version}")
-    list(GET NOS_VERSIONS ${version_index} nos_version)
+			string(REPLACE "." "_" version_target_suffix ${nos_version})
+			set(${out_nos_plugin_sdk} nosPluginSDK_${version_target_suffix})
+			set(${out_nos_subsystem_sdk} nosSubsystemSDK_${version_target_suffix})
+		endif()
+	endif()
+
+	message(STATUS "Using Nodos version ${version}")
+	list(GET NOS_VERSIONS ${version_index} nos_version)
 	list(GET NOS_SDK_DIRS ${version_index} nos_sdk_dir)
 	set(${out_sdk_dir} ${nos_sdk_dir})
-    string(REPLACE "." "_" version_target_suffix ${nos_version})
-    set(${out_nos_plugin_sdk} nosPluginSDK_${version_target_suffix})
-    set(${out_nos_subsystem_sdk} nosSubsystemSDK_${version_target_suffix})
+	string(REPLACE "." "_" version_target_suffix ${nos_version})
+	set(${out_nos_plugin_sdk} nosPluginSDK_${version_target_suffix})
+	set(${out_nos_subsystem_sdk} nosSubsystemSDK_${version_target_suffix})
 endmacro()
 
 function(add_folder_as_plugin_project NAME DEPENDENCIES INCLUDE_FOLDERS)
@@ -214,15 +215,16 @@ function(add_folder_as_subsystem_project NAME DEPENDENCIES INCLUDE_FOLDERS)
 	target_link_libraries(${NAME} PRIVATE ${DEPENDENCIES})
 endfunction()
 
-if (NOT DEFINED MODULE_DIRS OR MODULE_DIRS STREQUAL "")
+if(NOT DEFINED MODULE_DIRS OR MODULE_DIRS STREQUAL "")
 	message(STATUS "Scanning for modules in ${CMAKE_CURRENT_SOURCE_DIR}/Module")
 	set(MODULE_DIRS "" CACHE INTERNAL "Module directories" FORCE)
 
 	function(collect_first_cmake_directories dir)
 		file(GLOB SUBDIRS RELATIVE ${dir} ${dir}/*)
+
 		foreach(subdir ${SUBDIRS})
-			if (IS_DIRECTORY ${dir}/${subdir})
-				if (EXISTS "${dir}/${subdir}/CMakeLists.txt")
+			if(IS_DIRECTORY ${dir}/${subdir})
+				if(EXISTS "${dir}/${subdir}/CMakeLists.txt")
 					set(MODULE_DIRS ${MODULE_DIRS} ${dir}/${subdir} CACHE INTERNAL "Module directories" FORCE)
 					message(STATUS "Found module directory: ${dir}/${subdir}")
 				else()
@@ -237,7 +239,7 @@ if (NOT DEFINED MODULE_DIRS OR MODULE_DIRS STREQUAL "")
 endif()
 
 foreach(MODULE_DIR ${MODULE_DIRS})
-	if (IS_DIRECTORY ${MODULE_DIR})
+	if(IS_DIRECTORY ${MODULE_DIR})
 		message(STATUS "Processing module directory: ${MODULE_DIR}")
 		add_subdirectory(${MODULE_DIR})
 	endif()
