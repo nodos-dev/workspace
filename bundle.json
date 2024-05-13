@@ -1,0 +1,42 @@
+[
+    {
+        "key": "default",
+        "module_index_url": "https://raw.githubusercontent.com/mediaz/mediaz-directory/dev/all_modules.json",
+        "engine_index_url": "https://raw.githubusercontent.com/mediaz/engine-releases/main/index.json",
+        "local_modules_folder": "D:/Builds/Nodos-Modules",
+        "bundled_modules": []
+    },
+    {
+        "key": "nodos_full",
+        "module_index_url": "https://raw.githubusercontent.com/mediaz/mediaz-directory/dev/all_modules.json",
+        "engine_index_url": "https://raw.githubusercontent.com/mediaz/engine-releases/main/index.json",
+        "local_modules_folder": "D:/Builds/Nodos-Modules",
+        "bundled_modules": [
+            "nos.sys.ai",
+            "nos.sys.cuda",
+            "nos.sys.tensor",
+            "nos.AI.ModelNodes",
+            "nos.Interop",
+            "nos.ML.ONNX",
+            "nos.ML.Tensors"
+        ],
+        "includes": ["nodos_standard"]
+    },
+    {
+        "key": "nodos_standard",
+        "module_index_url": "https://raw.githubusercontent.com/mediaz/mediaz-directory/dev/presets/nodos_standard.json",
+        "engine_index_url": "https://raw.githubusercontent.com/mediaz/engine-releases/main/index.json",
+        "local_modules_folder": "D:/Builds/Nodos-Modules",
+        "bundled_modules": [
+            "nos.sys.shaderc",
+            "nos.sys.vulkan",
+            "nos.aja",
+            "nos.filters",
+            "nos.math",
+            "nos.utilities",
+            "nos.WebRTC",
+			"nos.bluefish",
+			"nos.MediaIO"
+        ]
+    }
+]
