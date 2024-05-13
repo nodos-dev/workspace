@@ -323,9 +323,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Create distribution packages for Nodos")
     parser.add_argument("--dist-key", help="The key of the distribution to package",
-                        action="store", required=True)
+                        action="store")
     parser.add_argument("--engine-folder", help="The folder where the engine is built",
-                        action="store", required=True)
+                        action="store")
 
     parser.add_argument('--gh-release',
                         action='store_true',
