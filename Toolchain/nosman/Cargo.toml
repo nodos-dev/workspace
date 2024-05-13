@@ -1,0 +1,28 @@
+[package]
+name = "nosman"
+version = "0.1.0"
+edition = "2021"
+
+[profile.release]
+opt-level = 'z'     # Optimize for size
+lto = true          # Enable link-time optimization
+codegen-units = 1   # Reduce number of codegen units to increase optimizations
+panic = 'abort'     # Abort on panic
+strip = false       # Strip symbols from binary*
+
+[dependencies]
+clap = "4.5.4"
+err-derive = "0.3.1"
+indicatif = "0.17.8"
+dirs = "5.0.1"
+log = "0.4.21"
+tempfile = "3.10.1"
+serde = { version = "1.0.201", features = ["derive"] }
+serde_json = "1.0.117"
+reqwest = { version = "0.12.4", features = ["blocking", "json"] }
+zip = "1.2.1"
+colored = "2"
+
+[build-dependencies]
+vergen = { version = "7.5.1", default-features = false, features = ["build"]}
+anyhow = "1.0.83"

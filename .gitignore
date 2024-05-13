@@ -4,3 +4,5 @@ Module/*
 !Module/README.md
 Build/
 Project/
+.nosman
+nosman.exe
