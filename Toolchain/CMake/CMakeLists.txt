@@ -9,7 +9,7 @@ project(${PROJECT_NAME} LANGUAGES)
 
 set(WITH_NODOS_WORKSPACE ON)
 if (NOT DEFINED NODOS_WORKSPACE_DIR)
-	cmake_path(SET NODOS_WORKSPACE_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
+	cmake_path(SET NODOS_WORKSPACE_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 	# Convert to absolute path
 	get_filename_component(NODOS_WORKSPACE_CMAKE_PATH "${NODOS_WORKSPACE_CMAKE_PATH}" ABSOLUTE)
 	message(STATUS "NODOS_WORKSPACE_DIR not defined. Defaulting to ${NODOS_WORKSPACE_CMAKE_PATH}")
@@ -22,11 +22,12 @@ set(NOS_SDK_DIRS "")
 set(ENGINE_FOLDER ${NODOS_WORKSPACE_DIR}/Engine)
 file(GLOB ENGINE_DIRS "${ENGINE_FOLDER}/*")
 
+set(ENGINE_MODULE_DIR_INDEX 0)
 foreach(ENGINE_DIR ${ENGINE_DIRS})
 	if(IS_DIRECTORY ${ENGINE_DIR})
 		# get filename of engine directory
-		get_filename_component(ENGINE_DIR_NAME ${ENGINE_DIR} NAME)
-		add_subdirectory(${ENGINE_DIR})
+		add_subdirectory(${ENGINE_DIR} "${CMAKE_CURRENT_BINARY_DIR}/EngineDir${ENGINE_MODULE_DIR_INDEX}")
+		math(EXPR ENGINE_MODULE_DIR_INDEX "${ENGINE_MODULE_DIR_INDEX} + 1")
 	endif()
 endforeach()
 
@@ -100,7 +101,10 @@ if (NOT EXISTS "${NODOS_WORKSPACE_DIR}/.nosman")
 	)
 endif()
 
-include(${NODOS_WORKSPACE_DIR}/Toolchain/CMake/Nodos.cmake)
+# Includes
+include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/FindNodosSDK.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/GetModule.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Projects.cmake)
 
 if(NOT DEFINED MODULE_DIRS OR MODULE_DIRS STREQUAL "")
 	message(STATUS "Scanning for modules in ${NODOS_WORKSPACE_DIR}/Module")
@@ -125,12 +129,14 @@ if(NOT DEFINED MODULE_DIRS OR MODULE_DIRS STREQUAL "")
 	message(STATUS "Found ${MODULE_DIRS} module paths")
 endif()
 
+set(MODULE_DIR_INDEX 0)
 foreach(MODULE_DIR ${MODULE_DIRS})
 	# If relative, should be relative to NODOS_WORKSPACE_DIR
+	if(NOT IS_ABSOLUTE ${MODULE_DIR})
+		set(MODULE_DIR "${NODOS_WORKSPACE_DIR}/${MODULE_DIR}")
+	endif()
 	if(IS_DIRECTORY ${MODULE_DIR})
 		message(STATUS "Processing module directory: ${MODULE_DIR}")
-		# get filename of module directory
-		get_filename_component(MODULE_DIR_NAME ${MODULE_DIR} NAME)
-		add_subdirectory(${MODULE_DIR})
+		add_subdirectory(${MODULE_DIR} "${CMAKE_CURRENT_BINARY_DIR}/ModuleDir${MODULE_DIR_INDEX}")
 	endif()
 endforeach()
