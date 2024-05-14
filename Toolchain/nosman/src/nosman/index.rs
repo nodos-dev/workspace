@@ -92,6 +92,14 @@ impl SemVer {
             build_number: None,
         }
     }
+    pub fn get_one_up(&self) -> SemVer {
+        let version_start = self.clone();
+        return if version_start.patch.is_none() {
+            version_start.upper_minor()
+        } else {
+            version_start.upper_patch()
+        }
+    }
 }
 
 // Implement ordering for SemVer

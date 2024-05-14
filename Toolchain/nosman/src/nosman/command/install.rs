@@ -10,6 +10,7 @@ use crate::nosman::command::{Command, CommandError, CommandResult};
 use zip::result::ZipError;
 use zip::ZipArchive;
 use nosman::workspace::Workspace;
+use crate::nosman::index::SemVer;
 
 pub struct InstallCommand {
 }
@@ -26,25 +27,20 @@ impl InstallCommand {
         let mut workspace = Workspace::get();
         if !exact {
             // Find or download a version such that 'a.b <= x < a.(b+1)'
-            let version_semver = nosman::index::SemVer::parse_from_string(version).unwrap();
-            if version_semver.minor.is_none() {
+            let version_start = SemVer::parse_from_string(version).unwrap();
+            if version_start.minor.is_none() {
                 return Err(CommandError::InvalidArgumentError { message: "Please provide a minor version too!".to_string() });
             }
-            let version_start = version_semver.clone();
-            let version_end = if version_start.patch.is_none() {
-                version_start.upper_minor()
-            } else {
-                version_start.upper_patch()
-            };
+            let version_end = version_start.get_one_up();
             return if let Some(installed_module) = workspace.get_latest_installed_module_within_range(module_name, &version_start, &version_end) {
                 println!("{}", format!("Found an already installed compatible version for {} version {}: {}", module_name, version, installed_module.info.id.version).as_str().yellow());
                 Ok(true)
             } else {
-                println!("{}", format!("No compatible installed version found for {} version {}", module_name, version).as_str().yellow());
+                println!("{}", format!("No installed version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), module_name).as_str().yellow());
                 if let Some(release) = workspace.index.get_latest_compatible_release_within_range(module_name, &version_start, &version_end) {
                     self.run_install(module_name, &release.version, true, output_dir)
                 } else {
-                    Err(CommandError::InvalidArgumentError { message: format!("No compatible version found for {} version {}", module_name, version) })
+                    Err(CommandError::InvalidArgumentError { message: format!("No remote contained a version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), module_name) })
                 }
             }
         }
