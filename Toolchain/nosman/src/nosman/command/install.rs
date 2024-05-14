@@ -21,9 +21,33 @@ impl From<ZipError> for CommandError {
 }
 
 impl InstallCommand {
-    fn run_install(&self, module_name: &str, version: &str, output_dir: &path::PathBuf) -> CommandResult {
+    fn run_install(&self, module_name: &str, version: &str, exact: bool, output_dir: &path::PathBuf) -> CommandResult {
         // Fetch remotes
         let mut workspace = Workspace::get();
+        if !exact {
+            // Find or download a version such that 'a.b <= x < a.(b+1)'
+            let version_semver = nosman::index::SemVer::parse_from_string(version).unwrap();
+            if version_semver.minor.is_none() {
+                return Err(CommandError::InvalidArgumentError { message: "Please provide a minor version too!".to_string() });
+            }
+            let version_start = version_semver.clone();
+            let version_end = if version_start.patch.is_none() {
+                version_start.upper_minor()
+            } else {
+                version_start.upper_patch()
+            };
+            return if let Some(installed_module) = workspace.get_latest_installed_module_within_range(module_name, &version_start, &version_end) {
+                println!("{}", format!("Found an already installed compatible version for {} version {}: {}", module_name, version, installed_module.info.id.version).as_str().yellow());
+                Ok(true)
+            } else {
+                println!("{}", format!("No compatible installed version found for {} version {}", module_name, version).as_str().yellow());
+                if let Some(release) = workspace.index.get_latest_compatible_release_within_range(module_name, &version_start, &version_end) {
+                    self.run_install(module_name, &release.version, true, output_dir)
+                } else {
+                    Err(CommandError::InvalidArgumentError { message: format!("No compatible version found for {} version {}", module_name, version) })
+                }
+            }
+        }
         let mut replace_entry_in_index = false;
         if let Some(existing) = workspace.get_installed_module(module_name, version) {
             if existing.get_module_dir().exists() {
@@ -70,8 +94,7 @@ impl InstallCommand {
             println!("{}", format!("Module {} version {} installed successfully", module_name, version).as_str().green());
             Ok(true)
         } else {
-            eprintln!("{}", format!("Module {} not found", module_name).as_str().red());
-            Ok(false)
+            return Err(CommandError::InvalidArgumentError { message: format!("None of the remotes contain module {} version {}. You can try rescan command to update index.", module_name, version) });
         }
     }
 }
@@ -91,6 +114,7 @@ impl Command for InstallCommand {
         else {
             output_dir = output_dir.join(format!("{}-{}", module_name, version));
         }
-        self.run_install(module_name, version, &output_dir)
+        let exact = args.get_one::<bool>("exact").unwrap().clone();
+        self.run_install(module_name, version, exact, &output_dir)
     }
 }

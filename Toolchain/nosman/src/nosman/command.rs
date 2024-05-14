@@ -19,6 +19,8 @@ pub enum CommandError {
     InvalidArgumentError { message: String },
     #[error(display = "Zip error: {}", message)]
     ZipError { message: String },
+    #[error(display = "Unimplemented")]
+    UnimplementedError,
 }
 
 pub(crate) type CommandResult = Result<bool, CommandError>;

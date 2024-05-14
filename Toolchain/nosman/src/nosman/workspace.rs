@@ -6,7 +6,7 @@ use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
-use crate::nosman::index::{Index, ModuleType, Remote};
+use crate::nosman::index::{Index, ModuleType, Remote, SemVer};
 use crate::nosman::module::{InstalledModule};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -49,6 +49,27 @@ impl Workspace {
             Some(versions) => versions.get(version),
             None => None,
         }
+    }
+    pub fn get_latest_installed_module_within_range(&self, name: &str, version_start: &SemVer, version_end: &SemVer) -> Option<&InstalledModule> {
+        let version_list = self.installed_modules.get(name);
+        if version_list.is_none() {
+            return None;
+        }
+        let version_list = version_list.unwrap();
+        let mut versions: Vec<(&String, &InstalledModule)> = version_list.iter().collect();
+        versions.sort_by(|a, b| a.0.cmp(b.0));
+        versions.reverse();
+        for (version, module) in versions {
+            let semver = SemVer::parse_from_string(version);
+            if semver.is_none() {
+                return None;
+            }
+            let semver = semver.unwrap();
+            if semver >= *version_start && semver < *version_end {
+                return Some(module);
+            }
+        }
+        None
     }
     pub fn add(&mut self, module: InstalledModule) {
         let versions = self.installed_modules.entry(module.info.id.name.clone()).or_insert(HashMap::new());

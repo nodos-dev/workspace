@@ -3,6 +3,8 @@ use std::time::Duration;
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
+use crate::nosman::command::CommandError;
+use crate::nosman::module::InstalledModule;
 use crate::nosman::workspace::Workspace;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -18,19 +20,118 @@ pub enum ModuleType {
     Subsystem,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub struct SemVer {
     #[serde(alias = "major", alias = "MAJOR", alias = "Major")]
-    major: u32,
+    pub major: u32,
     #[serde(alias = "minor", alias = "MINOR", alias = "Minor")]
-    minor: u32,
+    pub minor: Option<u32>,
     #[serde(alias = "patch", alias = "PATCH", alias = "Patch")]
-    patch: u32,
+    pub patch: Option<u32>,
+    #[serde(alias = "build", alias = "BUILD", alias = "Build")]
+    pub build_number: Option<u32>,
+}
+
+impl SemVer {
+    pub fn parse_from_string(s: &str) -> Option<SemVer> {
+        // Parse 1.2.3.4 -> (1, 2, 3, Some(4))
+        // Parse 1.2.3 -> (1, 2, 3, None)
+        // Parse 1.2 -> (1, 2, 0, None)
+        // Parse 1 -> (1, 0, 0, None)
+        let parts: Vec<&str> = s.split('.').collect();
+        let major = parts.get(0).and_then(|s| s.parse::<u32>().ok());
+        let minor = parts.get(1).and_then(|s| s.parse::<u32>().ok());
+        let patch = parts.get(2).and_then(|s| s.parse::<u32>().ok());
+        let build_number = parts.get(3).and_then(|s| s.parse::<u32>().ok());
+        if major.is_none() {
+            return None;
+        }
+        let major = major.unwrap();
+        Some(SemVer {
+            major,
+            minor,
+            patch,
+            build_number,
+        })
+    }
+    pub fn to_string(&self) -> String {
+        let mut s = self.major.to_string();
+        if let Some(minor) = self.minor {
+            s.push_str(&format!(".{}", minor));
+        }
+        if let Some(patch) = self.patch {
+            s.push_str(&format!(".{}", patch));
+        }
+        if let Some(build_number) = self.build_number {
+            s.push_str(&format!(".b{}", build_number));
+        }
+        s
+    }
+    pub fn is_compatible_with(&self, user: &SemVer) -> bool {
+        if self.major != user.major {
+            return false;
+        }
+        if self.minor < user.minor {
+            return false;
+        }
+        return true;
+    }
+    pub fn upper_minor(&self) -> SemVer {
+        SemVer {
+            major: self.major,
+            minor: self.minor.map(|m| m + 1),
+            patch: None,
+            build_number: None,
+        }
+    }
+    pub fn upper_patch(&self) -> SemVer {
+        SemVer {
+            major: self.major,
+            minor: self.minor,
+            patch: self.patch.map(|p| p + 1),
+            build_number: None,
+        }
+    }
+}
+
+// Implement ordering for SemVer
+impl PartialOrd for SemVer {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self.major < other.major {
+            return Some(std::cmp::Ordering::Less);
+        }
+        if self.major > other.major {
+            return Some(std::cmp::Ordering::Greater);
+        }
+        if self.minor < other.minor {
+            return Some(std::cmp::Ordering::Less);
+        }
+        if self.minor > other.minor {
+            return Some(std::cmp::Ordering::Greater);
+        }
+        if self.patch < other.patch {
+            return Some(std::cmp::Ordering::Less);
+        }
+        if self.patch > other.patch {
+            return Some(std::cmp::Ordering::Greater);
+        }
+        if let Some(build_number) = self.build_number {
+            if let Some(other_build_number) = other.build_number {
+                if build_number < other_build_number {
+                    return Some(std::cmp::Ordering::Less);
+                }
+                if build_number > other_build_number {
+                    return Some(std::cmp::Ordering::Greater);
+                }
+            }
+        }
+        Some(std::cmp::Ordering::Equal)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ModuleReleaseEntry {
-    version: String,
+    pub(crate) version: String,
     pub(crate) url: String,
     plugin_api_version: Option<SemVer>,
     subsystem_api_version: Option<SemVer>
@@ -118,5 +219,26 @@ impl Index {
     }
     pub fn get_module(&self, name: &str, version: &str) -> Option<&ModuleReleaseEntry> {
         self.modules.get(name).and_then(|m| m.get(version))
+    }
+    pub fn get_latest_compatible_release_within_range(&self, name: &str, version_start: &SemVer, version_end: &SemVer) -> Option<&ModuleReleaseEntry> {
+        let version_list = self.modules.get(name);
+        if version_list.is_none() {
+            return None;
+        }
+        let version_list = version_list.unwrap();
+        let mut versions: Vec<(&String, &ModuleReleaseEntry)> = version_list.iter().collect();
+        versions.sort_by(|a, b| a.0.cmp(b.0));
+        versions.reverse();
+        for (version, module) in versions {
+            let semver = SemVer::parse_from_string(version);
+            if semver.is_none() {
+                return None;
+            }
+            let semver = semver.unwrap();
+            if semver >= *version_start && semver < *version_end {
+                return Some(module);
+            }
+        }
+        None
     }
 }

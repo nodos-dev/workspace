@@ -35,6 +35,15 @@ fn main() {
             .about("Install a module")
             .arg(Arg::new("module").required(true))
             .arg(Arg::new("version").required(false).default_value("latest"))
+            .arg(Arg::new("exact")
+                .action(ArgAction::SetTrue)
+                .help("If not set, version parameter will be interpreted as minimum required version within that minor/patch version. \
+                If no version 'x' such that 'a.b <= x < a.(b+1)' is found among installed modules, latest such version will be installed. \
+                If version is set to 'latest' or has no minor component, it will fail.")
+                .long("exact")
+                .num_args(0)
+                .required(false)
+            )
             .arg(Arg::new("prefix")
                 .help("Folder path relative to out_dir. The module contents will be under this folder. By default, its '<module_name>-<version>'.")
                 .long("prefix")
