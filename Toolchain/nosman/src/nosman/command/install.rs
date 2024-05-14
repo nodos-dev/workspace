@@ -22,7 +22,7 @@ impl From<ZipError> for CommandError {
 }
 
 impl InstallCommand {
-    fn run_install(&self, module_name: &str, version: &str, exact: bool, output_dir: &path::PathBuf) -> CommandResult {
+    fn run_install(&self, module_name: &str, version: &str, exact: bool, output_dir: &path::PathBuf, prefix: Option<&String>) -> CommandResult {
         // Fetch remotes
         let mut workspace = Workspace::get();
         if !exact {
@@ -38,7 +38,7 @@ impl InstallCommand {
             } else {
                 println!("{}", format!("No installed version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), module_name).as_str().yellow());
                 if let Some(release) = workspace.index.get_latest_compatible_release_within_range(module_name, &version_start, &version_end) {
-                    self.run_install(module_name, &release.version, true, output_dir)
+                    self.run_install(module_name, &release.version, true, output_dir, prefix)
                 } else {
                     Err(CommandError::InvalidArgumentError { message: format!("No remote contained a version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), module_name) })
                 }
@@ -54,8 +54,14 @@ impl InstallCommand {
                 replace_entry_in_index = true;
             }
         }
+        let mut install_dir = output_dir.clone();
+        if let Some(p) = prefix {
+            install_dir = install_dir.join(p);
+        } else {
+            install_dir = install_dir.join(format!("{}-{}", module_name, version));
+        }
         if let Some(module) = workspace.index.get_module(module_name, version) {
-            let module_dir = workspace.root.join(output_dir);
+            let module_dir = if install_dir.is_relative() { workspace.root.join(install_dir) } else { install_dir };
             let mut tmpfile = tempfile::tempfile().unwrap();
 
             println!("Downloading module {} version {}", module_name, version);
@@ -103,14 +109,9 @@ impl Command for InstallCommand {
     fn run(&self, args: &ArgMatches) -> CommandResult {
         let module_name = args.get_one::<String>("module").unwrap();
         let version = args.get_one::<String>("version").unwrap();
-        let mut output_dir = args.get_one::<String>("out_dir").map(|p| path::PathBuf::from(p)).unwrap_or_else(|| path::PathBuf::from("."));
-        if let Some(prefix) = args.get_one::<String>("prefix") {
-            output_dir = output_dir.join(prefix);
-        }
-        else {
-            output_dir = output_dir.join(format!("{}-{}", module_name, version));
-        }
+        let output_dir = args.get_one::<String>("out_dir").map(|p| path::PathBuf::from(p)).unwrap_or_else(|| path::PathBuf::from("."));
+        let prefix = args.get_one::<String>("prefix");
         let exact = args.get_one::<bool>("exact").unwrap().clone();
-        self.run_install(module_name, version, exact, &output_dir)
+        self.run_install(module_name, version, exact, &output_dir, prefix)
     }
 }
