@@ -1,3 +1,4 @@
+# Copyright MediaZ Teknoloji A.S. All Rights Reserved.
 function(nos_get_module name version out_target_name)
     if(NOT DEFINED NODOS_WORKSPACE_DIR)
         message(FATAL_ERROR "NODOS_WORKSPACE_DIR is not defined. Set it to the path of the workspace where modules will be installed.")

@@ -1,4 +1,4 @@
-
+# Copyright MediaZ Teknoloji A.S. All Rights Reserved.
 function(nos_make_plugin_project NAME DEPENDENCIES INCLUDE_FOLDERS)
 	project(${NAME})
 	message("Processing plugin ${NAME}")

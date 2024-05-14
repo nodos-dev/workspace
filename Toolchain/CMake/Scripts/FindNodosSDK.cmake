@@ -1,3 +1,4 @@
+# Copyright MediaZ Teknoloji A.S. All Rights Reserved.
 macro(nos_find_sdk version out_nos_plugin_sdk out_nos_subsystem_sdk out_sdk_dir)
 	# Search for that specific version. If not found, warn the user about using the latest compatible version.
 	list(FIND NOS_VERSIONS ${version} version_index)
