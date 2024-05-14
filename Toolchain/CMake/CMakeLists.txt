@@ -25,10 +25,10 @@ file(GLOB ENGINE_DIRS "${ENGINE_FOLDER}/*")
 set(ENGINE_MODULE_DIR_INDEX 0)
 foreach(ENGINE_DIR ${ENGINE_DIRS})
 	if(IS_DIRECTORY ${ENGINE_DIR})
-		# If engine directory does not contain a CMakeLists.txt, include SDK/cmake/Workspace.cmake
+		# If engine directory does not contain a CMakeLists.txt, include SDK/cmake/VersionInfo.cmake
 		if(NOT EXISTS "${ENGINE_DIR}/CMakeLists.txt")
-			message(STATUS "Including ${ENGINE_DIR}/SDK/cmake/Workspace.cmake")
-			include(${ENGINE_DIR}/SDK/cmake/Workspace.cmake)
+			message(STATUS "Including ${ENGINE_DIR}/SDK/cmake/VersionInfo.cmake")
+			include(${ENGINE_DIR}/SDK/cmake/VersionInfo.cmake)
 		else()
 			add_subdirectory(${ENGINE_DIR} "${CMAKE_CURRENT_BINARY_DIR}/EngineDir${ENGINE_MODULE_DIR_INDEX}")
 			math(EXPR ENGINE_MODULE_DIR_INDEX "${ENGINE_MODULE_DIR_INDEX} + 1")
