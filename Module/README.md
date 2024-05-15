@@ -4,7 +4,7 @@ Bring your module repositories here, with `git clone` or other methods.
 ## Usage
 Find the Nodos SDK targets using:
 ```cmake
-find_nodos("1.2.0" NOS_PLUGIN_SDK_TARGET NOS_SUBSYSTEM_SDK_TARGET NOS_SDK_DIR)
+nos_find_sdk("1.2.0" NOS_PLUGIN_SDK_TARGET NOS_SUBSYSTEM_SDK_TARGET NOS_SDK_DIR)
 ```
 
 Then you can link your module with the targets:
