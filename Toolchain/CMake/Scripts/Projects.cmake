@@ -1,11 +1,67 @@
 # Copyright MediaZ Teknoloji A.S. All Rights Reserved.
-function(nos_make_plugin_project NAME DEPENDENCIES INCLUDE_FOLDERS)
+function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_folders out_generated_files)
+	# Check if flatbuffers compiler is available
+	find_program(flatc "${FLATC_EXECUTABLE}")
+
+	# Check if flatbuffers compiler is available (cross platform
+	if(NOT flatc)
+		message(FATAL_ERROR "Flatbuffers compiler not found. Please set FLATC_EXECUTABLE variable.")
+	endif()
+
+	list(APPEND fbs_files)
+	foreach(fbs_folder ${fbs_folders})
+		file(GLOB_RECURSE files ${fbs_folder}/*.fbs)
+		list(APPEND fbs_files ${files})
+	endforeach()
+
+	set(out_list ${${out_generated_files}})
+	foreach(fbs_file ${fbs_files})
+		get_filename_component(fbs_file_name ${fbs_file} NAME_WE)
+		set(fbs_out_header "${fbs_file_name}_generated.h")
+		set(include_params "")
+
+		foreach(include ${include_folders})
+			set(include_params ${include_params} -I ${include})
+		endforeach()
+
+		set(generated_file ${dst_folder}/${fbs_out_header})
+		list(APPEND out_list ${generated_file})
+		add_custom_command(OUTPUT ${generated_file}
+			COMMAND ${flatc}
+			-o ${dst_folder}
+			${include_params}
+			${fbs_file}
+			--${out_language}
+			--gen-mutable
+			--gen-name-strings
+			--gen-object-api
+			--gen-compare
+			--cpp-std=c++17
+			--cpp-static-reflection
+			--scoped-enums
+			--unknown-json
+			--reflect-types
+			--reflect-names
+			--cpp-include array
+			# --force-empty-vectors
+			# --force-empty
+			# --force-defaults
+			--object-prefix "T"
+			--object-suffix ""
+			DEPENDS ${fbs_file}
+			COMMENT "Generating flatbuffers: ${fbs_file} (with ${FLATC_EXECUTABLE})"
+			VERBATIM)
+		source_group("FlatBuffers Files" FILES ${fbs_file})
+	endforeach()
+	set(${out_generated_files} ${out_list} PARENT_SCOPE)
+endfunction()
+
+function(nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS)
 	project(${NAME})
 	message("Processing plugin ${NAME}")
 
 	set(SOURCE_FOLDER "${CMAKE_CURRENT_SOURCE_DIR}/Source")
 	set(CONFIG_FOLDERS "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/Config")
-
 	file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS ${SOURCE_FOLDER}
 		"${SOURCE_FOLDER}/*.cpp" "${SOURCE_FOLDER}/*.inl" "${SOURCE_FOLDER}/*.glsl" "${SOURCE_FOLDER}/*.hlsl"
 		"${SOURCE_FOLDER}/*.comp" "${SOURCE_FOLDER}/*.frag" "${SOURCE_FOLDER}/*.vert"
@@ -53,11 +109,11 @@ function(nos_make_plugin_project NAME DEPENDENCIES INCLUDE_FOLDERS)
 		source_group("${header_path_msvc}" FILES "${header}")
 	endforeach()
 
-	target_include_directories(${NAME} PRIVATE ${INCLUDE_FOLDERS})
+	target_include_directories(${NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${INCLUDE_FOLDERS})
 	target_link_libraries(${NAME} PRIVATE ${DEPENDENCIES})
 endfunction()
 
-function(nos_make_subsystem_project NAME DEPENDENCIES INCLUDE_FOLDERS)
+function(nos_add_subsystem NAME DEPENDENCIES INCLUDE_FOLDERS)
 	project(${NAME})
 	message("Processing subsystem ${NAME}")
 
@@ -113,6 +169,6 @@ function(nos_make_subsystem_project NAME DEPENDENCIES INCLUDE_FOLDERS)
 		source_group("${resource_path_msvc}" FILES "${resource}")
 	endforeach()
 
-	target_include_directories(${NAME} PRIVATE ${INCLUDE_FOLDERS} ${SOURCE_FOLDERS})
+	target_include_directories(${NAME} PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR} ${INCLUDE_FOLDERS} ${SOURCE_FOLDERS})
 	target_link_libraries(${NAME} PRIVATE ${DEPENDENCIES})
 endfunction()

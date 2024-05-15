@@ -11,28 +11,28 @@ function(nos_get_module name version out_target_name)
         # Install module if not exists, silently
         execute_process(
             COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NODOS_WORKSPACE_DIR}" install ${name} ${version}
-            RESULT_VARIABLE NOSMAN_RESULT
+            RESULT_VARIABLE nosman_result
             OUTPUT_QUIET
         )
-        if (NOT NOSMAN_RESULT EQUAL 0)
+        if (NOT nosman_result EQUAL 0)
             message(FATAL_ERROR "Failed to install ${name} ${version} in workspace")
         endif()
 
         execute_process(
             COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NODOS_WORKSPACE_DIR}" info ${name} ${version} --relaxed
-            RESULT_VARIABLE NOSMAN_RESULT
-            OUTPUT_VARIABLE NOSMAN_OUTPUT
+            RESULT_VARIABLE nosman_result
+            OUTPUT_VARIABLE nosman_output
         )
 
-        if (NOSMAN_RESULT EQUAL 0)
+        if (nosman_result EQUAL 0)
             string(REPLACE "." "_" target_name ${name})
             string(REPLACE "." "_" version_str ${version})
             string(APPEND target_name "-v${version_str}")
             string(PREPEND target_name "__nos_generated__")
 
-            string(STRIP ${NOSMAN_OUTPUT} NOSMAN_OUTPUT)
+            string(STRIP ${nosman_output} nosman_output)
             # Get "public_include_folder" from JSON output
-            string(JSON nos_module_include_folder GET "${NOSMAN_OUTPUT}" "public_include_folder")
+            string(JSON nos_module_include_folder GET "${nosman_output}" "public_include_folder")
             cmake_path(SET ${target_name}_INCLUDE_DIR "${nos_module_include_folder}")
             message(STATUS "Found ${name} ${version} include folder: ${${target_name}_INCLUDE_DIR}")
 
@@ -44,7 +44,7 @@ function(nos_get_module name version out_target_name)
             endif()
 
             add_library(${target_name} INTERFACE)
-            file(GLOB_RECURSE include_files "${NOSMAN_OUTPUT}/*")
+            file(GLOB_RECURSE include_files "${nosman_output}/*")
             target_sources(${target_name} PUBLIC ${include_files})
             target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
         else()

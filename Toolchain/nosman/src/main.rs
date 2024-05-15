@@ -16,7 +16,7 @@ fn print_error(e: &dyn Error) {
 }
 
 fn main() {
-    let matches = Command::new("nosman")
+    let mut cmd = Command::new("nosman")
         .version(env!("VERGEN_BUILD_SEMVER"))
         .about("Nodos Package Manager")
         .arg(Arg::new("workspace")
@@ -93,7 +93,9 @@ fn main() {
                 .about("Remove a remote")
                 .arg(Arg::new("url").required(true))
             )
-        ).get_matches();
+        );
+    let help_str = cmd.render_help();
+    let matches = cmd.get_matches();
 
     let mut matched = false;
     for command in nosman::command::commands().iter() {
@@ -123,7 +125,7 @@ fn main() {
     }
 
     if !matched {
-        eprintln!("Invalid command.");
+        println!("{}", help_str.ansi());
         std::process::exit(1);
     }
 
