@@ -1,7 +1,7 @@
 # Copyright MediaZ Teknoloji A.S. All Rights Reserved.
 function(nos_get_module name version out_target_name)
-    if(NOT DEFINED NODOS_WORKSPACE_DIR)
-        message(FATAL_ERROR "NODOS_WORKSPACE_DIR is not defined. Set it to the path of the workspace where modules will be installed.")
+    if(NOT DEFINED NOSMAN_WORKSPACE_DIR)
+        message(FATAL_ERROR "NOSMAN_WORKSPACE_DIR is not defined. Set it to the path of the workspace where modules will be installed.")
     endif()
 
     message(STATUS "Searching for Nodos module ${name} ${version} in workspace")
@@ -10,7 +10,7 @@ function(nos_get_module name version out_target_name)
     if(NOSMAN_EXECUTABLE)
         # Install module if not exists, silently
         execute_process(
-            COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NODOS_WORKSPACE_DIR}" install ${name} ${version}
+            COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" install ${name} ${version}
             RESULT_VARIABLE nosman_result
             OUTPUT_QUIET
         )
@@ -19,7 +19,7 @@ function(nos_get_module name version out_target_name)
         endif()
 
         execute_process(
-            COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NODOS_WORKSPACE_DIR}" info ${name} ${version} --relaxed
+            COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" info ${name} ${version} --relaxed
             RESULT_VARIABLE nosman_result
             OUTPUT_VARIABLE nosman_output
         )
