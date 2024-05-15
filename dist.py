@@ -275,9 +275,7 @@ def package(dist_key, engine_folder, should_sign_binaries):
     # Create a nosSDK-v<version>.zip file from SDK folder
     logger.info(f"Creating SDK zip file")
     major, minor, patch, build_number = get_version_info_from_env()
-    zip_name = f"Nodos-SDK-{major}.{minor}.{patch}.b{build_number}.zip"
-    shutil.make_archive(f"{engine_folder}/SDK/{zip_name[:-4]}", 'zip', sdk_dir)
-    shutil.move(f"{engine_folder}/SDK/{zip_name[:-4]}.zip", f"./Artifacts/{zip_name}")
+    sdk_zip_name = f"Nodos-SDK-{major}.{minor}.{patch}.b{build_number}.zip"
 
     # Copy nosman
     nosman_path = build_nosman(f"./Toolchain/nosman", is_release=True)
@@ -292,9 +290,17 @@ def package(dist_key, engine_folder, should_sign_binaries):
     engine_dist_folder = f"{staging_folder}/Engine/{major}.{minor}.{patch}.b{build_number}"
     os.makedirs(engine_dist_folder, exist_ok=True)
     os.makedirs(f"{staging_folder}/Module", exist_ok=True)
+
+    # SDK
+    shutil.copytree(sdk_dir, f"{engine_dist_folder}/SDK")
+    
+    # Zip SDK only release
+    sdk_zip_name = f"Nodos-SDK-{major}.{minor}.{patch}.b{build_number}"
+    shutil.make_archive(f"./Artifacts/{sdk_zip_name}", 'zip', f"{staging_folder}")
+
+    # Move rest
     shutil.copytree(bin_dir, f"{engine_dist_folder}/Binaries",)
     shutil.copytree(f"{engine_folder}/Config", f"{engine_dist_folder}/Config")
-    shutil.copytree(sdk_dir, f"{engine_dist_folder}/SDK")
 
     if should_sign_binaries:
         sign_binaries(f"{engine_dist_folder}/Binaries")
