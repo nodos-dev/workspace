@@ -155,7 +155,7 @@ pub struct ModuleReleases {
     pub(crate) releases: Vec<ModuleReleaseEntry>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Remote {
     pub name: String,
     pub url: String,

@@ -13,7 +13,8 @@ impl Command for RescanCommand {
     }
 
     fn run(&self, args: &ArgMatches) -> CommandResult {
-        Workspace::rescan(&nosman::workspace::current().unwrap())?;
+        let fetch_index = args.get_one::<bool>("fetch_index").unwrap();
+        Workspace::rescan(&nosman::workspace::current().unwrap(), fetch_index.clone())?;
         println!("{}", "Rescan completed".green());
         Ok(true)
     }

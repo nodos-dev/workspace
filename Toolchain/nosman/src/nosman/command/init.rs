@@ -23,7 +23,7 @@ impl InitCommand {
         }
         println!("Creating a new workspace under {:?}", directory);
 
-        let res = Workspace::rescan(&directory);
+        let res = Workspace::rescan(&directory, true);
         if res.is_err() {
             return Err(IOError(res.err().unwrap()));
         }

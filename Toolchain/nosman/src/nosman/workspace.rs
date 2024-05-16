@@ -102,7 +102,7 @@ impl Workspace {
         println!("{}", "All modules removed successfully".green());
         Ok(true)
     }
-    pub fn scan_folder(&mut self, folder: path::PathBuf, force_replace_in_index: bool) {
+    pub fn scan_folder(&mut self, folder: path::PathBuf, force_replace_in_registry: bool) {
         // Scan folders with .noscfg and .nossys files
         let pb = ProgressBar::new(0);
         pb.set_style(ProgressStyle::default_spinner()
@@ -178,8 +178,8 @@ impl Workspace {
                         let opt_found = self.get_installed_module(&installed_module.info.id.name, &installed_module.info.id.version);
                         if opt_found.is_some() {
                             let found = opt_found.unwrap();
-                            if force_replace_in_index {
-                                pb.println(format!("Replacing module registry: {}. {} <=> {}", installed_module.info.id, path.display(), found.config_path.display()));
+                            if force_replace_in_registry {
+                                pb.println(format!("Updating module entry in registry: {}. {} <=> {}", installed_module.info.id, path.display(), found.config_path.display()));
                             } else {
                                 pb.println(format!("Duplicate module found: {}. {} <=> {}, skipping.", installed_module.info.id, path.display(), found.config_path.display()));
                                 continue;
@@ -192,16 +192,26 @@ impl Workspace {
         }
         pb.finish_and_clear();
     }
-    pub fn scan(&mut self) {
-       self.scan_folder(self.root.clone(), false);
+    pub fn scan(&mut self, force_replace_in_registry: bool) {
+       self.scan_folder(self.root.clone(), force_replace_in_registry);
     }
-    pub fn rescan(directory: &path::PathBuf) -> Result<Workspace, io::Error> {
-        let mut workspace = Workspace::new(directory.to_path_buf());
-        workspace.add_remote(Remote::new("default", "https://raw.githubusercontent.com/mediaz/mediaz-directory/dev/all_modules.json"));
-        let index = Index::fetch(&workspace);
-        workspace.index = index;
+    pub fn rescan(directory: &path::PathBuf, fetch_index: bool) -> Result<Workspace, io::Error> {
+        let mut existing_workspace = Workspace::from_file(directory.join(".nosman"));
+        let mut workspace = Workspace::new(directory.clone());
+        if fetch_index {
+            if existing_workspace.remotes.is_empty() {
+                workspace.add_remote(Remote::new("default", "https://raw.githubusercontent.com/mediaz/mediaz-directory/dev/all_modules.json"));
+            } else {
+                workspace.remotes = existing_workspace.remotes.clone();
+            }
+            let index = Index::fetch(&workspace);
+            workspace.index = index;
+        } else {
+            // Recover remotes
+            workspace.remotes = existing_workspace.remotes.clone();
+        }
 
-        workspace.scan();
+        workspace.scan(true);
 
         println!("Saving workspace...");
         workspace.save()?;
