@@ -249,8 +249,9 @@ def build_nosman(nosman_src_dir, is_release) -> str:
 
 def package(dist_key, engine_folder, should_sign_binaries):
     logger.info("Packaging Nodos")
-    staging_folder = "./Artifacts/__staging__"
-    shutil.rmtree(staging_folder, ignore_errors=True)
+    artifacts_folder = "./Artifacts"
+    staging_folder = f"{artifacts_folder}/__staging__"
+    shutil.rmtree(artifacts_folder, ignore_errors=True)
     os.makedirs(f"{staging_folder}", exist_ok=True)
     dists = []
     with open("./bundle.json", 'r') as f:
