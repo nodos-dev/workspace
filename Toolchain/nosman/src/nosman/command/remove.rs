@@ -11,7 +11,7 @@ pub struct RemoveCommand {
 impl RemoveCommand {
     fn run_remove(&self, module_name: &str, version: &str) -> CommandResult {
         // Fetch remotes
-        let mut workspace = Workspace::get();
+        let mut workspace = Workspace::get()?;
         workspace.remove(module_name, version)
     }
 }

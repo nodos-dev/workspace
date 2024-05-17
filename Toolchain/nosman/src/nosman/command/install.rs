@@ -24,7 +24,7 @@ impl From<ZipError> for CommandError {
 impl InstallCommand {
     fn run_install(&self, module_name: &str, version: &str, exact: bool, output_dir: &path::PathBuf, prefix: Option<&String>) -> CommandResult {
         // Fetch remotes
-        let mut workspace = Workspace::get();
+        let mut workspace = Workspace::get()?;
         if !exact {
             // Find or download a version such that 'a.b <= x < a.(b+1)'
             let version_start = SemVer::parse_from_string(version).unwrap();

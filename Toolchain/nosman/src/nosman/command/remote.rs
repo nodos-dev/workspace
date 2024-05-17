@@ -10,7 +10,7 @@ pub struct RemoteAddCommand {
 
 impl RemoteAddCommand {
     fn run_add_remote(&self, url: &str) -> Result<bool, CommandError> {
-        let mut workspace = Workspace::get();
+        let mut workspace = Workspace::get()?;
         if workspace.remotes.iter().any(|r| r.url == url) {
             return Err(CommandError::InvalidArgumentError { message: format!("Remote {} already exists", url) });
         }
@@ -48,7 +48,7 @@ pub struct RemoteListCommand {
 
 impl RemoteListCommand {
     fn run_list_remotes(&self) -> Result<bool, CommandError> {
-        let workspace = Workspace::get();
+        let workspace = Workspace::get()?;
         if workspace.remotes.is_empty() {
             println!("No remotes found");
             return Ok(true);

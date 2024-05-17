@@ -27,13 +27,13 @@ impl Workspace {
             index: Index { modules: HashMap::new() },
         }
     }
-    pub fn from_file(path: path::PathBuf) -> Workspace {
-        let file = std::fs::File::open(&path).unwrap();
+    pub fn from_file(path: path::PathBuf) -> Result<Workspace, io::Error> {
+        let file = std::fs::File::open(&path)?;
         let mut workspace: Workspace = serde_json::from_reader(file).unwrap();
         workspace.root = path.parent().unwrap().to_path_buf();
-        workspace
+        Ok(workspace)
     }
-    pub fn get() -> Workspace {
+    pub fn get() -> Result<Workspace, io::Error> {
         Workspace::from_file(current_nosman_file().unwrap())
     }
     pub fn add_remote(&mut self, remote: Remote) {
@@ -196,19 +196,23 @@ impl Workspace {
        self.scan_folder(self.root.clone(), force_replace_in_registry);
     }
     pub fn rescan(directory: &path::PathBuf, fetch_index: bool) -> Result<Workspace, io::Error> {
-        let mut existing_workspace = Workspace::from_file(directory.join(".nosman"));
+        let mut existing_remotes = Vec::new();
+        let existing_workspace = Workspace::from_file(directory.join(".nosman"));
+        if existing_workspace.is_ok() {
+            existing_remotes = existing_workspace.unwrap().remotes;
+        }
         let mut workspace = Workspace::new(directory.clone());
         if fetch_index {
-            if existing_workspace.remotes.is_empty() {
+            if existing_remotes.is_empty() {
                 workspace.add_remote(Remote::new("default", "https://raw.githubusercontent.com/mediaz/mediaz-directory/dev/all_modules.json"));
             } else {
-                workspace.remotes = existing_workspace.remotes.clone();
+                workspace.remotes = existing_remotes;
             }
             let index = Index::fetch(&workspace);
             workspace.index = index;
         } else {
             // Recover remotes
-            workspace.remotes = existing_workspace.remotes.clone();
+            workspace.remotes = existing_remotes;
         }
 
         workspace.scan(true);

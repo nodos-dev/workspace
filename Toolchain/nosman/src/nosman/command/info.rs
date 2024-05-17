@@ -11,7 +11,7 @@ pub struct InfoCommand {
 
 impl InfoCommand {
     fn run_get_info(&self, module_name: &str, version: &str, relaxed: bool) -> CommandResult {
-        let workspace = Workspace::get();
+        let workspace = Workspace::get()?;
         let module =  if relaxed {
             let semver_res = SemVer::parse_from_string(version);
             if semver_res.is_none() {

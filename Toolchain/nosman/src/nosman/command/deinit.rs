@@ -16,7 +16,7 @@ impl DeinitCommand {
         let nosman_fpath = workspace::current_nosman_file().unwrap();
         if nosman_fpath.exists() {
             // Ask user whether to remove the installed modules
-            let mut workspace = Workspace::get();
+            let mut workspace = Workspace::get()?;
             io::stdout().write_all(b"Would you like to remove all installed modules? [y/N] ")?;
             io::stdout().flush()?;
             let mut input = String::new();
