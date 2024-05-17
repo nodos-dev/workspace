@@ -1,5 +1,5 @@
 # Copyright MediaZ Teknoloji A.S. All Rights Reserved.
-function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_folders out_generated_files)
+function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_folders out_target_name)
 	# Check if flatbuffers compiler is available
 	find_program(flatc "${FLATC_EXECUTABLE}")
 
@@ -14,7 +14,6 @@ function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_fo
 		list(APPEND fbs_files ${files})
 	endforeach()
 
-	set(out_list ${${out_generated_files}})
 	foreach(fbs_file ${fbs_files})
 		get_filename_component(fbs_file_name ${fbs_file} NAME_WE)
 		set(fbs_out_header "${fbs_file_name}_generated.h")
@@ -53,7 +52,8 @@ function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_fo
 			VERBATIM)
 		source_group("FlatBuffers Files" FILES ${fbs_file})
 	endforeach()
-	set(${out_generated_files} ${out_list} PARENT_SCOPE)
+	add_custom_target(${out_target_name} DEPENDS ${out_list})
+	set_target_properties(${out_target_name} PROPERTIES FOLDER "Build Tasks")
 endfunction()
 
 function(nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS)
@@ -110,7 +110,21 @@ function(nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS)
 	endforeach()
 
 	target_include_directories(${NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${INCLUDE_FOLDERS})
-	target_link_libraries(${NAME} PRIVATE ${DEPENDENCIES})
+
+	foreach(dependency IN LISTS DEPENDENCIES)
+		# If target "dependency" type is UTILITY then add it as a dependency
+		if(TARGET ${dependency})
+			get_target_property(dependency_type ${dependency} TYPE)
+			message(STATUS "${PROJECT_NAME}: Adding dependency ${dependency} of type ${dependency_type}")
+			if(dependency_type STREQUAL "UTILITY")
+				add_dependencies(${NAME} ${dependency})
+			else()
+				target_link_libraries(${NAME} PRIVATE ${dependency})
+			endif()
+		else()
+			target_link_libraries(${NAME} PRIVATE ${dependency})
+		endif()
+	endforeach()
 endfunction()
 
 function(nos_add_subsystem NAME DEPENDENCIES INCLUDE_FOLDERS)
@@ -170,5 +184,19 @@ function(nos_add_subsystem NAME DEPENDENCIES INCLUDE_FOLDERS)
 	endforeach()
 
 	target_include_directories(${NAME} PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR} ${INCLUDE_FOLDERS} ${SOURCE_FOLDERS})
-	target_link_libraries(${NAME} PRIVATE ${DEPENDENCIES})
+
+	foreach(dependency IN LISTS DEPENDENCIES)
+		# If target "dependency" type is UTILITY then add it as a dependency
+		if(TARGET ${dependency})
+			get_target_property(dependency_type ${dependency} TYPE)
+			message(STATUS "${PROJECT_NAME}: Adding dependency ${dependency} of type ${dependency_type}")
+			if(dependency_type STREQUAL "UTILITY")
+				add_dependencies(${NAME} ${dependency})
+			else()
+				target_link_libraries(${NAME} PRIVATE ${dependency})
+			endif()
+		else()
+			target_link_libraries(${NAME} PRIVATE ${dependency})
+		endif()
+	endforeach()
 endfunction()
