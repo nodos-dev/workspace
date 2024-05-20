@@ -1,5 +1,4 @@
 use clap::{ArgMatches};
-use crate::nosman;
 
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::index::SemVer;

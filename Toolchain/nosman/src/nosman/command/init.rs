@@ -1,15 +1,10 @@
-use std::{fs, path};
-
 use clap::{ArgMatches};
 use colored::Colorize;
 
 use crate::nosman;
-use crate::nosman::command::{Command, CommandError, CommandResult};
+use crate::nosman::command::{Command, CommandResult};
 
-use serde::{Deserialize, Serialize};
-use serde_json::Result;
 use crate::nosman::command::CommandError::{InvalidArgumentError, IOError};
-use crate::nosman::index::{Index, Remote};
 use crate::nosman::workspace::{find_root_from, Workspace};
 
 pub struct InitCommand {
@@ -42,7 +37,7 @@ impl Command for InitCommand {
         false
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _args: &ArgMatches) -> CommandResult {
         self.run_init()
     }
 }

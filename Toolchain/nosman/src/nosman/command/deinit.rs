@@ -42,7 +42,7 @@ impl Command for DeinitCommand {
         true
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _args: &ArgMatches) -> CommandResult {
         self.run_deinit()
     }
 }

@@ -5,6 +5,7 @@ mod info;
 mod remove;
 mod rescan;
 mod deinit;
+mod create;
 
 use std::io;
 
@@ -19,8 +20,6 @@ pub enum CommandError {
     InvalidArgumentError { message: String },
     #[error(display = "Zip error: {}", message)]
     ZipError { message: String },
-    #[error(display = "Unimplemented")]
-    UnimplementedError,
 }
 
 pub(crate) type CommandResult = Result<bool, CommandError>;
@@ -43,6 +42,7 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(info::InfoCommand {}),
         Box::new(remove::RemoveCommand {}),
         Box::new(rescan::RescanCommand {}),
-        Box::new(deinit::DeinitCommand {})
+        Box::new(deinit::DeinitCommand {}),
+        Box::new(create::CreateCommand {}),
     ]
 }

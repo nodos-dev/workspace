@@ -1,0 +1,164 @@
+use std::fs;
+use std::io::{stdout, Write};
+use std::path::{Path, PathBuf};
+use clap::{ArgMatches};
+use colored::Colorize;
+use crate::nosman::command::{Command, CommandResult};
+use crate::nosman::command::CommandError::InvalidArgumentError;
+use crate::nosman::index::ModuleType;
+use include_dir::{include_dir, Dir};
+use crate::nosman::module::ModuleIdentifier;
+
+pub struct CreateCommand {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum LangTool {
+    CppCMake,
+}
+
+impl std::fmt::Display for LangTool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LangTool::CppCMake => write!(f, "cpp/cmake"),
+        }
+    }
+}
+
+impl LangTool {
+    fn from_str(s: &str) -> Option<LangTool> {
+        match s {
+            "cpp/cmake" => Some(LangTool::CppCMake),
+            _ => None
+        }
+    }
+    fn lang(&self) -> &'static str {
+        match self {
+            LangTool::CppCMake => "cpp",
+        }
+    }
+    fn tool(&self) -> &'static str {
+        match self {
+            LangTool::CppCMake => "cmake",
+        }
+    }
+}
+
+static DATA_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/data");
+
+fn get_template_dir_for<'a>(name: &str, module_type: &ModuleType) -> &'a Dir<'a> {
+    let template_dir = if *module_type == ModuleType::Plugin {
+        DATA_DIR.get_dir(format!("templates/{}/plugin", name)).unwrap()
+    } else {
+        DATA_DIR.get_dir(format!("templates/{}/subsystem", name)).unwrap()
+    };
+    template_dir
+}
+
+fn copy_dir_recursive(src: &Dir, dest: &Path, modify: &mut dyn FnMut(&mut String)) -> std::io::Result<()> {
+    let mut stack: Vec<&Dir> = vec![src];
+    while let Some(dir) = stack.pop() {
+        let target_dir = dest.join(dir.path().strip_prefix(src.path()).unwrap());
+        for entry in dir.entries() {
+            if let Some(d) = entry.as_dir() {
+                stack.push(d);
+                fs::create_dir_all(target_dir.join(entry.path().file_name().unwrap()))?;
+            } else {
+                let mut content: String = entry.as_file().unwrap().contents_utf8().unwrap().to_string();
+                modify(&mut content);
+                fs::write(target_dir.join(entry.path().file_name().unwrap()), content)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+impl CreateCommand {
+    fn run_create(&self, module_name: &str, module_type: ModuleType, lang_tool: LangTool,
+                  output_dir: &PathBuf, deps: Vec<ModuleIdentifier>, description: &str) -> CommandResult {
+        println!("Creating a new Nodos module project of type {:?}", module_type);
+
+        fs::create_dir_all(&output_dir)?;
+
+        let tool_template_dir = get_template_dir_for(lang_tool.tool(), &module_type);
+        let lang_template_dir = get_template_dir_for(lang_tool.lang(), &module_type);
+
+        // Copy .noscfg if plugin or .nossys
+        let cfg_template_file = if module_type == ModuleType::Plugin {
+            DATA_DIR.get_file("templates/Plugin.noscfg").unwrap()
+        } else {
+            DATA_DIR.get_file("templates/Subsystem.nossys").unwrap()
+        };
+        let output_cfg_path = output_dir.join(format!("{}.{}", module_name, if module_type == ModuleType::Plugin { "noscfg" } else { "nossys" }));
+
+        // Read file and replace placeholders
+        // <NAME>
+        // <DESCRIPTION>
+        // <VERSION>
+        // <DEPENDENCY_LIST_JSON>
+        // <BINARY_NAME>
+        let cfg_content = cfg_template_file.contents_utf8().unwrap();
+        let cfg_content = cfg_content
+            .replace("<NAME>", module_name)
+            .replace("<DESCRIPTION>", description)
+            .replace("<DISPLAY_NAME>", module_name)
+            .replace("<VERSION>", "0.1.0")
+            .replace("<DEPENDENCY_LIST_JSON>", serde_json::to_string(&deps).unwrap().as_str())
+            .replace("<BINARY_NAME>", module_name);
+        fs::write(&output_cfg_path, cfg_content)?;
+
+        // Recursively copy the tool directory
+        copy_dir_recursive(tool_template_dir, output_dir, &mut |content| {
+            *content = content
+                .replace("<CMAKE_PROJECT_NAME>", module_name)
+                .replace("<CMAKE_LATEST_NOS_VERSION>", "1.2.0")
+                .replace("<CMAKE_MODULE_DEPENDENCIES>", &deps.iter().map(|dep| {
+                    format!("\"{}-{}\"", dep.name, dep.version)
+                }).collect::<Vec<_>>().join(" "));
+        })?;
+
+        copy_dir_recursive(lang_template_dir, output_dir, &mut |content| {
+        })?;
+
+        println!("{:?} project created at {:?}", module_type, output_dir);
+
+        Ok(true)
+    }
+}
+
+impl Command for CreateCommand {
+    fn matched_args<'a>(&self, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+        args.subcommand_matches("create")
+    }
+
+    fn needs_workspace(&self) -> bool {
+        false
+    }
+
+    fn run(&self, args: &ArgMatches) -> CommandResult {
+        let module_type = match args.get_one::<String>("type").unwrap().as_str() {
+            "plugin" => ModuleType::Plugin,
+            "subsystem" => ModuleType::Subsystem,
+            _ => panic!("Invalid module type") // Unreachable
+        };
+        let lang_tool = match args.get_one::<String>("language/tool").unwrap().as_str() {
+            "cpp/cmake" => LangTool::CppCMake,
+            _ => panic!("Invalid language/tool") // Unreachable
+        };
+        let module_name = args.get_one::<String>("name").unwrap();
+        let output_dir = PathBuf::from(args.get_one::<String>("output-dir").unwrap());
+        let depss: Vec<&String> = args.get_many::<String>("dependency").unwrap_or_default().collect();
+        let mut deps: Vec<ModuleIdentifier> = Vec::new();
+        for dep in depss {
+            let parts: Vec<&str> = dep.split('-').collect();
+            if parts.len() != 2 {
+                return Err(InvalidArgumentError { message: format!("Invalid dependency format: {}", dep) });
+            }
+            deps.push(ModuleIdentifier {
+                name: parts[0].to_string(),
+                version: parts[1].to_string(),
+            });
+        }
+        let description = args.get_one::<String>("description").unwrap();
+        self.run_create(module_name, module_type, lang_tool, &output_dir, deps, description)
+    }
+}

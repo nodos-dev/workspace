@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
-use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
-use crate::nosman::command::CommandError;
-use crate::nosman::module::InstalledModule;
 use crate::nosman::workspace::Workspace;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -66,15 +63,6 @@ impl SemVer {
             s.push_str(&format!(".b{}", build_number));
         }
         s
-    }
-    pub fn is_compatible_with(&self, user: &SemVer) -> bool {
-        if self.major != user.major {
-            return false;
-        }
-        if self.minor < user.minor {
-            return false;
-        }
-        return true;
     }
     pub fn upper_minor(&self) -> SemVer {
         SemVer {

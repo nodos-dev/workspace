@@ -1,0 +1,12 @@
+{
+    "info": {
+        "id": {
+            "name": "<NAME>",
+            "version": "<VERSION>"
+        },
+        "display_name": "<DISPLAY_NAME>",
+        "description": "<DESCRIPTION>",
+        "dependencies": <DEPENDENCY_LIST_JSON>
+    },
+    "binary_path": "./Binaries/<BINARY_NAME>"
+}
