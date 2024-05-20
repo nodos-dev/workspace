@@ -109,13 +109,6 @@ if (NOT EXISTS "${NODOS_WORKSPACE_DIR}/.nosman")
 		WORKING_DIRECTORY "${NOSMAN_WORKSPACE_DIR}"
 		RESULT_VARIABLE NOSMAN_RESULT
 	)
-else()
-	message(STATUS "Rescanning modules...")
-	execute_process(
-		COMMAND ${NOSMAN_EXECUTABLE} rescan
-		WORKING_DIRECTORY "${NOSMAN_WORKSPACE_DIR}"
-		RESULT_VARIABLE NOSMAN_RESULT
-	)
 endif()
 
 # Includes
@@ -153,7 +146,8 @@ foreach(nos_module_dir ${MODULE_DIRS})
 		set(nos_module_dir "${NODOS_WORKSPACE_DIR}/${nos_module_dir}")
 	endif()
 	if(IS_DIRECTORY ${nos_module_dir})
-		message(STATUS "Processing module directory: ${nos_module_dir}")
+		message("Processing module directory: ${nos_module_dir}")
 		add_subdirectory(${nos_module_dir} "${CMAKE_CURRENT_BINARY_DIR}/ModuleDir${NOS_MODULE_DIR_INDEX}")
+		math(EXPR NOS_MODULE_DIR_INDEX "${NOS_MODULE_DIR_INDEX} + 1")
 	endif()
 endforeach()
