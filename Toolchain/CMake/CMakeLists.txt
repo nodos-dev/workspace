@@ -85,7 +85,7 @@ endif()
 if (NOT EXISTS "${NOSMAN_EXECUTABLE}")
 	message(STATUS "nosman not found at ${NOSMAN_EXECUTABLE}. Building...")
 	execute_process(
-		COMMAND cargo build --release
+		COMMAND cargo build --release --quiet
 		WORKING_DIRECTORY "${NODOS_WORKSPACE_DIR}/Toolchain/nosman"
 		RESULT_VARIABLE NOSMAN_RESULT
 	)
@@ -102,11 +102,10 @@ else()
 	message(STATUS "Found nosman at ${NOSMAN_EXECUTABLE}")
 endif()
 
-if (NOT EXISTS "${NODOS_WORKSPACE_DIR}/.nosman")
-	message(STATUS "Initializing workspace...")
+if (NOT EXISTS "${NOSMAN_WORKSPACE_DIR}/.nosman")
+	message(STATUS "Initializing workspace at ${NOSMAN_WORKSPACE_DIR}")
 	execute_process(
-		COMMAND ${NOSMAN_EXECUTABLE} init
-		WORKING_DIRECTORY "${NOSMAN_WORKSPACE_DIR}"
+		COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" init
 		RESULT_VARIABLE NOSMAN_RESULT
 	)
 endif()
@@ -117,37 +116,42 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/GetModule.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Projects.cmake)
 
 if(NOT DEFINED MODULE_DIRS OR MODULE_DIRS STREQUAL "")
-	message(STATUS "Scanning for modules in ${NODOS_WORKSPACE_DIR}/Module")
-	set(MODULE_DIRS "" CACHE INTERNAL "Module directories" FORCE)
-
-	function(collect_first_cmake_directories dir)
-		file(GLOB SUBDIRS RELATIVE ${dir} ${dir}/*)
-
-		foreach(subdir ${SUBDIRS})
-			if(IS_DIRECTORY ${dir}/${subdir})
-				if(EXISTS "${dir}/${subdir}/CMakeLists.txt")
-					set(MODULE_DIRS ${MODULE_DIRS} ${dir}/${subdir} CACHE INTERNAL "Module directories" FORCE)
-					message(STATUS "Found module directory: ${dir}/${subdir}")
-				else()
-					collect_first_cmake_directories(${dir}/${subdir})
-				endif()
-			endif()
-		endforeach()
-	endfunction()
-
-	collect_first_cmake_directories("${NODOS_WORKSPACE_DIR}/Module")
-	message(STATUS "Found ${MODULE_DIRS} module paths")
+	set(MODULE_DIRS "${NODOS_WORKSPACE_DIR}/Module" CACHE INTERNAL "Module directories" FORCE)
 endif()
 
+function(collect_first_cmake_directories dir out_dirs)
+	file(GLOB SUBDIRS RELATIVE ${dir} ${dir}/*)
+
+	foreach(subdir ${SUBDIRS})
+		if(IS_DIRECTORY ${dir}/${subdir})
+			if(EXISTS "${dir}/${subdir}/CMakeLists.txt")
+				set(${out_dirs} ${${out_dirs}} ${dir}/${subdir} CACHE INTERNAL "Module directories" FORCE)
+				message("Found module directory: ${dir}/${subdir}")
+			else()
+				collect_first_cmake_directories(${dir}/${subdir} ${out_dirs})
+			endif()
+		endif()
+	endforeach()
+endfunction()
+
 set(NOS_MODULE_DIR_INDEX 0)
-foreach(nos_module_dir ${MODULE_DIRS})
+set(ALL_MODULE_DIRS "" CACHE INTERNAL "All module directories" FORCE)
+foreach(cur_module_dir ${MODULE_DIRS})
 	# If relative, should be relative to NODOS_WORKSPACE_DIR
-	if(NOT IS_ABSOLUTE ${nos_module_dir})
-		set(nos_module_dir "${NODOS_WORKSPACE_DIR}/${nos_module_dir}")
+	if(NOT IS_ABSOLUTE ${cur_module_dir})
+		set(cur_module_dir "${NODOS_WORKSPACE_DIR}/${cur_module_dir}")
 	endif()
-	if(IS_DIRECTORY ${nos_module_dir})
-		message("Processing module directory: ${nos_module_dir}")
-		add_subdirectory(${nos_module_dir} "${CMAKE_CURRENT_BINARY_DIR}/ModuleDir${NOS_MODULE_DIR_INDEX}")
-		math(EXPR NOS_MODULE_DIR_INDEX "${NOS_MODULE_DIR_INDEX} + 1")
-	endif()
+	message(STATUS "Scanning for modules in ${cur_module_dir}")
+	
+	collect_first_cmake_directories("${cur_module_dir}" ALL_MODULE_DIRS)
+	list(LENGTH ALL_MODULE_DIRS all_dirs_count)
+	message(STATUS "Found ${all_dirs_count} module paths under ${cur_module_dir}: ${ALL_MODULE_DIRS}")
+
+	foreach(dir ${ALL_MODULE_DIRS})
+		if(IS_DIRECTORY ${dir})
+			message("Processing module directory: ${dir}")
+			add_subdirectory(${dir} "${CMAKE_CURRENT_BINARY_DIR}/ModuleDir${NOS_MODULE_DIR_INDEX}")
+			math(EXPR NOS_MODULE_DIR_INDEX "${NOS_MODULE_DIR_INDEX} + 1")
+		endif()
+	endforeach()
 endforeach()
