@@ -6,6 +6,7 @@ use crate::nosman::command::CommandError::InvalidArgumentError;
 use crate::nosman::index::ModuleType;
 use include_dir::{include_dir, Dir};
 use crate::nosman::module::ModuleIdentifier;
+use crate::nosman::workspace::Workspace;
 
 pub struct CreateCommand {}
 
@@ -125,6 +126,13 @@ impl CreateCommand {
         })?;
 
         println!("{:?} project created at {:?}", module_type, output_dir);
+
+        let ws_res = Workspace::get();
+        if ws_res.is_ok() {
+            let mut ws = ws_res.unwrap();
+            ws.scan_folder(output_dir.clone(), true);
+            ws.save()?;
+        }
 
         Ok(true)
     }
