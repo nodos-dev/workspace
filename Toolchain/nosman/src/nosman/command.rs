@@ -6,6 +6,7 @@ mod remove;
 mod rescan;
 mod deinit;
 mod create;
+mod sdk_info;
 
 use std::io;
 
@@ -44,5 +45,6 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(rescan::RescanCommand {}),
         Box::new(deinit::DeinitCommand {}),
         Box::new(create::CreateCommand {}),
+        Box::new(sdk_info::SdkInfoCommand {}),
     ]
 }
