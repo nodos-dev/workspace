@@ -44,7 +44,7 @@ function(nos_get_module name version out_target_name)
             endif()
 
             add_library(${target_name} INTERFACE)
-            file(GLOB_RECURSE include_files "${nosman_output}/*")
+            file(GLOB_RECURSE include_files "${nos_module_include_folder}/*")
             target_sources(${target_name} PUBLIC ${include_files})
             target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
         else()
