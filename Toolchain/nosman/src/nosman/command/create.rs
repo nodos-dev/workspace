@@ -1,8 +1,6 @@
 use std::fs;
-use std::io::{stdout, Write};
 use std::path::{Path, PathBuf};
 use clap::{ArgMatches};
-use colored::Colorize;
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::CommandError::InvalidArgumentError;
 use crate::nosman::index::ModuleType;
@@ -25,12 +23,6 @@ impl std::fmt::Display for LangTool {
 }
 
 impl LangTool {
-    fn from_str(s: &str) -> Option<LangTool> {
-        match s {
-            "cpp/cmake" => Some(LangTool::CppCMake),
-            _ => None
-        }
-    }
     fn lang(&self) -> &'static str {
         match self {
             LangTool::CppCMake => "cpp",
@@ -73,6 +65,23 @@ fn copy_dir_recursive(src: &Dir, dest: &Path, modify: &mut dyn FnMut(&mut String
 }
 
 impl CreateCommand {
+    fn replace_lang_placeholders(_content: &mut String, lang: &str) {
+        if lang == "cpp" {
+            // If any placeholders are added in the future
+        }
+    }
+
+    fn replace_tool_placeholders(content: &mut String, module_name: &str, deps: &Vec<ModuleIdentifier>, tool: &str) {
+        if tool == "cmake" {
+            *content = content
+                .replace("<CMAKE_PROJECT_NAME>", module_name)
+                .replace("<CMAKE_LATEST_NOS_VERSION>", "1.2.0")
+                .replace("<CMAKE_MODULE_DEPENDENCIES>", &deps.iter().map(|dep| {
+                    format!("\"{}-{}\"", dep.name, dep.version)
+                }).collect::<Vec<_>>().join(" "));
+        }
+    }
+
     fn run_create(&self, module_name: &str, module_type: ModuleType, lang_tool: LangTool,
                   output_dir: &PathBuf, deps: Vec<ModuleIdentifier>, description: &str) -> CommandResult {
         println!("Creating a new Nodos module project of type {:?}", module_type);
@@ -108,15 +117,11 @@ impl CreateCommand {
 
         // Recursively copy the tool directory
         copy_dir_recursive(tool_template_dir, output_dir, &mut |content| {
-            *content = content
-                .replace("<CMAKE_PROJECT_NAME>", module_name)
-                .replace("<CMAKE_LATEST_NOS_VERSION>", "1.2.0")
-                .replace("<CMAKE_MODULE_DEPENDENCIES>", &deps.iter().map(|dep| {
-                    format!("\"{}-{}\"", dep.name, dep.version)
-                }).collect::<Vec<_>>().join(" "));
+            Self::replace_tool_placeholders(content, module_name, &deps, lang_tool.tool());
         })?;
 
         copy_dir_recursive(lang_template_dir, output_dir, &mut |content| {
+            Self::replace_lang_placeholders(content, lang_tool.lang());
         })?;
 
         println!("{:?} project created at {:?}", module_type, output_dir);
