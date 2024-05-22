@@ -45,7 +45,7 @@ impl SdkInfoCommand {
                 if bin_dir.exists() && include_dir.exists() {
                     let sdk_info = SdkInfo {
                         version: version.to_string(),
-                        path: sdk_dir.to_str().unwrap().to_string(),
+                        path: workspace_dir.join(sdk_dir).canonicalize().unwrap().to_str().unwrap().to_string(),
                     };
                     let json_str = serde_json::to_string_pretty(&sdk_info).unwrap();
                     println!("{}", json_str);

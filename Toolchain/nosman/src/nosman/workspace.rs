@@ -197,9 +197,12 @@ impl Workspace {
     }
     pub fn rescan(directory: &path::PathBuf, fetch_index: bool) -> Result<Workspace, io::Error> {
         let mut existing_remotes = Vec::new();
-        let existing_workspace = Workspace::from_file(directory.join(".nosman"));
-        if existing_workspace.is_ok() {
-            existing_remotes = existing_workspace.unwrap().remotes;
+        let mut existing_remote_index = Index { modules: HashMap::new() };
+        let res = Workspace::from_file(directory.join(".nosman"));
+        if res.is_ok() {
+            let existing_workspace = res.unwrap();
+            existing_remotes = existing_workspace.remotes;
+            existing_remote_index = existing_workspace.index;
         }
         let mut workspace = Workspace::new(directory.clone());
         if fetch_index {
@@ -213,6 +216,7 @@ impl Workspace {
         } else {
             // Recover remotes
             workspace.remotes = existing_remotes;
+            workspace.index = existing_remote_index;
         }
 
         workspace.scan(true);
