@@ -23,6 +23,7 @@ reqwest = { version = "0.12.4", features = ["blocking", "json"] }
 zip = "1.2.1"
 colored = "2"
 include_dir = "0.7.3"
+dunce = "1.0.4"
 
 [build-dependencies]
 vergen = { version = "7.5.1", default-features = false, features = ["build"]}
