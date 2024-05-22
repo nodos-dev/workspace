@@ -319,6 +319,16 @@ def package(dist_key, engine_folder, should_sign_binaries):
     with open(engine_settigns_path, "w") as f:
         json.dump(engine_settings, f, indent=2)
 
+    # Call nosman init
+    cwd = os.getcwd()
+    os.chdir(staging_folder)
+    logger.info("Running nosman init")
+    result = run([nosman_path, "init"], stdout=stdout, stderr=stderr, universal_newlines=True)
+    if result.returncode != 0:
+        logger.error(f"nosman init returned with {result.returncode}")
+        exit(result.returncode)
+    os.chdir(cwd)
+
     # Zip everything under staging
     shutil.make_archive(f"./Artifacts/Nodos-{major}.{minor}.{patch}.b{build_number}{'-Bundled' if is_bundled else ''}", 'zip', f"{staging_folder}")
 
