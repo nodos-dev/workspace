@@ -158,7 +158,7 @@ fn main() {
     for command in nosman::command::commands().iter() {
         match command.matched_args(&matches) {
             Some(command_args) => {
-                nosman::workspace::set_current(std::path::PathBuf::from(matches.get_one::<String>("workspace").unwrap()));
+                nosman::workspace::set_current(dunce::canonicalize(std::path::PathBuf::from(matches.get_one::<String>("workspace").unwrap())).unwrap());
                 if (*command).needs_workspace() {
                     if !nosman::workspace::current().unwrap().join(".nosman").exists() {
                         eprintln!("No workspace found in {:?}", matches.get_one::<String>("workspace").unwrap());

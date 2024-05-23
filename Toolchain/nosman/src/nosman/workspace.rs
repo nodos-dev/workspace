@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::index::{Index, ModuleType, Remote, SemVer};
 use crate::nosman::module::{InstalledModule};
+use crate::nosman::path::{get_rel_path_based_on};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Workspace {
@@ -30,7 +31,7 @@ impl Workspace {
     pub fn from_file(path: path::PathBuf) -> Result<Workspace, io::Error> {
         let file = std::fs::File::open(&path)?;
         let mut workspace: Workspace = serde_json::from_reader(file).unwrap();
-        workspace.root = path.parent().unwrap().to_path_buf();
+        workspace.root = dunce::canonicalize(path.parent().unwrap()).unwrap();
         Ok(workspace)
     }
     pub fn get() -> Result<Workspace, io::Error> {
@@ -145,7 +146,7 @@ impl Workspace {
                             }
                         };
                         // Parse file
-                        let mut installed_module: InstalledModule = InstalledModule::new(path.clone());
+                        let mut installed_module: InstalledModule = InstalledModule::new(get_rel_path_based_on(&path, &self.root));
                         let res: Result<serde_json::Value, serde_json::Error> = serde_json::from_reader(file);
                         if let Err(e) = res {
                             eprintln!("Error parsing file {:?}: {}", path, e);
@@ -157,14 +158,13 @@ impl Workspace {
                         // Check custom_types field
                         if let Some(custom_types) = module["custom_types"].as_array() {
                             for custom_type_file in custom_types {
-                                let abs_path = path.parent().unwrap().join(custom_type_file.as_str().unwrap()).canonicalize().unwrap();
-                                installed_module.type_schema_files.push(abs_path);
+                                installed_module.type_schema_files.push(get_rel_path_based_on(&path.parent().unwrap().join(custom_type_file.as_str().unwrap()).canonicalize().unwrap(), &self.root));
                             }
                         }
 
                         // Check include folder
                         if path.parent().unwrap().join("Include").exists() {
-                            installed_module.public_include_folder = Some(path.parent().unwrap().join("Include").canonicalize().unwrap());
+                            installed_module.public_include_folder = Some(get_rel_path_based_on(&path.parent().unwrap().join("Include").canonicalize().unwrap(), &self.root));
                         }
 
                         pb.set_message(format!("Scanning modules: {}", installed_module.info.id));

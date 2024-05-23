@@ -33,7 +33,16 @@ impl InfoCommand {
             }
             res.unwrap()
         };
-        let json_str = serde_json::to_string_pretty(&module).unwrap();
+        // Convert paths to full paths:
+        let mut m = module.clone();
+        m.config_path = workspace.root.join(&module.config_path);
+        for file in &mut m.type_schema_files {
+            *file = workspace.root.join(file.clone());
+        }
+        if let Some(ref mut folder) = m.public_include_folder {
+            *folder = workspace.root.join(folder.clone());
+        }
+        let json_str = serde_json::to_string_pretty(&m).unwrap();
         println!("{}", json_str);
         Ok(true)
     }
