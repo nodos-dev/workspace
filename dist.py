@@ -323,7 +323,7 @@ def package(dist_key, engine_folder, should_sign_binaries):
     cwd = os.getcwd()
     os.chdir(staging_folder)
     logger.info("Running nosman init")
-    result = run([nosman_path, "init"], stdout=stdout, stderr=stderr, universal_newlines=True)
+    result = run(["nosman", "init"], stdout=stdout, stderr=stderr, universal_newlines=True)
     if result.returncode != 0:
         logger.error(f"nosman init returned with {result.returncode}")
         exit(result.returncode)
