@@ -302,6 +302,7 @@ def package(dist_key, engine_folder, should_sign_binaries):
     # Move rest
     shutil.copytree(bin_dir, f"{engine_dist_folder}/Binaries",)
     shutil.copytree(f"{engine_folder}/Config", f"{engine_dist_folder}/Config")
+    shutil.copy(f"{engine_folder}/EULA_UNCONFIRMED.json", f"{engine_dist_folder}/EULA_UNCONFIRMED.json")
 
     if should_sign_binaries:
         sign_binaries(f"{engine_dist_folder}/Binaries")
