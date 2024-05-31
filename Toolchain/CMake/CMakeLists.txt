@@ -112,7 +112,6 @@ endif()
 
 # Includes
 include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/FindNodosSDK.cmake)
-include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/GetModule.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Projects.cmake)
 
 if(NOT DEFINED MODULE_DIRS OR MODULE_DIRS STREQUAL "")

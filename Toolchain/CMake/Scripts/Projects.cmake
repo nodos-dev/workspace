@@ -50,43 +50,133 @@ function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_fo
 			DEPENDS ${fbs_file}
 			COMMENT "Generating flatbuffers: ${fbs_file} (with ${FLATC_EXECUTABLE})"
 			VERBATIM)
-		source_group("FlatBuffers Files" FILES ${fbs_file})
 	endforeach()
 	add_custom_target(${out_target_name} DEPENDS ${out_list})
 	set_target_properties(${out_target_name} PROPERTIES FOLDER "Build Tasks")
+endfunction()
+
+function(nos_get_files_recursive folder file_suffixes out_files_var)
+	# Create a temporary variable to collect files in this call
+	set(local_files)
+
+	# Get the list of entries in the current folder
+	file(GLOB entries LIST_DIRECTORIES true CONFIGURE_DEPENDS "${folder}/*")
+
+	foreach(entry ${entries})
+		if(IS_DIRECTORY ${entry})
+			# Recursive call for subdirectory
+			nos_get_files_recursive("${entry}" "${file_suffixes}" sub_files)
+			list(APPEND local_files ${sub_files})
+		else()
+			foreach(suffix ${file_suffixes})
+				if(entry MATCHES ".*\\${suffix}$")
+					list(APPEND local_files ${entry})
+				endif()
+			endforeach()
+		endif()
+	endforeach()
+
+	# Set the collected files to the output variable, making sure to retain previous values
+	set(${out_files_var} ${${out_files_var}} ${local_files} PARENT_SCOPE)
+endfunction()
+
+function(nos_get_module name version out_target_name)
+	if(NOT DEFINED NOSMAN_WORKSPACE_DIR)
+		message(FATAL_ERROR "NOSMAN_WORKSPACE_DIR is not defined. Set it to the path of the workspace where modules will be installed.")
+	endif()
+
+	message(STATUS "Searching for Nodos module ${name} ${version} in workspace")
+
+	# TODO: Download if not exists.
+	if(NOSMAN_EXECUTABLE)
+		# Install module if not exists, silently
+		execute_process(
+			COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" install ${name} ${version}
+			RESULT_VARIABLE nosman_result
+			OUTPUT_QUIET
+		)
+
+		if(NOT nosman_result EQUAL 0)
+			message(FATAL_ERROR "Failed to install ${name} ${version} in workspace")
+		endif()
+
+		execute_process(
+			COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" info ${name} ${version} --relaxed
+			RESULT_VARIABLE nosman_result
+			OUTPUT_VARIABLE nosman_output
+		)
+
+		if(nosman_result EQUAL 0)
+			string(REPLACE "." "_" target_name ${name})
+			string(REPLACE "." "_" version_str ${version})
+			string(APPEND target_name "-v${version_str}")
+			string(PREPEND target_name "__nos_generated__")
+
+			string(STRIP ${nosman_output} nosman_output)
+
+			# Get "public_include_folder" from JSON output
+			string(JSON nos_module_include_folder GET "${nosman_output}" "public_include_folder")
+			cmake_path(SET ${target_name}_INCLUDE_DIR "${nos_module_include_folder}")
+			message(STATUS "Found ${name} ${version} include folder: ${${target_name}_INCLUDE_DIR}")
+
+			set(${out_target_name} ${target_name} PARENT_SCOPE)
+
+			if(TARGET ${target_name})
+				message(STATUS "Module ${name}-${version} found in project. Using existing target.")
+				return()
+			endif()
+
+			add_library(${target_name} INTERFACE)
+			nos_get_files_recursive(${nos_module_include_folder} ".h;.hpp;.hxx;.hh;.inl" include_files)
+			target_sources(${target_name} PUBLIC ${include_files})
+			target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
+			set_target_properties(${target_name} PROPERTIES FOLDER "nosman")
+		else()
+			message(FATAL_ERROR "Failed to find ${name} ${version} include folder")
+		endif()
+	else()
+		message(FATAL_ERROR "Unable to find nosman. Set NOSMAN_EXECUTABLE to use nos_get_module.")
+	endif()
 endfunction()
 
 function(nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS)
 	project(${NAME})
 	message("Processing plugin ${NAME}")
 
-	set(SOURCE_FOLDER "${CMAKE_CURRENT_SOURCE_DIR}/Source")
-	set(CONFIG_FOLDERS "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/Config")
-	file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS ${SOURCE_FOLDER}
-		"${SOURCE_FOLDER}/*.cpp" "${SOURCE_FOLDER}/*.inl" "${SOURCE_FOLDER}/*.glsl" "${SOURCE_FOLDER}/*.hlsl"
-		"${SOURCE_FOLDER}/*.comp" "${SOURCE_FOLDER}/*.frag" "${SOURCE_FOLDER}/*.vert"
-		"${SOURCE_FOLDER}/*.py")
-	list(APPEND CONFIG_FILES)
+	set(source_folder "${CMAKE_CURRENT_SOURCE_DIR}/Source")
+	set(public_include_folder "${CMAKE_CURRENT_SOURCE_DIR}/Include")
+	set(config_folder "${CMAKE_CURRENT_SOURCE_DIR}/Config")
+	set(shaders_folder "${CMAKE_CURRENT_SOURCE_DIR}/Shaders")
+	if (NOT EXISTS ${source_folder})
+		message(FATAL_ERROR "Nodos CMake helpers for adding a plugin requires a folder named 'Source' at the root. Either manually setup your CMake script or create the 'Source' folder.")
+	endif()
 
-	foreach(CONFIG_FOLDER ${CONFIG_FOLDERS})
-		file(GLOB_RECURSE CUR_CONFIG_FILES CONFIGURE_DEPENDS ${CONFIG_FOLDER}
-			"${CONFIG_FOLDER}/*.noscfg" "${CONFIG_FOLDER}/*.nosdef" "${CONFIG_FOLDER}/*.fbs")
-		list(APPEND CONFIG_FILES ${CUR_CONFIG_FILES})
-	endforeach()
+	set(source_file_types ".cpp" ".cc" ".cxx" ".c" ".inl" ".h" ".hxx" ".hpp" ".py" ".rc" ".natvis")
+	nos_get_files_recursive(${source_folder} "${source_file_types}" SOURCE_FILES)
+	if (NOT SOURCE_FILES)
+		message(FATAL_ERROR "No source files found in ${source_folder}")
+	endif()
+	message(STATUS "Found source files: ${SOURCE_FILES}")
+	
+	set(header_file_types ".h" ".hxx" ".hpp")
+	nos_get_files_recursive(${public_include_folder} "${header_file_types}" HEADER_FILES)
 
-	file(GLOB_RECURSE HEADERS CONFIGURE_DEPENDS ${SOURCE_FOLDER} "${SOURCE_FOLDER}/*.h" "${SOURCE_FOLDER}/*.hpp")
-	file(GLOB_RECURSE RESOURCES CONFIGURE_DEPENDS ${SOURCE_FOLDER} "${SOURCE_FOLDER}/*.rc")
+	set(config_file_types ".json")
+	nos_get_files_recursive(${config_folder} "${config_file_types}" CONFIG_FILES)
+	source_group("Config" FILES ${CONFIG_FILES})
+	nos_get_files_recursive(${config_folder} ".nosdef" NODE_DEFINITION_FILES)
+	source_group("Node Definitions" FILES ${NODE_DEFINITION_FILES})
+	nos_get_files_recursive(${config_folder} ".fbs" DATA_TYPE_SCHEMA_FILES)
+	source_group("Schemas" FILES ${DATA_TYPE_SCHEMA_FILES})
 
-	set(SHADER_FOLDERS "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/Shaders")
-	list(APPEND SHADERS)
+	set(shader_file_types ".glsl" ".comp" ".frag" ".vert" ".hlsl")
+	nos_get_files_recursive(${source_folder} "${shader_file_types}" SHADERS)
+	nos_get_files_recursive(${shaders_folder} "${shader_file_types}" SHADERS)
+	source_group("Shaders" FILES ${SHADERS})
+	set_source_files_properties(${SHADERS} PROPERTIES HEADER_FILE_ONLY TRUE)
 
-	foreach(SHADER_FOLDER ${SHADER_FOLDERS})
-		file(GLOB_RECURSE CUR_SHADERS CONFIGURE_DEPENDS ${SHADER_FOLDER}
-			"${SHADER_FOLDER}/*.glsl" "${SHADER_FOLDER}/*.comp" "${SHADER_FOLDER}/*.frag" "${SHADER_FOLDER}/*.vert")
-		list(APPEND SHADERS ${CUR_SHADERS})
-	endforeach()
-
-	add_library(${NAME} MODULE ${SOURCES} ${SHADERS} ${HEADERS} ${RESOURCES} ${CONFIG_FILES})
+	file(GLOB MODULE_CFG_FILE CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR} "*.noscfg")
+	add_library(${NAME} MODULE ${SOURCE_FILES} ${SHADERS} ${HEADER_FILES} ${CONFIG_FILES} ${DATA_TYPE_SCHEMA_FILES} ${NODE_DEFINITION_FILES} ${MODULE_CFG_FILE})
 	set_target_properties(${NAME} PROPERTIES
 		CXX_STANDARD 20
 		LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/Binaries"
@@ -95,21 +185,21 @@ function(nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS)
 		LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL "${CMAKE_CURRENT_SOURCE_DIR}/Binaries"
 	)
 
-	foreach(source IN LISTS SOURCES)
+	foreach(source IN LISTS SOURCE_FILES)
 		get_filename_component(source_path "${source}" PATH)
 		string(REPLACE "${CMAKE_CURRENT_SOURCE_DIR}" "" source_path_compact "${source_path}")
 		string(REPLACE "/" "\\" source_path_msvc "${source_path_compact}")
 		source_group("${source_path_msvc}" FILES "${source}")
 	endforeach()
 
-	foreach(header IN LISTS HEADERS)
+	foreach(header IN LISTS HEADER_FILES)
 		get_filename_component(header_path "${header}" PATH)
 		string(REPLACE "${CMAKE_CURRENT_SOURCE_DIR}" "" header_path_compact "${header_path}")
 		string(REPLACE "/" "\\" header_path_msvc "${header_path_compact}")
 		source_group("${header_path_msvc}" FILES "${header}")
 	endforeach()
 
-	target_include_directories(${NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${INCLUDE_FOLDERS})
+	target_include_directories(${NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${source_folder} ${public_include_folder} ${INCLUDE_FOLDERS})
 
 	foreach(dependency IN LISTS DEPENDENCIES)
 		# If target "dependency" type is UTILITY then add it as a dependency
@@ -131,29 +221,38 @@ function(nos_add_subsystem NAME DEPENDENCIES INCLUDE_FOLDERS)
 	project(${NAME})
 	message("Processing subsystem ${NAME}")
 
-	set(SOURCE_FOLDERS "${CMAKE_CURRENT_SOURCE_DIR}/Source" "${CMAKE_CURRENT_SOURCE_DIR}/Include")
-	set(CONFIG_FOLDERS "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/Config")
+	set(source_folder "${CMAKE_CURRENT_SOURCE_DIR}/Source")
+	set(public_include_folder "${CMAKE_CURRENT_SOURCE_DIR}/Include")
+	set(config_folder "${CMAKE_CURRENT_SOURCE_DIR}/Config")
+	set(shaders_folder "${CMAKE_CURRENT_SOURCE_DIR}/Shaders")
+	if (NOT EXISTS ${source_folder})
+		message(FATAL_ERROR "Nodos CMake helpers for adding a subsystem requires a folder named 'Source' at the root. Either manually setup your CMake script or create the 'Source' folder.")
+	endif()
 
-	foreach(folder IN LISTS SOURCE_FOLDERS)
-		message(STATUS "${PROJECT_NAME}: Scanning ${folder}")
-		file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS ${folder} "${folder}/*.cpp"
-			"${folder}/*.cc" "${folder}/*.c" "${folder}/*.inl"
-			"${folder}/*.frag" "${folder}/*.vert" "${folder}/*.glsl" "${folder}/*.comp" "${folder}/*.dat" "${folder}/*.natvis" "${folder}/*.py")
-		file(GLOB_RECURSE HEADERS CONFIGURE_DEPENDS ${folder} "${folder}/*.h" "${folder}/*.hpp")
-		file(GLOB_RECURSE RESOURCES CONFIGURE_DEPENDS ${folder} "${folder}/*.rc")
-		list(APPEND COLLECTED_SOURCES ${SOURCES})
-		list(APPEND COLLECTED_HEADERS ${HEADERS})
-		list(APPEND COLLECTED_RESOURCES ${RESOURCES})
-	endforeach()
+	set(source_file_types ".cpp" ".cc" ".cxx" ".c" ".inl" ".h" ".hxx" ".hpp" ".py" ".rc" ".natvis")
+	nos_get_files_recursive(${source_folder} "${source_file_types}" SOURCE_FILES)
+	if (NOT SOURCE_FILES)
+		message(FATAL_ERROR "No source files found in ${source_folder}")
+	endif()
+	message(STATUS "Found source files: ${SOURCE_FILES}")
+	
+	set(header_file_types ".h" ".hxx" ".hpp")
+	nos_get_files_recursive(${public_include_folder} "${header_file_types}" HEADER_FILES)
 
-	foreach(CONFIG_FOLDER ${CONFIG_FOLDERS})
-		file(GLOB_RECURSE CUR_CONFIG_FILES CONFIGURE_DEPENDS ${CONFIG_FOLDER}
-			"${CONFIG_FOLDER}/*.nossys" "${CONFIG_FOLDER}/*.fbs" "${CONFIG_FOLDER}/Defaults.json")
-		list(APPEND CONFIG_FILES ${CUR_CONFIG_FILES})
-	endforeach()
+	set(config_file_types ".json")
+	nos_get_files_recursive(${config_folder} "${config_file_types}" CONFIG_FILES)
+	source_group("Config" FILES ${CONFIG_FILES})
+	nos_get_files_recursive(${config_folder} ".fbs" DATA_TYPE_SCHEMA_FILES)
+	source_group("Schemas" FILES ${DATA_TYPE_SCHEMA_FILES})
 
-	add_library(${NAME} MODULE ${COLLECTED_SOURCES} ${COLLECTED_HEADERS} ${COLLECTED_RESOURCES} ${CONFIG_FILES})
+	set(shader_file_types ".glsl" ".comp" ".frag" ".vert" ".hlsl")
+	nos_get_files_recursive(${source_folder} "${shader_file_types}" SHADERS)
+	nos_get_files_recursive(${shaders_folder} "${shader_file_types}" SHADERS)
+	source_group("Shaders" FILES ${SHADERS})
+	set_source_files_properties(${SHADERS} PROPERTIES HEADER_FILE_ONLY TRUE)
 
+	file(GLOB MODULE_CFG_FILE CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR} "*.noscfg")
+	add_library(${NAME} MODULE ${SOURCE_FILES} ${HEADER_FILES} ${CONFIG_FILES} ${DATA_TYPE_SCHEMA_FILES} ${SHADERS} ${MODULE_CFG_FILE})
 	set_target_properties(${NAME} PROPERTIES
 		CXX_STANDARD 20
 		LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/Binaries"
@@ -162,28 +261,21 @@ function(nos_add_subsystem NAME DEPENDENCIES INCLUDE_FOLDERS)
 		LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL "${CMAKE_CURRENT_SOURCE_DIR}/Binaries"
 	)
 
-	foreach(source IN LISTS COLLECTED_SOURCES)
+	foreach(source IN LISTS SOURCE_FILES)
 		get_filename_component(source_path "${source}" PATH)
 		string(REPLACE "${CMAKE_CURRENT_SOURCE_DIR}" "" source_path_compact "${source_path}")
 		string(REPLACE "/" "\\" source_path_msvc "${source_path_compact}")
 		source_group("${source_path_msvc}" FILES "${source}")
 	endforeach()
 
-	foreach(header IN LISTS COLLECTED_HEADERS)
+	foreach(header IN LISTS HEADER_FILES)
 		get_filename_component(header_path "${header}" PATH)
 		string(REPLACE "${CMAKE_CURRENT_SOURCE_DIR}" "" header_path_compact "${header_path}")
 		string(REPLACE "/" "\\" header_path_msvc "${header_path_compact}")
 		source_group("${header_path_msvc}" FILES "${header}")
 	endforeach()
 
-	foreach(resource IN LISTS COLLECTED_RESOURCES)
-		get_filename_component(resource_path "${resource}" PATH)
-		string(REPLACE "${CMAKE_CURRENT_SOURCE_DIR}" "" resource_path_compact "${resource_path}")
-		string(REPLACE "/" "\\" header_path_msvc "${resource_path_compact}")
-		source_group("${resource_path_msvc}" FILES "${resource}")
-	endforeach()
-
-	target_include_directories(${NAME} PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR} ${INCLUDE_FOLDERS} ${SOURCE_FOLDERS})
+	target_include_directories(${NAME} PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR} ${source_folder} ${public_include_folder} ${INCLUDE_FOLDERS})
 
 	foreach(dependency IN LISTS DEPENDENCIES)
 		# If target "dependency" type is UTILITY then add it as a dependency
