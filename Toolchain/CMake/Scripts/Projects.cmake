@@ -127,7 +127,7 @@ function(nos_get_module name version out_target_name)
 			endif()
 
 			add_library(${target_name} INTERFACE)
-			nos_get_files_recursive(${nos_module_include_folder} ".h;.hpp;.hxx;.hh;.inl" include_files)
+			nos_get_files_recursive(${${target_name}_INCLUDE_DIR} ".h;.hpp;.hxx;.hh;.inl" include_files)
 			target_sources(${target_name} PUBLIC ${include_files})
 			target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
 			set_target_properties(${target_name} PROPERTIES FOLDER "nosman")
