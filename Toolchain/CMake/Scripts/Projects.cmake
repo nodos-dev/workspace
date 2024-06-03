@@ -97,7 +97,26 @@ function(nos_get_module name version out_target_name)
 		)
 
 		if(NOT nosman_result EQUAL 0)
-			message(FATAL_ERROR "Failed to install ${name} ${version} in workspace")
+			message(STATUS "Failed to install ${name} ${version} in workspace. Trying to rescan modules.")
+			execute_process(
+				COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" rescan --fetch-index
+				RESULT_VARIABLE nosman_result
+				OUTPUT_QUIET
+			)
+			
+			if (NOT nosman_result EQUAL 0)
+				message(FATAL_ERROR "Failed to rescan modules in workspace. Please check your NOSMAN_WORKSPACE_DIR and NOSMAN_EXECUTABLE variables.")
+			endif()
+
+			message(STATUS "Rescanning modules in workspace succeeded. Trying to install ${name} ${version} again.")
+			execute_process(
+				COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" install ${name} ${version}
+				RESULT_VARIABLE nosman_result
+				OUTPUT_QUIET
+			)
+			if (NOT nosman_result EQUAL 0)
+				message(FATAL_ERROR "Failed to install ${name} ${version} in workspace.")
+			endif()
 		endif()
 
 		execute_process(
