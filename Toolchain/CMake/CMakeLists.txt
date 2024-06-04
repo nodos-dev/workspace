@@ -19,6 +19,10 @@ endif()
 
 if (NOT DEFINED NOSMAN_WORKSPACE_DIR)
 	set(NOSMAN_WORKSPACE_DIR "${NODOS_WORKSPACE_DIR}" CACHE PATH "nosman workspace directory" FORCE)
+else()
+	# Convert to absolute path
+	get_filename_component(NOSMAN_WORKSPACE_DIR "${NOSMAN_WORKSPACE_DIR}" ABSOLUTE)
+	set(NOSMAN_WORKSPACE_DIR "${NOSMAN_WORKSPACE_DIR}" CACHE PATH "nosman workspace directory" FORCE)
 endif()
 
 set(NOS_VERSIONS "")
