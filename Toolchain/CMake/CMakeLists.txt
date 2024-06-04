@@ -107,16 +107,15 @@ foreach(val RANGE 1 ${NOS_SDK_END_RANGE})
 	endif()
 endforeach()
 
-# Find nosman
-if (NOT DEFINED NOSMAN_EXECUTABLE)
-	if (EXISTS "${NODOS_WORKSPACE_DIR}/nosman${CMAKE_EXECUTABLE_SUFFIX}")
-		set(NOSMAN_EXECUTABLE "${NODOS_WORKSPACE_DIR}/nosman${CMAKE_EXECUTABLE_SUFFIX}")
-	endif()
-endif()
+# Includes
+include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/FindNodosSDK.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Projects.cmake)
 
-# Check if file exists
-if (NOT EXISTS "${NOSMAN_EXECUTABLE}")
-	message(STATUS "nosman not found at ${NOSMAN_EXECUTABLE}. Building...")
+# If Toolchain/nosman/src exists, setup cargo build command that depends on .rs files to build and copy the executable to the root
+if (EXISTS "${NODOS_WORKSPACE_DIR}/Toolchain/nosman/src")
+	set(NOSMAN_BUILD_DIR "${NODOS_WORKSPACE_DIR}/Toolchain/nosman/target")
+
+	message(STATUS "Found nosman sources. Checking/building nosman...")
 	execute_process(
 		COMMAND cargo build --release --quiet
 		WORKING_DIRECTORY "${NODOS_WORKSPACE_DIR}/Toolchain/nosman"
@@ -124,13 +123,21 @@ if (NOT EXISTS "${NOSMAN_EXECUTABLE}")
 	)
 	if (NOSMAN_RESULT EQUAL 0)
 		# Copy the executable to the root
-		configure_file("${NODOS_WORKSPACE_DIR}/Toolchain/nosman/target/release/nosman${CMAKE_EXECUTABLE_SUFFIX}" "${NODOS_WORKSPACE_DIR}/nosman${CMAKE_EXECUTABLE_SUFFIX}" COPYONLY)
-		set(NOSMAN_EXECUTABLE "${NODOS_WORKSPACE_DIR}/nosman")
-		message(STATUS "nosman built successfully at ${NOSMAN_EXECUTABLE}")
+		file(COPY "${NOSMAN_BUILD_DIR}/release/nosman${CMAKE_EXECUTABLE_SUFFIX}" DESTINATION "${NODOS_WORKSPACE_DIR}")
 	else()
 		message(FATAL_ERROR "Failed to build nosman")
 		return()
 	endif()
+endif()
+
+# Find nosman
+if (NOT DEFINED NOSMAN_EXECUTABLE)
+	if (EXISTS "${NODOS_WORKSPACE_DIR}/nosman${CMAKE_EXECUTABLE_SUFFIX}")
+		set(NOSMAN_EXECUTABLE "${NODOS_WORKSPACE_DIR}/nosman${CMAKE_EXECUTABLE_SUFFIX}")
+	endif()
+endif()
+if (NOT EXISTS "${NOSMAN_EXECUTABLE}")
+	message(FATAL_ERROR "nosman executable not found. Please set NOSMAN_EXECUTABLE to the path of the nosman executable.")
 else()
 	message(STATUS "Found nosman at ${NOSMAN_EXECUTABLE}")
 endif()
@@ -142,10 +149,6 @@ if (NOT EXISTS "${NOSMAN_WORKSPACE_DIR}/.nosman")
 		RESULT_VARIABLE NOSMAN_RESULT
 	)
 endif()
-
-# Includes
-include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/FindNodosSDK.cmake)
-include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Projects.cmake)
 
 if(NOT DEFINED MODULE_DIRS OR MODULE_DIRS STREQUAL "")
 	set(MODULE_DIRS "${NODOS_WORKSPACE_DIR}/Module" CACHE INTERNAL "Module directories" FORCE)
