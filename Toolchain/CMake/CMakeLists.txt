@@ -55,23 +55,52 @@ foreach(val RANGE 1 ${NOS_SDK_END_RANGE})
 	# Convert version 1.2.3 to 1_2_3
 	string(REPLACE "." "_" version_target_suffix "${nos_version}")
 
+	set(nos_plugin_sdk_target nosPluginSDK_${version_target_suffix})
+	set(nos_subsystem_sdk_target nosSubsystemSDK_${version_target_suffix})
 	# Create nosPluginSDK target
-	if(TARGET nosPluginSDK_${version_target_suffix})
+	if(TARGET ${nos_plugin_sdk_target})
 		message(FATAL_ERROR "Multiple Nodos SDKs with the same version found under Engine folder. This is not supported.")
 	endif()
 
-	add_library(nosPluginSDK_${version_target_suffix} INTERFACE)
-	target_compile_definitions(nosPluginSDK_${version_target_suffix} INTERFACE "-DNOMINMAX")
-	target_include_directories(nosPluginSDK_${version_target_suffix} INTERFACE ${nos_sdk_dir}/include)
+	add_library(${nos_plugin_sdk_target} INTERFACE)
+	target_compile_definitions(${nos_plugin_sdk_target} INTERFACE "-DNOMINMAX")
+	target_include_directories(${nos_plugin_sdk_target} INTERFACE ${nos_sdk_dir}/include)
 
 	# Create nosSubsystemSDK target
-	add_library(nosSubsystemSDK_${version_target_suffix} INTERFACE)
-	target_compile_definitions(nosSubsystemSDK_${version_target_suffix} INTERFACE "-DNOMINMAX")
-	target_include_directories(nosSubsystemSDK_${version_target_suffix} INTERFACE ${nos_sdk_dir}/include)
+	add_library(${nos_subsystem_sdk_target} INTERFACE)
+	target_compile_definitions(${nos_subsystem_sdk_target} INTERFACE "-DNOMINMAX")
+	target_include_directories(${nos_subsystem_sdk_target} INTERFACE ${nos_sdk_dir}/include)
 
 	# Exclude from all
-	set_target_properties(nosPluginSDK_${version_target_suffix} PROPERTIES EXCLUDE_FROM_ALL TRUE)
-	set_target_properties(nosSubsystemSDK_${version_target_suffix} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+	set_target_properties(${nos_plugin_sdk_target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+	set_target_properties(${nos_subsystem_sdk_target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+
+	# If binaries folder exists, add a custom target for nosLauncher and nosEditor and VS_DEBUGGER options
+	set(nos_binaries_dir "${nos_sdk_dir}/../Binaries")
+	if(EXISTS "${nos_binaries_dir}")
+		# Create nosLauncher target
+		set(nos_launcher_target nosLauncher_${version_target_suffix})
+		add_custom_target(${nos_launcher_target}
+			COMMAND ${nos_binaries_dir}/nosLauncher
+			WORKING_DIRECTORY ${nos_sdk_dir}/bin
+			DEPENDS ${nos_plugin_sdk_target} ${nos_subsystem_sdk_target}
+		)
+
+		# Create nosEditor target
+		set(nos_editor_target nosEditor_${version_target_suffix})
+		add_custom_target(${nos_editor_target}
+			COMMAND ${nos_binaries_dir}/nosEditor
+			WORKING_DIRECTORY ${nos_sdk_dir}/bin
+			DEPENDS ${nos_plugin_sdk_target} ${nos_subsystem_sdk_target}
+		)
+
+		set_target_properties(${nos_launcher_target} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${nos_binaries_dir})
+		set_target_properties(${nos_launcher_target} PROPERTIES VS_DEBUGGER_COMMAND ${nos_binaries_dir}/nosLauncher)
+		set_target_properties(${nos_editor_target} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${nos_binaries_dir})
+		set_target_properties(${nos_editor_target} PROPERTIES VS_DEBUGGER_COMMAND ${nos_binaries_dir}/nosEditor)
+		set_target_properties(${nos_launcher_target} PROPERTIES FOLDER "Nodos")
+		set_target_properties(${nos_editor_target} PROPERTIES FOLDER "Nodos")
+	endif()
 endforeach()
 
 # Find nosman
