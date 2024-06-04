@@ -158,7 +158,13 @@ impl Command for CreateCommand {
             _ => panic!("Invalid language/tool") // Unreachable
         };
         let module_name = args.get_one::<String>("name").unwrap();
-        let output_dir = PathBuf::from(args.get_one::<String>("output-dir").unwrap());
+        let mut output_dir = PathBuf::from(args.get_one::<String>("output-dir").unwrap());
+        let prefix = args.get_one::<String>("prefix");
+        if let Some(p) = prefix {
+            output_dir = output_dir.join(p);
+        } else {
+            output_dir = output_dir.join(module_name.clone());
+        }
         let depss: Vec<&String> = args.get_many::<String>("dependency").unwrap_or_default().collect();
         let mut deps: Vec<ModuleIdentifier> = Vec::new();
         for dep in depss {
