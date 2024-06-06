@@ -197,12 +197,17 @@ impl PublishCommand {
             release_date: None,
         };
 
-        let res = remote.fetch_add(&true, &workspace, &name, vendor, &package_type, release);
+        let res = remote.fetch_add(&dry_run, &workspace, &name, vendor, &package_type, release);
         if res.is_err() {
             return Err(GenericError { message: res.err().unwrap() });
         }
 
-        // TODO: Use gh to publish the release
+        let res = remote.create_gh_release(&dry_run, &workspace, &name, &version, vec![zip_file_path]);
+        if res.is_err() {
+            return Err(GenericError { message: res.err().unwrap() });
+        }
+        // Remove the temporary directory
+        temp_dir.close().unwrap();
         Ok(true)
     }
 }

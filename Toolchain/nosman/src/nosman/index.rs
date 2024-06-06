@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::{fs, io};
+use std::path::PathBuf;
 use std::process::Output;
 use std::time::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -237,6 +238,15 @@ impl Remote {
         let package_list: Vec<PackageIndexEntry> = res.unwrap();
         Ok(package_list)
     }
+    pub fn get_gh_remote_org_repo(&self) -> (String, String) {
+        let url_parts: Vec<&str> = self.url.split('/').collect();
+        if url_parts.len() < 2 {
+            return ("".to_string(), "".to_string());
+        }
+        let org_name = url_parts[url_parts.len() - 2];
+        let repo_name = url_parts[url_parts.len() - 1];
+        (org_name.to_string(), repo_name.to_string())
+    }
     pub fn get_default_branch_name(&self, workspace: &Workspace) -> String {
         let repo_dir = workspace.get_remote_repo_dir(&self);
         let output = std::process::Command::new("git")
@@ -268,12 +278,7 @@ impl Remote {
 
             // TODO: GitHub specific index code should be removed once we have a proper release server
             // Get organization name and repo name from the URL.
-            let url_parts: Vec<&str> = self.url.split('/').collect();
-            if url_parts.len() < 2 {
-                return Err("Invalid URL".to_string());
-            }
-            let org_name = url_parts[url_parts.len() - 2];
-            let repo_name = url_parts[url_parts.len() - 1];
+            let (org_name, repo_name) = self.get_gh_remote_org_repo();
             let branch_name = self.get_default_branch_name(workspace);
 
             let package = PackageIndexEntry {
@@ -356,8 +361,34 @@ impl Remote {
                 return Err(format!("Failed to publish: {}", output.err().unwrap().to_string()));
             }
         }
-        println!("Published package {} version {} to remote {}", name, version, self.name);
+        println!("Added package {} version {} release entry to remote {}", name, version, self.name);
         return Ok(());
+    }
+    pub fn create_gh_release(&self, dry_run: &bool, workspace: &Workspace, name: &String, version: &String, artifacts: Vec<PathBuf>) -> Result<(), String> {
+        let repo_dir = workspace.get_remote_repo_dir(&self);
+        let (org_name, repo_name) = self.get_gh_remote_org_repo();
+        let branch_name = self.get_default_branch_name(workspace);
+
+        let res = run_if_not(&dry_run, std::process::Command::new("gh")
+            .current_dir(&repo_dir)
+            .arg("release")
+            .arg("create")
+            .arg(format!("{}-{}", name, version))
+            .arg("--title")
+            .arg(format!("{} {}", name, version))
+            .arg("--repo")
+            .arg(format!("{}/{}", org_name, repo_name))
+            .arg("--target")
+            .arg(branch_name)
+            .args(artifacts.iter().map(|p| p.to_str().unwrap()));
+        if res.is_some() {
+            let output = res.unwrap();
+            if output.is_err() {
+                return Err(format!("Failed to create release: {}", output.err().unwrap().to_string()));
+            }
+        }
+        println!("Created release {} for package {} version {} on remote {}", format!("{}-{}", name, version), name, version, self.name);
+        Ok(())
     }
 }
 
