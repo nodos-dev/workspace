@@ -37,7 +37,7 @@ impl InstallCommand {
                 Ok(true)
             } else {
                 println!("{}", format!("No installed version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), module_name).as_str().yellow());
-                if let Some(release) = workspace.index.get_latest_compatible_release_within_range(module_name, &version_start, &version_end) {
+                if let Some(release) = workspace.index_cache.get_latest_compatible_release_within_range(module_name, &version_start, &version_end) {
                     self.run_install(module_name, &release.version, true, output_dir, prefix)
                 } else {
                     Err(CommandError::InvalidArgumentError { message: format!("No remote contained a version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), module_name) })
@@ -60,7 +60,7 @@ impl InstallCommand {
         } else {
             install_dir = install_dir.join(format!("{}-{}", module_name, version));
         }
-        if let Some(module) = workspace.index.get_module(module_name, version) {
+        if let Some(module) = workspace.index_cache.get_module(module_name, version) {
             let module_dir = if install_dir.is_relative() { workspace.root.join(install_dir) } else { install_dir };
             let mut tmpfile = tempfile::tempfile().unwrap();
 
@@ -89,7 +89,7 @@ impl InstallCommand {
                 }
             }
 
-            workspace.scan_folder(module_dir, replace_entry_in_index);
+            workspace.scan_modules_in_folder(module_dir, replace_entry_in_index);
 
             println!("Adding to workspace file");
             workspace.save()?;

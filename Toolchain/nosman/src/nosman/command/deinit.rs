@@ -13,7 +13,7 @@ pub struct DeinitCommand {
 
 impl DeinitCommand {
     fn run_deinit(&self) -> CommandResult {
-        let nosman_fpath = workspace::current_nosman_file().unwrap();
+        let nosman_fpath = workspace::get_nosman_index_filepath().unwrap();
         if nosman_fpath.exists() {
             // Ask user whether to remove the installed modules
             let mut workspace = Workspace::get()?;

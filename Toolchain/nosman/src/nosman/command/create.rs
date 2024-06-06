@@ -5,6 +5,7 @@ use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::CommandError::InvalidArgumentError;
 use crate::nosman::index::ModuleType;
 use include_dir::{include_dir, Dir};
+use crate::nosman::constants;
 use crate::nosman::module::ModuleIdentifier;
 use crate::nosman::workspace::Workspace;
 
@@ -94,11 +95,11 @@ impl CreateCommand {
 
         // Copy .noscfg if plugin or .nossys
         let cfg_template_file = if module_type == ModuleType::Plugin {
-            DATA_DIR.get_file("templates/Plugin.noscfg").unwrap()
+            DATA_DIR.get_file(format!("templates/Plugin.{}", constants::PLUGIN_MANIFEST_FILE_EXT)).unwrap()
         } else {
-            DATA_DIR.get_file("templates/Subsystem.nossys").unwrap()
+            DATA_DIR.get_file(format!("templates/Subsystem.{}", constants::SUBSYSTEM_MANIFEST_FILE_EXT)).unwrap()
         };
-        let output_cfg_path = output_dir.join(format!("{}.{}", module_name, if module_type == ModuleType::Plugin { "noscfg" } else { "nossys" }));
+        let output_cfg_path = output_dir.join(format!("{}.{}", module_name, if module_type == ModuleType::Plugin { constants::PLUGIN_MANIFEST_FILE_EXT } else { constants::SUBSYSTEM_MANIFEST_FILE_EXT }));
 
         // Read file and replace placeholders
         // <NAME>
@@ -130,7 +131,7 @@ impl CreateCommand {
         let ws_res = Workspace::get();
         if ws_res.is_ok() {
             let mut ws = ws_res.unwrap();
-            ws.scan_folder(output_dir.clone(), true);
+            ws.scan_modules_in_folder(output_dir.clone(), true);
             ws.save()?;
         }
 
@@ -158,7 +159,7 @@ impl Command for CreateCommand {
             _ => panic!("Invalid language/tool") // Unreachable
         };
         let module_name = args.get_one::<String>("name").unwrap();
-        let mut output_dir = PathBuf::from(args.get_one::<String>("output-dir").unwrap());
+        let mut output_dir = PathBuf::from(args.get_one::<String>("output_dir").unwrap());
         let prefix = args.get_one::<String>("prefix");
         if let Some(p) = prefix {
             output_dir = output_dir.join(p);

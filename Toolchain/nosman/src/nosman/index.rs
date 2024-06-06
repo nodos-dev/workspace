@@ -1,14 +1,32 @@
 use std::collections::HashMap;
+use std::{fs, io};
+use std::process::Output;
 use std::time::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
+use crate::nosman::constants;
 use crate::nosman::workspace::Workspace;
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ModuleIndexEntry {
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
+pub enum PackageType {
+    #[serde(alias = "plugin", alias = "PLUGIN")]
+    Plugin,
+    #[serde(alias = "subsystem", alias = "SUBSYSTEM")]
+    Subsystem,
+    #[serde(alias = "nodos", alias = "NODOS")]
+    Nodos,
+    #[serde(alias = "engine", alias = "ENGINE")]
+    Engine,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PackageIndexEntry {
     pub(crate) name: String,
-    url: String,
+    #[serde(rename = "url")]
+    releases_url: String,
     vendor: String,
+    #[serde(rename = "type")]
+    package_type: PackageType,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
@@ -21,11 +39,11 @@ pub enum ModuleType {
 pub struct SemVer {
     #[serde(alias = "major", alias = "MAJOR", alias = "Major")]
     pub major: u32,
-    #[serde(alias = "minor", alias = "MINOR", alias = "Minor")]
+    #[serde(alias = "minor", alias = "MINOR", alias = "Minor", skip_serializing_if = "Option::is_none")]
     pub minor: Option<u32>,
-    #[serde(alias = "patch", alias = "PATCH", alias = "Patch")]
+    #[serde(alias = "patch", alias = "PATCH", alias = "Patch", skip_serializing_if = "Option::is_none")]
     pub patch: Option<u32>,
-    #[serde(alias = "build", alias = "BUILD", alias = "Build")]
+    #[serde(alias = "build", alias = "BUILD", alias = "Build", skip_serializing_if = "Option::is_none")]
     pub build_number: Option<u32>,
 }
 
@@ -126,21 +144,33 @@ impl PartialOrd for SemVer {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct ModuleReleaseEntry {
+pub struct PackageReleaseEntry {
     pub(crate) version: String,
     pub(crate) url: String,
-    plugin_api_version: Option<SemVer>,
-    subsystem_api_version: Option<SemVer>
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) plugin_api_version: Option<SemVer>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) subsystem_api_version: Option<SemVer>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) release_date: Option<String>,
     // TODO: Replace with these
     // module_type: String,
     // api_version: SemVer,
-    // release_date: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct ModuleReleases {
+pub struct PackageReleases {
     pub(crate) name: String,
-    pub(crate) releases: Vec<ModuleReleaseEntry>,
+    pub(crate) releases: Vec<PackageReleaseEntry>,
+}
+
+pub fn run_if_not(dry_run: &bool, cmd: &mut std::process::Command) -> Option<Result<Output, io::Error>> {
+    if *dry_run {
+        println!("Would run: {:?}", cmd);
+        None
+    } else {
+        Some(cmd.output())
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -156,73 +186,247 @@ impl Remote {
             url: url.to_string(),
         }
     }
+    pub fn fetch(&self, workspace: &Workspace) -> Result<Vec<PackageIndexEntry>, String> {
+        let repo_dir = workspace.get_remote_repo_dir(&self);
+        if !repo_dir.parent().unwrap().exists() {
+            fs::create_dir_all(repo_dir.parent().unwrap()).unwrap();
+        }
+        if !repo_dir.exists() {
+            let output = std::process::Command::new("git")
+                .arg("clone")
+                .arg(&self.url)
+                .arg(&repo_dir)
+                .output();
+            if output.is_err() {
+                return Err(format!("Failed to clone the remote repository: {}", output.err().unwrap().to_string()));
+            }
+        } else {
+            let output = std::process::Command::new("git")
+                .current_dir(&repo_dir)
+                .arg("clean")
+                .arg("-ffdx")
+                .output();
+            if output.is_err() {
+                return Err(format!("Failed to clean the remote repository: {}", output.err().unwrap().to_string()));
+            }
+            let output = std::process::Command::new("git")
+                .current_dir(&repo_dir)
+                .arg("reset")
+                .arg("--hard")
+                .output();
+            if output.is_err() {
+                return Err(format!("Failed to clean the remote repository: {}", output.err().unwrap().to_string()));
+            }
+            let output = std::process::Command::new("git")
+                .current_dir(&repo_dir)
+                .arg("pull")
+                .arg("--force")
+                .output();
+            if output.is_err() {
+                return Err(format!("Failed to pull the remote repository: {}", output.err().unwrap().to_string()));
+            }
+        }
+        let res = fs::read_to_string(repo_dir.join(constants::PACKAGE_INDEX_ROOT_FILE));
+        if let Err(e) = res {
+            return Err(format!("Failed to read remote package index: {}", e));
+        }
+        let res = serde_json::from_str(&res.unwrap());
+        if let Err(e) = res {
+            return Err(format!("Failed to parse remote package index: {}", e.to_string()));
+        }
+        let package_list: Vec<PackageIndexEntry> = res.unwrap();
+        Ok(package_list)
+    }
+    pub fn get_default_branch_name(&self, workspace: &Workspace) -> String {
+        let repo_dir = workspace.get_remote_repo_dir(&self);
+        let output = std::process::Command::new("git")
+            .current_dir(&repo_dir)
+            .arg("symbolic-ref")
+            .arg("HEAD")
+            .arg("--short")
+            .output();
+        let branch_name = String::from_utf8(output.unwrap().stdout).unwrap();
+        branch_name.trim().to_string()
+    }
+    pub fn fetch_add(&self, dry_run: &bool, workspace: &Workspace, name: &String, vendor: Option<&String>, package_type: &PackageType, release: PackageReleaseEntry) -> Result<(), String> {
+        let repo_dir = workspace.get_remote_repo_dir(&self);
+        let mut package_list: Vec<PackageIndexEntry> = self.fetch(workspace)?;
+        // If package does not exist, add it
+        let mut found = false;
+        for package in &package_list {
+            if package.name == *name {
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            if vendor.is_none() {
+                return Err("Vendor name was not provided!".to_string());
+            }
+
+            println!("Adding package {} to remote {}", name, self.name);
+
+            // TODO: GitHub specific index code should be removed once we have a proper release server
+            // Get organization name and repo name from the URL.
+            let url_parts: Vec<&str> = self.url.split('/').collect();
+            if url_parts.len() < 2 {
+                return Err("Invalid URL".to_string());
+            }
+            let org_name = url_parts[url_parts.len() - 2];
+            let repo_name = url_parts[url_parts.len() - 1];
+            let branch_name = self.get_default_branch_name(workspace);
+
+            let package = PackageIndexEntry {
+                name: name.clone(),
+                releases_url: format!("https://raw.githubusercontent.net/{}/{}/{}/releases/{}.json", org_name, repo_name, branch_name, name),
+                vendor: vendor.unwrap().clone(),
+                package_type: package_type.clone(),
+            };
+            package_list.push(package);
+
+            let root_file = repo_dir.join(constants::PACKAGE_INDEX_ROOT_FILE);
+            let res = fs::write(root_file, serde_json::to_string_pretty(&package_list).unwrap());
+            if let Err(e) = res {
+                return Err(format!("Failed to write remote package index: {}", e));
+            }
+        }
+
+        let release_list_file = repo_dir.join("releases").join(format!("{}.json", name));
+        if !release_list_file.parent().unwrap().exists() {
+            fs::create_dir_all(release_list_file.parent().unwrap()).unwrap();
+        }
+        let mut release_list = PackageReleases{ name : name.clone(), releases: vec![] };
+        if release_list_file.exists() {
+            release_list = serde_json::from_str(&fs::read_to_string(&release_list_file).unwrap()).unwrap();
+        }
+        let version = release.version.clone();
+        release_list.releases.insert(0, release);
+        let res = fs::write(release_list_file, serde_json::to_string_pretty(&release_list).unwrap());
+        if let Err(e) = res {
+            return Err(format!("Failed to write remote package releases: {}", e));
+        }
+
+        // Commit and push
+        let res = run_if_not(dry_run, std::process::Command::new("git")
+            .current_dir(&repo_dir)
+            .arg("add")
+            .arg("."));
+        if res.is_some() {
+            let output = res.unwrap();
+            if output.is_err() {
+                return Err(format!("Failed to add files to the remote repository: {}", output.err().unwrap().to_string()));
+            }
+        }
+
+        let res = run_if_not(dry_run, std::process::Command::new("git")
+            .current_dir(&repo_dir)
+            .arg("commit")
+            .arg("-m")
+            .arg(format!("Add package {} version {}", name, version)));
+        if res.is_some() {
+            let output = res.unwrap();
+            if output.is_err() {
+                return Err(format!("Failed to commit to the remote repository: {}", output.err().unwrap().to_string()));
+            }
+        }
+        // If push fails, pull with rebase first and then push
+        let mut res = run_if_not(dry_run, std::process::Command::new("git")
+            .current_dir(&repo_dir)
+            .arg("push"));
+        if res.is_some() {
+            let mut output = res.unwrap();
+            let mut tries = 3;
+            while output.is_err() && tries > 0 {
+                println!("Failed to push to the remote repository: {}. Trying again.", output.err().unwrap().to_string());
+                output = std::process::Command::new("git")
+                    .current_dir(&repo_dir)
+                    .arg("pull")
+                    .arg("--rebase")
+                    .output();
+                if output.is_err() {
+                    return Err(format!("Failed to pull with rebase from the remote repository: {}. If there were conflicts, manually solve them under {}.", output.err().unwrap().to_string(), repo_dir.display()));
+                }
+                output = std::process::Command::new("git")
+                    .current_dir(&repo_dir)
+                    .arg("push")
+                    .output();
+                tries -= 1;
+            }
+            if output.is_err() {
+                return Err(format!("Failed to publish: {}", output.err().unwrap().to_string()));
+            }
+        }
+        println!("Published package {} version {} to remote {}", name, version, self.name);
+        return Ok(());
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Index {
-    pub modules: HashMap<String, HashMap<String, ModuleReleaseEntry>>, // name -> version -> ModuleReleaseEntry
+    pub packages: HashMap<String, (PackageType, HashMap<String, PackageReleaseEntry>)>, // name -> version -> ModuleReleaseEntry
 }
 
 impl Index {
     pub fn fetch(workspace: &Workspace) -> Index {
-        println!("Fetching module index...");
+        println!("Fetching package index...");
         let pb = ProgressBar::new(0);
         pb.set_style(ProgressStyle::default_spinner()
             .template("{spinner} {wide_msg}").unwrap());
         pb.enable_steady_tick(Duration::from_millis(100));
         let mut index = Index {
-            modules: HashMap::new(),
+            packages: HashMap::new(),
         };
         for remote in &workspace.remotes {
-            // Fetch json file
-            let res = reqwest::blocking::get(&remote.url);
+            pb.set_message(format!("Fetching remote {}", remote.name));
+            let res = remote.fetch(&workspace);
             if let Err(e) = res {
                 pb.println(format!("Failed to fetch remote: {}", e));
                 continue;
             }
-            let res = res.unwrap().json();
-            if let Err(e) = res {
-                pb.println(format!("Failed to parse remote: {}", e));
-                continue;
-            }
-            let module_list: Vec<ModuleIndexEntry> = res.unwrap();
-            pb.println(format!("Fetched {} modules from remote {}", module_list.len(), remote.name));
+            let package_list: Vec<PackageIndexEntry> = res.unwrap();
+            pb.println(format!("Fetched {} packages from remote {}", package_list.len(), remote.name));
             // For each module in list
-            for module in module_list {
-                let res = reqwest::blocking::get(&module.url);
+            for package in package_list {
+                let res = reqwest::blocking::get(&package.releases_url);
                 if let Err(e) = res {
-                    pb.println(format!("Failed to fetch module releases: {}", e));
+                    pb.println(format!("Failed to fetch package releases: {}", e));
                     continue;
                 }
                 let res = res.unwrap().json();
                 if let Err(e) = res {
-                    pb.println(format!("Failed to parse module releases: {}", e));
+                    pb.println(format!("Failed to parse package releases: {}", e));
                     continue;
                 }
-                let versions: ModuleReleases = res.unwrap();
-                pb.set_message(format!("Remote {}: Found {} releases for module {}", remote.name, versions.releases.len(), versions.name));
+                let versions: PackageReleases = res.unwrap();
+                pb.set_message(format!("Remote {}: Found {} releases for package {}", remote.name, versions.releases.len(), versions.name));
                 // For each version in list
                 for release in versions.releases {
-                    index.add_module(&versions.name, release);
+                    index.add_package(&versions.name, package.package_type.clone(), release);
                 }
             }
         }
         index
     }
-    pub fn add_module(&mut self, name: &String, module: ModuleReleaseEntry) {
-        let module_map = self.modules.entry(name.clone()).or_insert(HashMap::new());
-        module_map.insert(module.version.clone(), module);
+    pub fn add_package(&mut self, name: &String, package_type: PackageType, package: PackageReleaseEntry) {
+        let type_versions = self.packages.entry(name.clone()).or_insert((package_type, HashMap::new()));
+        type_versions.1.insert(package.version.clone(), package);
     }
-    pub fn get_module(&self, name: &str, version: &str) -> Option<&ModuleReleaseEntry> {
-        self.modules.get(name).and_then(|m| m.get(version))
+    pub fn get_module(&self, name: &str, version: &str) -> Option<&PackageReleaseEntry> {
+        self.packages.get(name).and_then(|m| {
+            if m.0 == PackageType::Plugin || m.0 == PackageType::Subsystem {
+                m.1.get(version)
+            } else {
+                None
+            }
+        })
     }
-    pub fn get_latest_compatible_release_within_range(&self, name: &str, version_start: &SemVer, version_end: &SemVer) -> Option<&ModuleReleaseEntry> {
-        let version_list = self.modules.get(name);
+    pub fn get_latest_compatible_release_within_range(&self, name: &str, version_start: &SemVer, version_end: &SemVer) -> Option<&PackageReleaseEntry> {
+        let version_list = self.packages.get(name);
         if version_list.is_none() {
             return None;
         }
-        let version_list = version_list.unwrap();
-        let mut versions: Vec<(&String, &ModuleReleaseEntry)> = version_list.iter().collect();
+        let version_list = &version_list.unwrap().1;
+        let mut versions: Vec<(&String, &PackageReleaseEntry)> = version_list.iter().collect();
         versions.sort_by(|a, b| a.0.cmp(b.0));
         versions.reverse();
         for (version, module) in versions {

@@ -8,6 +8,7 @@ mod deinit;
 mod create;
 mod sdk_info;
 mod list;
+mod publish;
 
 use std::io;
 
@@ -22,6 +23,8 @@ pub enum CommandError {
     InvalidArgumentError { message: String },
     #[error(display = "Zip error: {}", message)]
     ZipError { message: String },
+    #[error(display = "{}", message)]
+    GenericError { message: String },
 }
 
 pub(crate) type CommandResult = Result<bool, CommandError>;
@@ -29,7 +32,6 @@ pub(crate) type CommandResult = Result<bool, CommandError>;
 pub trait Command {
     fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches>;
     fn run(&self, args: &ArgMatches) -> CommandResult;
-
     fn needs_workspace(&self) -> bool {
         true
     }
@@ -47,6 +49,7 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(deinit::DeinitCommand {}),
         Box::new(create::CreateCommand {}),
         Box::new(sdk_info::SdkInfoCommand {}),
-        Box::new(list::ListCommand {})
+        Box::new(list::ListCommand {}),
+        Box::new(publish::PublishCommand {}),
     ]
 }
