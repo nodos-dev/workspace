@@ -1,13 +1,14 @@
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path;
+use std::time::Duration;
 use clap::{ArgMatches};
 use colored::Colorize;
-use libloading::{Library, library_filename};
+use indicatif::ProgressBar;
+use libloading::{Library, library_filename, Symbol};
 use serde::{Deserialize, Serialize};
 use tempfile::tempdir;
-use zip::unstable::write::FileOptionsExt;
-use zip::write::{FileOptions, SimpleFileOptions};
+use zip::write::{SimpleFileOptions};
 
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::CommandError::{GenericError, InvalidArgumentError};
@@ -28,21 +29,22 @@ pub struct PublishCommand {
 
 impl PublishCommand {
     fn run_publish(&self, dry_run: &bool, path: &path::PathBuf, mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
-                          mut package_type: Option<PackageType>, remote_name: &String, vendor: Option<&String>) -> CommandResult {
+                   mut package_type: Option<PackageType>, remote_name: &String, vendor: Option<&String>,
+                   publisher_name: Option<&String>, publisher_email: Option<&String>) -> CommandResult {
         // Check if git and gh is installed.
         let git_installed = std::process::Command::new("git")
             .arg("--version")
             .output()
             .is_ok();
         if !git_installed {
-            return Err(GenericError { message: "git is not installed".to_string() });
+            return Err(GenericError { message: "git is not on PATH".to_string() });
         }
         let gh_installed = std::process::Command::new("gh")
             .arg("--version")
             .output()
             .is_ok();
         if !gh_installed {
-            return Err(GenericError { message: "GitHub CLI client 'gh' is not installed".to_string() });
+            return Err(GenericError { message: "GitHub CLI client 'gh' is not on PATH".to_string() });
         }
 
         if !path.exists() {
@@ -100,20 +102,18 @@ impl PublishCommand {
                             PackageType::Subsystem => "nosGetSubsystemAPIVersion",
                             _ => panic!("Invalid package type")
                         };
-                        let func: libloading::Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)> = lib.get(func_name.as_bytes()).unwrap();
+                        let func: Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)> = lib.get(func_name.as_bytes()).unwrap();
                         let mut major = 0;
                         let mut minor = 0;
                         let mut patch = 0;
                         func(&mut major, &mut minor, &mut patch);
                         api_version = Some(SemVer { major: (major as u32), minor: Some(minor as u32), patch: Some(patch as u32), build_number: None });
-                        // Unload the library
-                        drop(lib);
                         println!("{}", format!("{} uses Nodos {:?} API version: {}.{}.{}", name.as_ref().unwrap(), &package_type, major, minor, patch).as_str().yellow());
                     }
                 }
             }
 
-            let mut nospub_file = path.join(constants::PUBLISH_OPTIONS_FILE_NAME);
+            let nospub_file = path.join(constants::PUBLISH_OPTIONS_FILE_NAME);
             if nospub_file.exists() {
                 let contents = std::fs::read_to_string(&nospub_file).unwrap();
                 nospub = serde_json::from_str(&contents).unwrap();
@@ -136,7 +136,7 @@ impl PublishCommand {
 
         let mut files_to_release = vec![];
         for glob in nospub.globs.iter() {
-            let mut walker = globwalk::GlobWalkerBuilder::from_patterns(path, &[glob])
+            let walker = globwalk::GlobWalkerBuilder::from_patterns(path, &[glob])
                 .build()
                 .unwrap();
             for entry in walker {
@@ -153,7 +153,8 @@ impl PublishCommand {
         }
 
         let workspace = Workspace::get()?;
-        println!("{}", "Creating release...".to_string().as_str().yellow());
+        let pb: ProgressBar = ProgressBar::new_spinner();
+        pb.enable_steady_tick(Duration::from_millis(100));
         let temp_dir = tempdir().unwrap();
         // Zip the files
         let tag = format!("{}-{}", name, version);
@@ -168,6 +169,7 @@ impl PublishCommand {
         let mut buffer = Vec::new();
         for file_path in files_to_release.iter() {
             let mut file = File::open(file_path).unwrap();
+            pb.set_message(format!("Creating a release: {}", file_path.display()).as_str().to_string());
             file.read_to_end(&mut buffer).unwrap();
             zip.start_file(file_path.strip_prefix(path).unwrap().to_str().unwrap(), options).unwrap();
             zip.write_all(&buffer).unwrap();
@@ -184,7 +186,7 @@ impl PublishCommand {
         let remote = remote.unwrap();
 
         let release = PackageReleaseEntry {
-            version,
+            version: version.clone(),
             url: format!("{}/releases/download/{}/{}", remote.url, tag, zip_file_name),
             plugin_api_version: match package_type {
                 PackageType::Plugin => api_version.clone(),
@@ -197,12 +199,13 @@ impl PublishCommand {
             release_date: None,
         };
 
-        let res = remote.fetch_add(&dry_run, &workspace, &name, vendor, &package_type, release);
+        let res = remote.fetch_add(&dry_run, &workspace, &name, vendor, &package_type, release, publisher_name, publisher_email);
         if res.is_err() {
             return Err(GenericError { message: res.err().unwrap() });
         }
+        let commit_sha = res.unwrap();
 
-        let res = remote.create_gh_release(&dry_run, &workspace, &name, &version, vec![zip_file_path]);
+        let res = remote.create_gh_release(&dry_run, &workspace, &commit_sha, &name, &version, vec![zip_file_path]);
         if res.is_err() {
             return Err(GenericError { message: res.err().unwrap() });
         }
@@ -232,6 +235,8 @@ impl Command for PublishCommand {
         let name = if opt_name.is_some() { Some(opt_name.unwrap().clone()) } else { None };
         let vendor = args.get_one::<String>("vendor");
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
-        self.run_publish(dry_run, &path, name, version, version_suffix, package_type, &remote_name, vendor)
+        let publisher_name = args.get_one::<String>("publisher_name");
+        let publisher_email = args.get_one::<String>("publisher_email");
+        self.run_publish(dry_run, &path, name, version, version_suffix, package_type, &remote_name, vendor, publisher_name, publisher_email)
     }
 }

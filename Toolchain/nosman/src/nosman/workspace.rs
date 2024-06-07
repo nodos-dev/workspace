@@ -265,13 +265,6 @@ pub fn get_nosman_dir_for(path: &path::PathBuf) -> path::PathBuf {
     path.join(".nosman")
 }
 
-pub fn get_nosman_dir() -> Option<path::PathBuf> {
-    match current_root() {
-        Some(root) => Some(get_nosman_dir_for(root)),
-        None => None,
-    }
-}
-
 pub fn get_nosman_index_filepath_for(path: &path::PathBuf) -> path::PathBuf {
     get_nosman_dir_for(path).join("index")
 }

@@ -258,7 +258,10 @@ impl Remote {
         let branch_name = String::from_utf8(output.unwrap().stdout).unwrap();
         branch_name.trim().to_string()
     }
-    pub fn fetch_add(&self, dry_run: &bool, workspace: &Workspace, name: &String, vendor: Option<&String>, package_type: &PackageType, release: PackageReleaseEntry) -> Result<(), String> {
+    pub fn fetch_add(&self, dry_run: &bool, workspace: &Workspace, name: &String,
+                     vendor: Option<&String>, package_type: &PackageType,
+                     release: PackageReleaseEntry, publisher_name: Option<&String>,
+                     publisher_email: Option<&String>) -> Result<String, String> {
         let repo_dir = workspace.get_remote_repo_dir(&self);
         let mut package_list: Vec<PackageIndexEntry> = self.fetch(workspace)?;
         // If package does not exist, add it
@@ -293,6 +296,34 @@ impl Remote {
             let res = fs::write(root_file, serde_json::to_string_pretty(&package_list).unwrap());
             if let Err(e) = res {
                 return Err(format!("Failed to write remote package index: {}", e));
+            }
+        }
+
+        // Set author email and name
+        if publisher_name.is_some() {
+            let res = run_if_not(dry_run, std::process::Command::new("git")
+                .current_dir(&repo_dir)
+                .arg("config")
+                .arg("user.email")
+                .arg(publisher_name.unwrap()));
+            if res.is_some() {
+                let output = res.unwrap();
+                if output.is_err() {
+                    return Err(format!("Failed to set author email: {}", output.err().unwrap().to_string()));
+                }
+            }
+        }
+        if publisher_email.is_some() {
+            let res = run_if_not(dry_run, std::process::Command::new("git")
+                .current_dir(&repo_dir)
+                .arg("config")
+                .arg("user.name")
+                .arg(publisher_email.unwrap()));
+            if res.is_some() {
+                let output = res.unwrap();
+                if output.is_err() {
+                    return Err(format!("Failed to set author name: {}", output.err().unwrap().to_string()));
+                }
             }
         }
 
@@ -334,8 +365,22 @@ impl Remote {
                 return Err(format!("Failed to commit to the remote repository: {}", output.err().unwrap().to_string()));
             }
         }
+        // Get commit SHA
+        let res = run_if_not(dry_run, std::process::Command::new("git")
+            .current_dir(&repo_dir)
+            .arg("rev-parse")
+            .arg("HEAD"));
+        let mut commit_sha = "COMMIT_SHA_DRY_RUN".to_string();
+        if res.is_some() {
+            let output = res.unwrap();
+            if output.is_err() {
+                return Err(format!("Failed to get commit SHA from the remote repository: {}", output.err().unwrap().to_string()));
+            }
+            commit_sha = String::from_utf8(output.unwrap().stdout).unwrap().trim().to_string();
+        }
+
         // If push fails, pull with rebase first and then push
-        let mut res = run_if_not(dry_run, std::process::Command::new("git")
+        let res = run_if_not(dry_run, std::process::Command::new("git")
             .current_dir(&repo_dir)
             .arg("push"));
         if res.is_some() {
@@ -362,12 +407,11 @@ impl Remote {
             }
         }
         println!("Added package {} version {} release entry to remote {}", name, version, self.name);
-        return Ok(());
+        return Ok(commit_sha);
     }
-    pub fn create_gh_release(&self, dry_run: &bool, workspace: &Workspace, name: &String, version: &String, artifacts: Vec<PathBuf>) -> Result<(), String> {
+    pub fn create_gh_release(&self, dry_run: &bool, workspace: &Workspace, commit_sha: &String, name: &String, version: &String, artifacts: Vec<PathBuf>) -> Result<(), String> {
         let repo_dir = workspace.get_remote_repo_dir(&self);
         let (org_name, repo_name) = self.get_gh_remote_org_repo();
-        let branch_name = self.get_default_branch_name(workspace);
 
         let res = run_if_not(&dry_run, std::process::Command::new("gh")
             .current_dir(&repo_dir)
@@ -379,8 +423,8 @@ impl Remote {
             .arg("--repo")
             .arg(format!("{}/{}", org_name, repo_name))
             .arg("--target")
-            .arg(branch_name)
-            .args(artifacts.iter().map(|p| p.to_str().unwrap()));
+            .arg(commit_sha)
+            .args(artifacts.iter().map(|p| p.to_str().unwrap())));
         if res.is_some() {
             let output = res.unwrap();
             if output.is_err() {
