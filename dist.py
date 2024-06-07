@@ -111,7 +111,8 @@ def parse_version(filepath, version_define_prefix):
 
 
 def create_nodos_release(gh_release_repo, gh_release_notes, gh_release_title_postfix, gh_release_target_branch, dry_run_release):
-    release_repo, release_notes, artifacts, title_postfix, target_branch = gh_release_repo, gh_release_notes, get_release_artifacts("./Artifacts"), gh_release_title_postfix, gh_release_target_branch
+    release_repo, release_notes, title_postfix, target_branch = gh_release_repo, gh_release_notes, gh_release_title_postfix, gh_release_target_branch
+    artifacts = get_release_artifacts("./Artifacts")
     for path in artifacts:
         logger.info(f"Release artifact: {path}")
     major, minor, patch, build_number = get_version_info_from_env()
@@ -136,6 +137,26 @@ def create_nodos_release(gh_release_repo, gh_release_notes, gh_release_title_pos
         logger.error(f"GitHub CLI returned with {result.returncode}")
         exit(result.returncode)
     logger.info("GitHub release successful")
+
+    version = f"{major}.{minor}.{patch}.b{build_number}"
+    nodos_zip_prefix = f"Nodos-{version}"
+    sdk_zip_prefix = f"Nodos-SDK-{version}"
+    for path in artifacts:
+        file_name = os.path.basename(path)
+        if not file_name.startswith(nodos_zip_prefix):
+            continue
+        # If file_name is of format Nodos-{major}.{minor}.{patch}.b{build_number}-bundle-{dist_key}.zip, it is a bundled distribution. Get the dist_key from it.
+        dist_key = None
+        if file_name.startswith(f"{nodos_zip_prefix}-bundle-"):
+            dist_key = file_name.split("-bundle-")[1].split(".zip")[0]
+        # Use nosman to publish Nodos:
+        logger.info("Running nosman publish")
+        nodos_package_name = f"nodos{f'.bundle.{dist_key}' if dist_key is not None else ''}"
+        result = run(["nosman", "publish", "--path", path, "--name", nodos_package_name, "--version", f"{major}.{minor}.{patch}", "--version-suffix", f".b{build_number}", "--type", "nodos", "--vendor", "Nodos", "--publisher-name", "nosman", "--publisher-email",
+                    "bot@nodos.dev"], stdout=stdout, stderr=stderr, universal_newlines=True)
+        if result.returncode != 0:
+            logger.error(f"nosman publish returned with {result.returncode}")
+            exit(result.returncode)
 
 
 def get_release_artifacts(dir):
@@ -331,7 +352,7 @@ def package(dist_key, engine_folder, should_sign_binaries):
     os.chdir(cwd)
 
     # Zip everything under staging
-    shutil.make_archive(f"./Artifacts/Nodos-{major}.{minor}.{patch}.b{build_number}{'-Bundled' if is_bundled else ''}", 'zip', f"{staging_folder}")
+    shutil.make_archive(f"./Artifacts/Nodos-{major}.{minor}.{patch}.b{build_number}{f'-bundle-{dist_key}' if is_bundled else ''}", 'zip', f"{staging_folder}")
 
 
 if __name__ == "__main__":
