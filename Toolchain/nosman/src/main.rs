@@ -3,7 +3,7 @@ use clap::{Arg, ArgAction, Command};
 
 use std::error::Error;
 use colored::Colorize;
-use crate::nosman::constants;
+use crate::nosman::{constants, workspace};
 
 mod nosman;
 
@@ -159,6 +159,27 @@ fn main() {
                 .num_args(1)
             )
         )
+        .subcommand(Command::new("get")
+            .about("Gets a Nodos release under path. If there is an existing Nodos release under path,\n\
+            updates it (note that this will remove all installed Nodos engines and modules!)")
+            .arg(Arg::new("name")
+                .help("Name of the Nodos release to bring. Can be 'nodos' or some bundled version.")
+                .long("name")
+                .default_value("nodos")
+            )
+            .arg(Arg::new("version")
+                .help("Version of the Nodos release to bring. If not provided, the latest version will be installed.")
+                .long("version")
+                .short('v')
+                .required(false)
+            )
+            .arg(Arg::new("path")
+                .long("path")
+                .short('p')
+                .help("Path to the root folder of the Nodos release.")
+                .default_value(".")
+            )
+        )
         .subcommand(Command::new("publish")
             .about("Publish a package")
             .after_help("This command will publish a package to the specified remote.\n\
@@ -277,9 +298,9 @@ fn main() {
     for command in nosman::command::commands().iter() {
         match command.matched_args(&matches) {
             Some(command_args) => {
-                nosman::workspace::set_current_root(dunce::canonicalize(std::path::PathBuf::from(matches.get_one::<String>("workspace").unwrap())).unwrap());
+                workspace::set_current_root(dunce::canonicalize(std::path::PathBuf::from(matches.get_one::<String>("workspace").unwrap())).unwrap());
                 if (*command).needs_workspace() {
-                    if !nosman::workspace::get_nosman_index_filepath().unwrap().exists() {
+                    if !workspace::exists() {
                         eprintln!("No workspace found in {:?}", matches.get_one::<String>("workspace").unwrap());
                         std::process::exit(1);
                     }

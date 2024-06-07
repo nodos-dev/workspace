@@ -19,7 +19,7 @@ impl RemoteAddCommand {
         workspace.add_remote(nosman::index::Remote::new("unnamed", url));
 
         // Write the workspace file
-        workspace.save().map_err(CommandError::IOError)?;
+        workspace.save().map_err(|e| CommandError::IOError { file: workspace.get_nosman_index_filepath().display().to_string(), message: format!("{}", e) })?;
 
         println!("Remote added: {}", url);
         Ok(true)

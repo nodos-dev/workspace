@@ -3,11 +3,11 @@ use std::{fs, io, path};
 use std::sync::OnceLock;
 use std::time::Duration;
 use colored::Colorize;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{ProgressBar};
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::constants;
-use crate::nosman::index::{Index, ModuleType, Remote, SemVer};
+use crate::nosman::index::{Index, Remote, SemVer};
 use crate::nosman::module::{InstalledModule, get_module_manifests};
 use crate::nosman::path::{get_rel_path_based_on};
 
@@ -52,9 +52,12 @@ impl Workspace {
         if !get_nosman_dir_for(&self.root).exists() {
             fs::create_dir(get_nosman_dir_for(&self.root))?;
         }
-        let file = fs::File::create(get_nosman_index_filepath_for(&self.root))?;
+        let file = fs::File::create(self.get_nosman_index_filepath())?;
         serde_json::to_writer_pretty(file, self)?;
         Ok(())
+    }
+    pub fn get_nosman_index_filepath(&self) -> path::PathBuf {
+        get_nosman_index_filepath_for(&self.root)
     }
     pub fn get_installed_module(&self, name: &str, version: &str) -> Option<&InstalledModule> {
         match self.installed_modules.get(name) {
@@ -239,4 +242,12 @@ pub fn get_nosman_index_filepath<'a>() -> Option<path::PathBuf> {
         Some(root) => Some(get_nosman_index_filepath_for(root)),
         None => None,
     }
+}
+
+pub fn exists() -> bool {
+    let res = get_nosman_index_filepath();
+    if res.is_none() {
+        return false;
+    }
+    res.unwrap().exists()
 }

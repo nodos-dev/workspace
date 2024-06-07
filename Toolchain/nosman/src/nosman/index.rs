@@ -490,12 +490,26 @@ impl Index {
             }
         })
     }
-    pub fn get_latest_compatible_release_within_range(&self, name: &str, version_start: &SemVer, version_end: &SemVer) -> Option<&PackageReleaseEntry> {
-        let version_list = self.packages.get(name);
-        if version_list.is_none() {
+    pub fn get_latest_release(&self, name: &str) -> Option<(&PackageType, &PackageReleaseEntry)> {
+        let res = self.packages.get(name);
+        if res.is_none() {
             return None;
         }
-        let version_list = &version_list.unwrap().1;
+        let (package_type, version_list) = res.unwrap();
+        let mut versions: Vec<(&String, &PackageReleaseEntry)> = version_list.iter().collect();
+        versions.sort_by(|a, b| a.0.cmp(b.0));
+        versions.reverse();
+        if versions.len() == 0 {
+            return None;
+        }
+        Some((package_type, versions[0].1))
+    }
+    pub fn get_latest_compatible_release_within_range(&self, name: &str, version_start: &SemVer, version_end: &SemVer) -> Option<(&PackageType, &PackageReleaseEntry)> {
+        let res = self.packages.get(name);
+        if res.is_none() {
+            return None;
+        }
+        let (package_type, version_list) = res.unwrap();
         let mut versions: Vec<(&String, &PackageReleaseEntry)> = version_list.iter().collect();
         versions.sort_by(|a, b| a.0.cmp(b.0));
         versions.reverse();
@@ -506,7 +520,7 @@ impl Index {
             }
             let semver = semver.unwrap();
             if semver >= *version_start && semver < *version_end {
-                return Some(module);
+                return Some((package_type, module));
             }
         }
         None

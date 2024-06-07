@@ -8,9 +8,10 @@ use crate::nosman;
 use crate::nosman::command::{Command, CommandError, CommandResult};
 
 use zip::result::ZipError;
-use zip::ZipArchive;
 use nosman::workspace::Workspace;
-use crate::nosman::index::SemVer;
+use crate::nosman::command::CommandError::{GenericError, InvalidArgumentError};
+use crate::nosman::index::{PackageType, SemVer};
+use crate::nosman::util::download_and_extract;
 
 pub struct InstallCommand {
 }
@@ -29,7 +30,7 @@ impl InstallCommand {
             // Find or download a version such that 'a.b <= x < a.(b+1)'
             let version_start = SemVer::parse_from_string(version).unwrap();
             if version_start.minor.is_none() {
-                return Err(CommandError::InvalidArgumentError { message: "Please provide a minor version too!".to_string() });
+                return Err(InvalidArgumentError { message: "Please provide a minor version too!".to_string() });
             }
             let version_end = version_start.get_one_up();
             return if let Some(installed_module) = workspace.get_latest_installed_module_within_range(module_name, &version_start, &version_end) {
@@ -37,10 +38,13 @@ impl InstallCommand {
                 Ok(true)
             } else {
                 println!("{}", format!("No installed version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), module_name).as_str().yellow());
-                if let Some(release) = workspace.index_cache.get_latest_compatible_release_within_range(module_name, &version_start, &version_end) {
+                if let Some((package_type, release)) = workspace.index_cache.get_latest_compatible_release_within_range(module_name, &version_start, &version_end) {
+                    if *package_type != PackageType::Plugin || *package_type != PackageType::Subsystem {
+                        return Err(InvalidArgumentError { message: format!("Package {} found in the index is not a plugin or subsystem", module_name) });
+                    }
                     self.run_install(module_name, &release.version, true, output_dir, prefix)
                 } else {
-                    Err(CommandError::InvalidArgumentError { message: format!("No remote contained a version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), module_name) })
+                    Err(InvalidArgumentError { message: format!("No remote contained a version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), module_name) })
                 }
             }
         }
@@ -62,33 +66,14 @@ impl InstallCommand {
         }
         if let Some(module) = workspace.index_cache.get_module(module_name, version) {
             let module_dir = if install_dir.is_relative() { workspace.root.join(install_dir) } else { install_dir };
-            let mut tmpfile = tempfile::tempfile().unwrap();
+            let module_name_version = format!("{}-{}", module_name, version);
+            println!("Downloading module {}", module_name_version);
 
-            println!("Downloading module {} version {}", module_name, version);
-            reqwest::blocking::get(&module.url)
-                .expect(format!("Failed to fetch module {}", module_name).as_str()).copy_to(&mut tmpfile)
-                .expect(format!("Failed to write to tempfile for module {}", module_name).as_str());
-
-            println!("Extracting module {} to {}", module_name, module_dir.display());
-            let mut archive = ZipArchive::new(tmpfile)?;
-            fs::create_dir_all(module_dir.clone())?;
-            for i in 0..archive.len() {
-                let mut file = archive.by_index(i)?;
-                let outpath = Path::new(&module_dir.clone()).join(file.name());
-
-                if file.is_dir() {
-                    fs::create_dir_all(&outpath)?;
-                } else {
-                    if let Some(parent) = outpath.parent() {
-                        if !parent.exists() {
-                            fs::create_dir_all(parent)?;
-                        }
-                    }
-                    let mut outfile = fs::File::create(&outpath)?;
-                    std::io::copy(&mut file, &mut outfile)?;
-                }
+            let res = download_and_extract(&module.url, &module_dir);
+            if res.is_err() {
+                return Err(res.err().unwrap());
             }
-
+            println!("Extracted module {} to {}", module_name, module_dir.display());
             workspace.scan_modules_in_folder(module_dir, replace_entry_in_index);
 
             println!("Adding to workspace file");
@@ -96,7 +81,7 @@ impl InstallCommand {
             println!("{}", format!("Module {} version {} installed successfully", module_name, version).as_str().green());
             Ok(true)
         } else {
-            return Err(CommandError::InvalidArgumentError { message: format!("None of the remotes contain module {} version {}. You can try rescan command to update index.", module_name, version) });
+            return Err(GenericError { message: format!("None of the remotes contain module {} version {}. You can try rescan command to update index.", module_name, version) });
         }
     }
 }

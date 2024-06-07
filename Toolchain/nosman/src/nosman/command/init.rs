@@ -11,7 +11,7 @@ pub struct InitCommand {
 }
 
 impl InitCommand {
-    fn run_init(&self) -> CommandResult {
+    pub(crate) fn run_init(&self) -> CommandResult {
         let directory = nosman::workspace::current_root().unwrap();
         if let Some(ws) = find_root_from(&directory.to_path_buf()) {
             return Err(InvalidArgumentError { message: format!("Directory {} is already under a workspace: {}", directory.display(), ws.display())});
@@ -20,7 +20,7 @@ impl InitCommand {
 
         let res = Workspace::rescan(&directory, true);
         if res.is_err() {
-            return Err(IOError(res.err().unwrap()));
+            return Err(IOError{ file: directory.display().to_string(), message: format!("{}", res.err().unwrap()) });
         }
         let workspace = res.unwrap();
         println!("{}", format!("Workspace initialized with {} modules", workspace.installed_modules.len()).as_str().green());

@@ -10,22 +10,30 @@ mod sdk_info;
 mod list;
 mod publish;
 mod publish_batch;
+mod get;
 
 use std::io;
 
 use clap::ArgMatches;
 use err_derive::Error;
+use zip::result::ZipError;
 
 #[derive(Debug, Error)]
 pub enum CommandError {
-    #[error(display = "I/O error")]
-    IOError(#[error(source)] io::Error),
+    #[error(display = "I/O (file {}): {}", file, message)]
+    IOError{ file: String, message: String },
     #[error(display = "Invalid argument: {}", message)]
     InvalidArgumentError { message: String },
-    #[error(display = "Zip error: {}", message)]
+    #[error(display = "Zip: {}", message)]
     ZipError { message: String },
     #[error(display = "{}", message)]
     GenericError { message: String },
+}
+
+impl From<io::Error> for CommandError {
+    fn from(err: io::Error) -> Self {
+        CommandError::IOError { file: "Unknown".to_string(), message: format!("{}", err) }
+    }
 }
 
 pub(crate) type CommandResult = Result<bool, CommandError>;
@@ -52,5 +60,7 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(sdk_info::SdkInfoCommand {}),
         Box::new(list::ListCommand {}),
         Box::new(publish::PublishCommand {}),
+        Box::new(publish_batch::PublishBatchCommand {}),
+        Box::new(get::GetCommand {}),
     ]
 }
