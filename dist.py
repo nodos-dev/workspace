@@ -12,6 +12,8 @@ import glob
 import platform
 import requests
 
+ARTIFACTS_FOLDER = "./Artifacts"
+STAGING_FOLDER = f"{ARTIFACTS_FOLDER}/__staging__"
 
 def should_exclude_from_install(target):
     INSTALLER_EXCLUDE = set(["flatc", 
@@ -112,7 +114,7 @@ def parse_version(filepath, version_define_prefix):
 
 def create_nodos_release(gh_release_repo, gh_release_notes, gh_release_title_postfix, gh_release_target_branch, dry_run_release):
     release_repo, release_notes, title_postfix, target_branch = gh_release_repo, gh_release_notes, gh_release_title_postfix, gh_release_target_branch
-    artifacts = get_release_artifacts("./Artifacts")
+    artifacts = get_release_artifacts(ARTIFACTS_FOLDER)
     for path in artifacts:
         logger.info(f"Release artifact: {path}")
     major, minor, patch, build_number = get_version_info_from_env()
@@ -141,7 +143,13 @@ def create_nodos_release(gh_release_repo, gh_release_notes, gh_release_title_pos
     version = f"{major}.{minor}.{patch}.b{build_number}"
     nodos_zip_prefix = f"Nodos-{version}"
     sdk_zip_prefix = f"Nodos-SDK-{version}"
-    for path in artifacts:
+
+    artifacts_abspath = [os.path.abspath(path) for path in artifacts]
+    
+    cwd = os.getcwd()
+    os.chdir(STAGING_FOLDER)
+    for path in artifacts_abspath:
+        abspath = os.path.abspath(path)
         file_name = os.path.basename(path)
         if not file_name.startswith(nodos_zip_prefix):
             continue
@@ -152,11 +160,14 @@ def create_nodos_release(gh_release_repo, gh_release_notes, gh_release_title_pos
         # Use nosman to publish Nodos:
         logger.info("Running nosman publish")
         nodos_package_name = f"nodos{f'.bundle.{dist_key}' if dist_key is not None else ''}"
-        result = run(["nosman", "publish", "--path", path, "--name", nodos_package_name, "--version", f"{major}.{minor}.{patch}", "--version-suffix", f".b{build_number}", "--type", "nodos", "--vendor", "Nodos", "--publisher-name", "nosman", "--publisher-email",
-                    "bot@nodos.dev"], stdout=stdout, stderr=stderr, universal_newlines=True)
+        nosman_args = [f"nosman", "publish", "--path", path, "--name", nodos_package_name, "--version", f"{major}.{minor}.{patch}", "--version-suffix", f".b{build_number}", "--type", "nodos", "--vendor", "Nodos", "--publisher-name", "nosman", "--publisher-email",
+                    "bot@nodos.dev", "--dry-run" if dry_run_release else ""]
+        logger.info(f"Running nosman publish with args: {nosman_args}")
+        result = run(nosman_args, stdout=stdout, stderr=stderr, universal_newlines=True)
         if result.returncode != 0:
             logger.error(f"nosman publish returned with {result.returncode}")
             exit(result.returncode)
+    os.chdir(cwd)
 
 
 def get_release_artifacts(dir):
@@ -270,10 +281,8 @@ def build_nosman(nosman_src_dir, is_release) -> str:
 
 def package(dist_key, engine_folder, should_sign_binaries):
     logger.info("Packaging Nodos")
-    artifacts_folder = "./Artifacts"
-    staging_folder = f"{artifacts_folder}/__staging__"
-    shutil.rmtree(artifacts_folder, ignore_errors=True)
-    os.makedirs(f"{staging_folder}", exist_ok=True)
+    shutil.rmtree(ARTIFACTS_FOLDER, ignore_errors=True)
+    os.makedirs(f"{STAGING_FOLDER}", exist_ok=True)
     dists = []
     with open("./bundle.json", 'r') as f:
         dists = json.load(f)
@@ -301,24 +310,24 @@ def package(dist_key, engine_folder, should_sign_binaries):
 
     # Copy nosman
     nosman_path = build_nosman(f"./Toolchain/nosman", is_release=True)
-    os.makedirs(f"{staging_folder}", exist_ok=True)
-    shutil.copy(nosman_path, f"{staging_folder}/nosman{platform.system() == 'Windows' and '.exe' or ''}")
+    os.makedirs(f"{STAGING_FOLDER}", exist_ok=True)
+    shutil.copy(nosman_path, f"{STAGING_FOLDER}/nosman{platform.system() == 'Windows' and '.exe' or ''}")
     # TODO: Copy source
 
     # Copy CMakes
-    shutil.copytree(f"./Toolchain/CMake", f"{staging_folder}/Toolchain/CMake")
+    shutil.copytree(f"./Toolchain/CMake", f"{STAGING_FOLDER}/Toolchain/CMake")
 
     # Copy Binaries, Config and SDK folder to Staging folder
-    engine_dist_folder = f"{staging_folder}/Engine/{major}.{minor}.{patch}.b{build_number}"
+    engine_dist_folder = f"{STAGING_FOLDER}/Engine/{major}.{minor}.{patch}.b{build_number}"
     os.makedirs(engine_dist_folder, exist_ok=True)
-    os.makedirs(f"{staging_folder}/Module", exist_ok=True)
+    os.makedirs(f"{STAGING_FOLDER}/Module", exist_ok=True)
 
     # SDK
     shutil.copytree(sdk_dir, f"{engine_dist_folder}/SDK")
     
     # Zip SDK only release
     sdk_zip_name = f"Nodos-SDK-{major}.{minor}.{patch}.b{build_number}"
-    shutil.make_archive(f"./Artifacts/{sdk_zip_name}", 'zip', f"{staging_folder}")
+    shutil.make_archive(f"./Artifacts/{sdk_zip_name}", 'zip', f"{STAGING_FOLDER}")
 
     # Move rest
     shutil.copytree(bin_dir, f"{engine_dist_folder}/Binaries",)
@@ -330,7 +339,7 @@ def package(dist_key, engine_folder, should_sign_binaries):
         sign_binaries(f"{engine_dist_folder}/SDK/bin")
 
     if is_bundled:
-        download_module_packages(engine_folder, distconf, dists, f"{staging_folder}/Module", f"{engine_dist_folder}/Config/Profile.json")
+        download_module_packages(engine_folder, distconf, dists, f"{STAGING_FOLDER}/Module", f"{engine_dist_folder}/Config/Profile.json")
 
     engine_settigns_path = f"{engine_dist_folder}/Config/EngineSettings.json"
     with open(engine_settigns_path, "r") as f:
@@ -343,7 +352,7 @@ def package(dist_key, engine_folder, should_sign_binaries):
 
     # Call nosman init
     cwd = os.getcwd()
-    os.chdir(staging_folder)
+    os.chdir(STAGING_FOLDER)
     logger.info("Running nosman init")
     result = run(["nosman", "init"], stdout=stdout, stderr=stderr, universal_newlines=True)
     if result.returncode != 0:
@@ -352,7 +361,7 @@ def package(dist_key, engine_folder, should_sign_binaries):
     os.chdir(cwd)
 
     # Zip everything under staging
-    shutil.make_archive(f"./Artifacts/Nodos-{major}.{minor}.{patch}.b{build_number}{f'-bundle-{dist_key}' if is_bundled else ''}", 'zip', f"{staging_folder}")
+    shutil.make_archive(f"./Artifacts/Nodos-{major}.{minor}.{patch}.b{build_number}{f'-bundle-{dist_key}' if is_bundled else ''}", 'zip', f"{STAGING_FOLDER}")
 
 
 if __name__ == "__main__":
