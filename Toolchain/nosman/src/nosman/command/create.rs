@@ -131,7 +131,7 @@ impl CreateCommand {
         let ws_res = Workspace::get();
         if ws_res.is_ok() {
             let mut ws = ws_res.unwrap();
-            ws.scan_and_add_modules_in_folder(output_dir.clone(), true);
+            ws.scan_modules_in_folder(output_dir.clone(), true);
             ws.save()?;
         }
 

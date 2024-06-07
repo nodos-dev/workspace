@@ -188,6 +188,7 @@ fn main() {
             )
             .arg(Arg::new("remote")
                 .help("Name of the remote to publish to.")
+                .long("remote")
                 .default_value("default")
             )
             .arg(Arg::new("type")

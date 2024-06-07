@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::constants;
 use crate::nosman::index::{Index, ModuleType, Remote, SemVer};
-use crate::nosman::module::{InstalledModule, scan_modules_in_folder};
+use crate::nosman::module::{InstalledModule, get_module_manifests};
 use crate::nosman::path::{get_rel_path_based_on};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -114,12 +114,12 @@ impl Workspace {
         println!("{}", "All modules removed successfully".green());
         Ok(true)
     }
-    pub fn scan_and_add_modules_in_folder(&mut self, folder: path::PathBuf, force_replace_in_registry: bool) {
+    pub fn scan_modules_in_folder(&mut self, folder: path::PathBuf, force_replace_in_registry: bool) {
         // Scan folders with .noscfg and .nossys files
         let pb = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
 
-        let module_manifests = scan_modules_in_folder(&folder, &pb);
+        let module_manifests = get_module_manifests(&folder, &pb);
         for (ty, path) in module_manifests {
             pb.set_message(format!("Scanning module: {}", path.display()));
             let file = match fs::File::open(&path) {
@@ -168,8 +168,8 @@ impl Workspace {
         }
         pb.finish_and_clear();
     }
-    pub fn scan_and_add_modules(&mut self, force_replace_in_registry: bool) {
-       self.scan_and_add_modules_in_folder(self.root.clone(), force_replace_in_registry);
+    pub fn scan_modules(&mut self, force_replace_in_registry: bool) {
+       self.scan_modules_in_folder(self.root.clone(), force_replace_in_registry);
     }
     pub fn rescan(directory: &path::PathBuf, fetch_index: bool) -> Result<Workspace, io::Error> {
         let mut existing_remotes = Vec::new();
@@ -195,7 +195,7 @@ impl Workspace {
             workspace.index_cache = existing_remote_index;
         }
 
-        workspace.scan_and_add_modules(true);
+        workspace.scan_modules(true);
 
         println!("Saving workspace...");
         workspace.save()?;

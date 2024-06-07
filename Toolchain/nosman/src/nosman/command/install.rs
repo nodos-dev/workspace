@@ -89,7 +89,7 @@ impl InstallCommand {
                 }
             }
 
-            workspace.scan_and_add_modules_in_folder(module_dir, replace_entry_in_index);
+            workspace.scan_modules_in_folder(module_dir, replace_entry_in_index);
 
             println!("Adding to workspace file");
             workspace.save()?;

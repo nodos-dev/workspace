@@ -84,7 +84,7 @@ pub fn get_module_manifest_file_in_folder(folder: &path::PathBuf) -> Result<Opti
     Ok(Some((ModuleType::Subsystem, subsystem_manifest_file.unwrap())))
 }
 
-pub fn scan_modules_in_folder(folder: &path::PathBuf, pb: &ProgressBar) -> Vec<(ModuleType, PathBuf)> {
+pub fn get_module_manifests(folder: &path::PathBuf, pb: &ProgressBar) -> Vec<(ModuleType, PathBuf)> {
     pb.set_message("Scanning modules");
     let mut module_manifest_files = vec![];
     let mut stack = vec![folder.clone()];
