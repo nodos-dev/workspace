@@ -12,7 +12,7 @@ pub struct InitCommand {
 
 impl InitCommand {
     fn run_init(&self) -> CommandResult {
-        let directory = nosman::workspace::current().unwrap();
+        let directory = nosman::workspace::current_root().unwrap();
         if let Some(ws) = find_root_from(&directory.to_path_buf()) {
             return Err(InvalidArgumentError { message: format!("Directory {} is already under a workspace: {}", directory.display(), ws.display())});
         }

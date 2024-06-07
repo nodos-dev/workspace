@@ -1,0 +1,11 @@
+{
+    "globs": [
+        "Engine/*/Binaries/**/*.{dll,exe,dylib,so,json}",
+        "Engine/*/SDK/**",
+        "Engine/*/Config/**",
+        "Engine/*/EULA_UNCONFIRMED.json",
+        "Module/README.md",
+        "Toolchain/CMake/**",
+        "/nosman.exe"
+    ]
+}

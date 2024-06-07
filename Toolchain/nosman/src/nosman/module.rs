@@ -1,7 +1,13 @@
 use serde::{Deserialize, Serialize};
-use std::{fmt, path};
+use std::{fmt, fs, path};
 use std::path::PathBuf;
-use crate::nosman::index::ModuleType;
+use std::time::Duration;
+use colored::Colorize;
+use indicatif::{ProgressBar, ProgressStyle};
+use crate::nosman::command::CommandError::InvalidArgumentError;
+use crate::nosman::constants;
+use crate::nosman::index::{ModuleType, PackageType};
+use crate::nosman::path::{get_plugin_manifest_file, get_rel_path_based_on, get_subsystem_manifest_file};
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub struct ModuleIdentifier {
@@ -53,4 +59,68 @@ impl fmt::Display for ModuleIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}-{}", self.name, self.version)
     }
+}
+
+pub fn get_module_manifest_file_in_folder(folder: &path::PathBuf) -> Result<Option<(ModuleType, PathBuf)>, String> {
+    let res = get_plugin_manifest_file(folder);
+    if res.is_err() {
+        return Err(res.err().unwrap());
+    }
+    let plugin_manifest_file = res.unwrap();
+    let res = get_subsystem_manifest_file(folder);
+    if res.is_err() {
+        return Err(res.err().unwrap());
+    }
+    let subsystem_manifest_file = res.unwrap();
+    if plugin_manifest_file.is_some() && subsystem_manifest_file.is_some() {
+        return Err(format!("Multiple module manifest files found in {}", folder.display()));
+    }
+    if plugin_manifest_file.is_none() && subsystem_manifest_file.is_none() {
+        return Ok(None);
+    }
+    if plugin_manifest_file.is_some() {
+        return Ok(Some((ModuleType::Plugin, plugin_manifest_file.unwrap())));
+    }
+    Ok(Some((ModuleType::Subsystem, subsystem_manifest_file.unwrap())))
+}
+
+pub fn scan_modules_in_folder(folder: &path::PathBuf, pb: &ProgressBar) -> Vec<(ModuleType, PathBuf)> {
+    pb.set_message("Scanning modules...");
+    let mut module_manifest_files = vec![];
+    let mut stack = vec![folder.clone()];
+    while let Some(current) = stack.pop() {
+        let entries = match fs::read_dir(&current) {
+            Ok(entries) => entries,
+            Err(e) => {
+                pb.println(format!("Error reading directory {:?}: {}", current, e.to_string().red()));
+                continue;
+            }
+        };
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(ref e) => {
+                    pb.println(format!("Error reading entry {:?}: {}",  &entry, e.to_string().red()));
+                    continue;
+                }
+            };
+            let path = entry.path();
+            if path.is_dir() {
+                let res = get_module_manifest_file_in_folder(&path);
+                if res.is_err() {
+                    pb.println(format!("{}", res.err().unwrap().yellow()));
+                    continue;
+                }
+                if let Some((ty, mpath)) = res.unwrap() {
+                    pb.set_message(format!("Found module manifest file: {:?}", mpath.file_name().unwrap()).to_string());
+                    module_manifest_files.push((ty, mpath));
+                }
+                else {
+                    pb.set_message("Scanning modules...");
+                    stack.push(path);
+                }
+            }
+        }
+    }
+    module_manifest_files
 }

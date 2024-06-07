@@ -16,7 +16,7 @@ struct SdkInfo {
 impl SdkInfoCommand {
     fn run_get_sdk_info(&self, requested_version: &str) -> CommandResult {
         // Search ./Engine directory under workspace dir and find the version.json with bin/ include/ folders in it
-        let workspace_dir = workspace::current().unwrap();
+        let workspace_dir = workspace::current_root().unwrap();
         let engines_dir = workspace_dir.join("Engine");
         if !engines_dir.exists() {
             return Err(crate::nosman::command::CommandError::InvalidArgumentError { message: "No Engine directory found in workspace".to_string() });

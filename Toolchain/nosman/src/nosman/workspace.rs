@@ -6,8 +6,9 @@ use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
+use crate::nosman::constants;
 use crate::nosman::index::{Index, ModuleType, Remote, SemVer};
-use crate::nosman::module::{InstalledModule};
+use crate::nosman::module::{InstalledModule, scan_modules_in_folder};
 use crate::nosman::path::{get_rel_path_based_on};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -16,7 +17,7 @@ pub struct Workspace {
     pub root: path::PathBuf,
     pub remotes: Vec<Remote>,
     pub installed_modules: HashMap<String, HashMap<String, InstalledModule>>,
-    pub index: Index,
+    pub index_cache: Index,
 }
 
 impl Workspace {
@@ -25,23 +26,33 @@ impl Workspace {
             root: path,
             remotes: Vec::new(),
             installed_modules: HashMap::new(),
-            index: Index { modules: HashMap::new() },
+            index_cache: Index { packages: HashMap::new() },
         }
     }
-    pub fn from_file(path: path::PathBuf) -> Result<Workspace, io::Error> {
-        let file = std::fs::File::open(&path)?;
+    pub fn from_root(path: &path::PathBuf) -> Result<Workspace, io::Error> {
+        let index_filepath = get_nosman_index_filepath_for(&path);
+        let file = std::fs::File::open(&index_filepath)?;
         let mut workspace: Workspace = serde_json::from_reader(file).unwrap();
-        workspace.root = dunce::canonicalize(path.parent().unwrap()).unwrap();
+        workspace.root = dunce::canonicalize(path).unwrap();
         Ok(workspace)
     }
+    pub fn get_remote_repo_dir(&self, remote: &Remote) -> path::PathBuf {
+        get_nosman_dir_for(&self.root).join("remote").join(remote.name.clone())
+    }
     pub fn get() -> Result<Workspace, io::Error> {
-        Workspace::from_file(current_nosman_file().unwrap())
+        Workspace::from_root(current_root().unwrap())
     }
     pub fn add_remote(&mut self, remote: Remote) {
         self.remotes.push(remote);
     }
+    pub fn find_remote(&self, name: &str) -> Option<&Remote> {
+        self.remotes.iter().find(|r| r.name == name)
+    }
     pub fn save(&self) -> Result<(), std::io::Error>{
-        let file = std::fs::File::create(&self.root.join(".nosman"))?;
+        if !get_nosman_dir_for(&self.root).exists() {
+            fs::create_dir(get_nosman_dir_for(&self.root))?;
+        }
+        let file = fs::File::create(get_nosman_index_filepath_for(&self.root))?;
         serde_json::to_writer_pretty(file, self)?;
         Ok(())
     }
@@ -103,123 +114,88 @@ impl Workspace {
         println!("{}", "All modules removed successfully".green());
         Ok(true)
     }
-    pub fn scan_folder(&mut self, folder: path::PathBuf, force_replace_in_registry: bool) {
+    pub fn scan_and_add_modules_in_folder(&mut self, folder: path::PathBuf, force_replace_in_registry: bool) {
         // Scan folders with .noscfg and .nossys files
-        let pb = ProgressBar::new(0);
-        pb.set_style(ProgressStyle::default_spinner()
-            .template("{spinner} {wide_msg}").unwrap());
-        pb.set_message("Scanning modules...");
+        let pb = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
 
-        let mut stack = vec![folder];
-        while let Some(current) = stack.pop() {
-            let entries = match std::fs::read_dir(&current) {
-                Ok(entries) => entries,
-                Err(e) => {
-                    eprintln!("Error reading directory {:?}: {}", current, e);
+        let module_manifests = scan_modules_in_folder(&folder, &pb);
+        for (ty, path) in module_manifests {
+            pb.set_message(format!("Scanning module: {}", path.display()));
+            let file = match fs::File::open(&path) {
+                Ok(file) => file,
+                Err(ref e) => {
+                    pb.set_message(format!("Error reading file {:?}: {}", path, e).as_str().red().to_string());
                     continue;
                 }
             };
-            for entry in entries {
-                let entry = match entry {
-                    Ok(entry) => entry,
-                    Err(e) => {
-                        eprintln!("Error reading entry: {}", e);
-                        continue;
-                    }
-                };
-                let path = entry.path();
-                if path.is_dir() {
-                    stack.push(path);
-                } else {
-                    let ext = match path.extension() {
-                        Some(ext) => ext,
-                        None => continue,
-                    };
-                    if ext == "noscfg" || ext == "nossys" {
-                        // Open file
-                        let file = match std::fs::File::open(&path) {
-                            Ok(file) => file,
-                            Err(e) => {
-                                eprintln!("Error reading file {:?}: {}", path, e);
-                                continue;
-                            }
-                        };
-                        // Parse file
-                        let mut installed_module: InstalledModule = InstalledModule::new(get_rel_path_based_on(&path, &self.root));
-                        let res: Result<serde_json::Value, serde_json::Error> = serde_json::from_reader(file);
-                        if let Err(e) = res {
-                            eprintln!("Error parsing file {:?}: {}", path, e);
-                            continue;
-                        }
-                        let module = res.unwrap();
-                        installed_module.info = serde_json::from_value(module["info"].clone()).unwrap();
+            // Parse file
+            let mut installed_module: InstalledModule = InstalledModule::new(get_rel_path_based_on(&path, &self.root));
+            let res: Result<serde_json::Value, serde_json::Error> = serde_json::from_reader(file);
+            if let Err(ref e) = res {
+                pb.println(format!("Error parsing file {:?}: {}", path, e).as_str().red().to_string());
+                continue;
+            }
+            let module = res.unwrap();
+            installed_module.info = serde_json::from_value(module["info"].clone()).unwrap();
 
-                        // Check custom_types field
-                        if let Some(custom_types) = module["custom_types"].as_array() {
-                            for custom_type_file in custom_types {
-                                installed_module.type_schema_files.push(get_rel_path_based_on(&path.parent().unwrap().join(custom_type_file.as_str().unwrap()).canonicalize().unwrap(), &self.root));
-                            }
-                        }
-
-                        // Check include folder
-                        if path.parent().unwrap().join("Include").exists() {
-                            installed_module.public_include_folder = Some(get_rel_path_based_on(&path.parent().unwrap().join("Include").canonicalize().unwrap(), &self.root));
-                        }
-
-                        pb.set_message(format!("Scanning modules: {}", installed_module.info.id));
-
-                        installed_module.module_type = if ext == "noscfg" {
-                            ModuleType::Plugin
-                        } else {
-                            ModuleType::Subsystem
-                        };
-
-                        let opt_found = self.get_installed_module(&installed_module.info.id.name, &installed_module.info.id.version);
-                        if opt_found.is_some() {
-                            let found = opt_found.unwrap();
-                            if force_replace_in_registry {
-                                pb.println(format!("Updating module entry in registry: {}. {} <=> {}", installed_module.info.id, path.display(), found.config_path.display()));
-                            } else {
-                                pb.println(format!("Duplicate module found: {}. {} <=> {}, skipping.", installed_module.info.id, path.display(), found.config_path.display()));
-                                continue;
-                            }
-                        }
-                        self.add(installed_module);
-                    }
+            // Check custom_types field
+            if let Some(custom_types) = module["custom_types"].as_array() {
+                for custom_type_file in custom_types {
+                    installed_module.type_schema_files.push(get_rel_path_based_on(&path.parent().unwrap().join(custom_type_file.as_str().unwrap()).canonicalize().unwrap(), &self.root));
                 }
             }
+
+            // Check include folder
+            if path.parent().unwrap().join("Include").exists() {
+                installed_module.public_include_folder = Some(get_rel_path_based_on(&path.parent().unwrap().join("Include").canonicalize().unwrap(), &self.root));
+            }
+
+            pb.set_message(format!("Scanning modules: {}", installed_module.info.id));
+            installed_module.module_type = ty;
+
+            let opt_found = self.get_installed_module(&installed_module.info.id.name, &installed_module.info.id.version);
+            if opt_found.is_some() {
+                let found = opt_found.unwrap();
+                if force_replace_in_registry {
+                    pb.println(format!("Updating module entry in registry: {}. {} <=> {}", installed_module.info.id, path.display(), found.config_path.display()));
+                } else {
+                    pb.println(format!("Duplicate module found: {}. {} <=> {}, skipping.", installed_module.info.id, path.display(), found.config_path.display()));
+                    continue;
+                }
+            }
+            self.add(installed_module);
         }
         pb.finish_and_clear();
     }
-    pub fn scan(&mut self, force_replace_in_registry: bool) {
-       self.scan_folder(self.root.clone(), force_replace_in_registry);
+    pub fn scan_and_add_modules(&mut self, force_replace_in_registry: bool) {
+       self.scan_and_add_modules_in_folder(self.root.clone(), force_replace_in_registry);
     }
     pub fn rescan(directory: &path::PathBuf, fetch_index: bool) -> Result<Workspace, io::Error> {
         let mut existing_remotes = Vec::new();
-        let mut existing_remote_index = Index { modules: HashMap::new() };
-        let res = Workspace::from_file(directory.join(".nosman"));
+        let mut existing_remote_index = Index { packages: HashMap::new() };
+        let res = Workspace::from_root(directory);
         if res.is_ok() {
             let existing_workspace = res.unwrap();
             existing_remotes = existing_workspace.remotes;
-            existing_remote_index = existing_workspace.index;
+            existing_remote_index = existing_workspace.index_cache;
         }
         let mut workspace = Workspace::new(directory.clone());
         if fetch_index {
             if existing_remotes.is_empty() {
-                workspace.add_remote(Remote::new("default", "https://raw.githubusercontent.com/mediaz/mediaz-directory/dev/all_modules.json"));
+                workspace.add_remote(Remote::new("default", constants::DEFAULT_PACKAGE_INDEX_REPO));
             } else {
                 workspace.remotes = existing_remotes;
             }
             let index = Index::fetch(&workspace);
-            workspace.index = index;
+            workspace.index_cache = index;
         } else {
             // Recover remotes
             workspace.remotes = existing_remotes;
-            workspace.index = existing_remote_index;
+            workspace.index_cache = existing_remote_index;
         }
 
-        workspace.scan(true);
+        workspace.scan_and_add_modules(true);
 
         println!("Saving workspace...");
         workspace.save()?;
@@ -230,10 +206,9 @@ impl Workspace {
 pub fn find_root_from(path: &path::PathBuf) -> Option<path::PathBuf> {
     let mut current = path.clone();
     loop {
-        if current.join(".nosman").exists() {
+        if get_nosman_index_filepath_for(&current).exists() {
             return Some(current);
         }
-
         if !current.pop() {
             break;
         }
@@ -243,17 +218,25 @@ pub fn find_root_from(path: &path::PathBuf) -> Option<path::PathBuf> {
 
 static WORKSPACE_ROOT: OnceLock<path::PathBuf> = OnceLock::new();
 
-pub fn set_current(path: path::PathBuf) {
+pub fn set_current_root(path: path::PathBuf) {
     WORKSPACE_ROOT.set(path).unwrap();
 }
 
-pub fn current<'a>() -> Option<&'a path::PathBuf> {
+pub fn current_root<'a>() -> Option<&'a path::PathBuf> {
     WORKSPACE_ROOT.get()
 }
 
-pub fn current_nosman_file<'a>() -> Option<path::PathBuf> {
-    match current() {
-        Some(root) => Some(root.join(".nosman")),
+pub fn get_nosman_dir_for(path: &path::PathBuf) -> path::PathBuf {
+    path.join(".nosman")
+}
+
+pub fn get_nosman_index_filepath_for(path: &path::PathBuf) -> path::PathBuf {
+    get_nosman_dir_for(path).join("index")
+}
+
+pub fn get_nosman_index_filepath<'a>() -> Option<path::PathBuf> {
+    match current_root() {
+        Some(root) => Some(get_nosman_index_filepath_for(root)),
         None => None,
     }
 }
