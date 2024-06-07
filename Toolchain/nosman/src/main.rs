@@ -278,7 +278,7 @@ fn main() {
             Some(command_args) => {
                 nosman::workspace::set_current_root(dunce::canonicalize(std::path::PathBuf::from(matches.get_one::<String>("workspace").unwrap())).unwrap());
                 if (*command).needs_workspace() {
-                    if !nosman::workspace::current_root().unwrap().join(".nosman").exists() {
+                    if !nosman::workspace::get_nosman_index_filepath().unwrap().exists() {
                         eprintln!("No workspace found in {:?}", matches.get_one::<String>("workspace").unwrap());
                         std::process::exit(1);
                     }

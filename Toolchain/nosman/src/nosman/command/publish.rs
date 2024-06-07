@@ -7,7 +7,7 @@ use colored::Colorize;
 use indicatif::ProgressBar;
 use libloading::{Library, library_filename, Symbol};
 use serde::{Deserialize, Serialize};
-use tempfile::tempdir;
+use tempfile::{tempdir};
 use zip::write::{SimpleFileOptions};
 
 use crate::nosman::command::{Command, CommandResult};
@@ -133,51 +133,58 @@ impl PublishCommand {
         }
         let name = name.unwrap();
         let version = version.unwrap() + version_suffix;
+        let tag = format!("{}-{}", name, version);
 
         let pb: ProgressBar = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
-        pb.println(format!("Publishing {}-{}", name, version).as_str().yellow().to_string());
-        pb.println("Following files will be included in the release:".yellow().to_string().as_str());
-        pb.set_message("Scanning files".to_string());
-        let mut files_to_release = vec![];
-        for glob in nospub.globs.iter() {
-            let walker = globwalk::GlobWalkerBuilder::from_patterns(path, &[glob])
-                .build()
-                .unwrap();
-            for entry in walker {
-                let entry = entry.unwrap();
-                if entry.file_type().is_dir() {
-                    continue;
-                }
-                let path = entry.path().to_path_buf();
-                pb.println(format!("\t{}", path.display()).as_str());
-                files_to_release.push(path);
-            }
-        }
-
+        pb.println(format!("Publishing {}", tag).as_str().yellow().to_string());
+        pb.set_message("Preparing release");
         let workspace = Workspace::get()?;
+
+        let mut artifact_file_path;
         let temp_dir = tempdir().unwrap();
-        // Zip the files
-        let tag = format!("{}-{}", name, version);
-        let zip_file_name = format!("{}.zip", tag);
-        let zip_file_path = temp_dir.path().join(&zip_file_name);
-        let file = File::create(&zip_file_path).unwrap();
-        let mut zip = zip::ZipWriter::new(file);
+        if path.is_dir() {
+            pb.println("Following files will be included in the release:".yellow().to_string().as_str());
+            pb.set_message("Scanning files".to_string());
+            let mut files_to_release = vec![];
+            for glob in nospub.globs.iter() {
+                let walker = globwalk::GlobWalkerBuilder::from_patterns(path, &[glob])
+                    .build()
+                    .unwrap();
+                for entry in walker {
+                    let entry = entry.unwrap();
+                    if entry.file_type().is_dir() {
+                        continue;
+                    }
+                    let path = entry.path().to_path_buf();
+                    pb.println(format!("\t{}", path.display()).as_str());
+                    files_to_release.push(path);
+                }
+            }
+            let zip_file_name = format!("{}.zip", tag);
+            let zip_file_path = temp_dir.path().join(&zip_file_name);
+            let file = File::create(&zip_file_path).unwrap();
+            let mut zip = zip::ZipWriter::new(file);
 
-        let options = SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated);
+            let options = SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
 
-        let mut buffer = Vec::new();
-        for file_path in files_to_release.iter() {
-            let mut file = File::open(file_path).unwrap();
-            pb.set_message(format!("Creating a release: {}", file_path.display()).as_str().to_string());
-            file.read_to_end(&mut buffer).unwrap();
-            zip.start_file(file_path.strip_prefix(path).unwrap().to_str().unwrap(), options).unwrap();
-            zip.write_all(&buffer).unwrap();
-            buffer.clear();
+            let mut buffer = Vec::new();
+            for file_path in files_to_release.iter() {
+                let mut file = File::open(file_path).unwrap();
+                pb.set_message(format!("Creating a release: {}", file_path.display()).as_str().to_string());
+                file.read_to_end(&mut buffer).unwrap();
+                zip.start_file(file_path.strip_prefix(path).unwrap().to_str().unwrap(), options).unwrap();
+                zip.write_all(&buffer).unwrap();
+                buffer.clear();
+            }
+
+            zip.finish().unwrap();
+            artifact_file_path = zip_file_path;
+        } else {
+            pb.set_message(format!("Creating a release: {}", path.display()).as_str().to_string());
+            artifact_file_path = path.clone();
         }
-
-        zip.finish().unwrap();
 
         // Create index entry for the release
         let remote = workspace.find_remote(remote_name);
@@ -188,7 +195,7 @@ impl PublishCommand {
 
         let release = PackageReleaseEntry {
             version: version.clone(),
-            url: format!("{}/releases/download/{}/{}", remote.url, tag, zip_file_name),
+            url: format!("{}/releases/download/{}/{}", remote.url, tag, artifact_file_path.file_name().unwrap().to_str().unwrap()),
             plugin_api_version: match package_type {
                 PackageType::Plugin => api_version.clone(),
                 _ => None
@@ -199,21 +206,21 @@ impl PublishCommand {
             },
             release_date: None,
         };
+        pb.finish_and_clear();
 
-        pb.println(format!("Adding package {} version {} release entry to remote {}", name, version, remote.name));
+        println!("Adding package {} version {} release entry to remote {}", name, version, remote.name);
         let res = remote.fetch_add(&dry_run, &workspace, &name, vendor, &package_type, release, publisher_name, publisher_email);
         if res.is_err() {
             return Err(GenericError { message: res.err().unwrap() });
         }
         let commit_sha = res.unwrap();
 
-        pb.println(format!("Uploading release {} for package {} version {} on remote {}", format!("{}-{}", name, version), name, version, remote.name));
-        let res = remote.create_gh_release(&dry_run, &workspace, &commit_sha, &name, &version, vec![zip_file_path]);
+        println!("Uploading release {} for package {} version {} on remote {}", format!("{}-{}", name, version), name, version, remote.name);
+        let res = remote.create_gh_release(&dry_run, &workspace, &commit_sha, &name, &version, vec![artifact_file_path]);
         if res.is_err() {
             return Err(GenericError { message: res.err().unwrap() });
         }
-        temp_dir.close().unwrap();
-        pb.println(format!("Release {} for package {} version {} on remote {} created successfully", format!("{}-{}", name, version), name, version, remote.name).as_str().green().to_string());
+        println!("{}", format!("Release {} for package {} version {} on remote {} created successfully", format!("{}-{}", name, version), name, version, remote.name).as_str().green().to_string());
         Ok(true)
     }
 }

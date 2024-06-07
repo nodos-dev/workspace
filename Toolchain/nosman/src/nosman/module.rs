@@ -85,7 +85,7 @@ pub fn get_module_manifest_file_in_folder(folder: &path::PathBuf) -> Result<Opti
 }
 
 pub fn scan_modules_in_folder(folder: &path::PathBuf, pb: &ProgressBar) -> Vec<(ModuleType, PathBuf)> {
-    pb.set_message("Scanning modules...");
+    pb.set_message("Scanning modules");
     let mut module_manifest_files = vec![];
     let mut stack = vec![folder.clone()];
     while let Some(current) = stack.pop() {
@@ -116,7 +116,7 @@ pub fn scan_modules_in_folder(folder: &path::PathBuf, pb: &ProgressBar) -> Vec<(
                     module_manifest_files.push((ty, mpath));
                 }
                 else {
-                    pb.set_message("Scanning modules...");
+                    pb.set_message("Scanning modules");
                     stack.push(path);
                 }
             }
