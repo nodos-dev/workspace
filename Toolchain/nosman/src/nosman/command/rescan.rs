@@ -2,7 +2,7 @@ use clap::ArgMatches;
 use colored::Colorize;
 use crate::nosman;
 use crate::nosman::command::{Command, CommandResult};
-use crate::nosman::workspace::Workspace;
+use crate::nosman::workspace::{RescanFlags, Workspace};
 
 pub struct RescanCommand {
 }
@@ -14,7 +14,12 @@ impl Command for RescanCommand {
 
     fn run(&self, args: &ArgMatches) -> CommandResult {
         let fetch_index = args.get_one::<bool>("fetch_index").unwrap();
-        Workspace::rescan(&nosman::workspace::current_root().unwrap(), fetch_index.clone())?;
+        let mut workspace = Workspace::get()?;
+        let mut flags = RescanFlags::ScanModules;
+        if *fetch_index {
+            flags |= RescanFlags::FetchPackageIndex;
+        }
+        workspace.rescan(flags)?;
         println!("{}", "Rescan completed".green());
         Ok(true)
     }

@@ -3,6 +3,7 @@ use std::{fs, io};
 use std::path::PathBuf;
 use std::process::Output;
 use std::time::Duration;
+use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 use crate::nosman::constants;
@@ -227,9 +228,17 @@ impl Remote {
                 return Err(format!("Failed to pull the remote repository: {}", output.err().unwrap().to_string()));
             }
         }
-        let res = fs::read_to_string(repo_dir.join(constants::PACKAGE_INDEX_ROOT_FILE));
+        let package_index_root_fp = repo_dir.join(constants::PACKAGE_INDEX_ROOT_FILE);
+        if !package_index_root_fp.exists() {
+            let res = fs::remove_dir_all(&repo_dir);
+            if let Err(e) = res {
+                return Err(format!("Unable to remove remote module index repo {}: {}", repo_dir.display(), e));
+            }
+            return self.fetch(workspace);
+        }
+        let res = fs::read_to_string(&package_index_root_fp);
         if let Err(e) = res {
-            return Err(format!("Failed to read remote package index: {}", e));
+            return Err(format!("Failed to read remote package index ({}): {}", package_index_root_fp.display(),  e));
         }
         let res = serde_json::from_str(&res.unwrap());
         if let Err(e) = res {
@@ -438,11 +447,9 @@ pub struct Index {
 
 impl Index {
     pub fn fetch(workspace: &Workspace) -> Index {
-        println!("Fetching package index...");
-        let pb = ProgressBar::new(0);
-        pb.set_style(ProgressStyle::default_spinner()
-            .template("{spinner} {wide_msg}").unwrap());
+        let pb = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
+        pb.println("Fetching package index");
         let mut index = Index {
             packages: HashMap::new(),
         };

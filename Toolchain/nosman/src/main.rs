@@ -109,7 +109,7 @@ fn main() {
             )
         )
         .subcommand(Command::new("create")
-            .about("Interactively create a plugin or subsystem module")
+            .about("Create a Nodos plugin or subsystem module")
             .arg(Arg::new("type")
                 .value_parser(clap::builder::PossibleValuesParser::new(["plugin", "subsystem"]))
                 .required(true)

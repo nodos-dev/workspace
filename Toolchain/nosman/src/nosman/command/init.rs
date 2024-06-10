@@ -5,7 +5,7 @@ use crate::nosman;
 use crate::nosman::command::{Command, CommandResult};
 
 use crate::nosman::command::CommandError::{InvalidArgumentError, IOError};
-use crate::nosman::workspace::{find_root_from, Workspace};
+use crate::nosman::workspace::{find_root_from, RescanFlags, Workspace};
 
 pub struct InitCommand {
 }
@@ -18,11 +18,8 @@ impl InitCommand {
         }
         println!("Creating a new workspace under {:?}", directory);
 
-        let res = Workspace::rescan(&directory, true);
-        if res.is_err() {
-            return Err(IOError{ file: directory.display().to_string(), message: format!("{}", res.err().unwrap()) });
-        }
-        let workspace = res.unwrap();
+        let workspace = Workspace::new(&directory)?;
+
         println!("{}", format!("Workspace initialized with {} modules", workspace.installed_modules.len()).as_str().green());
         Ok(true)
     }

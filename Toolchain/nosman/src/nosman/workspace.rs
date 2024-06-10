@@ -1,7 +1,10 @@
 use std::collections::{HashMap};
 use std::{fs, io, path};
+use std::cmp::PartialEq;
+use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::Duration;
+use bitflags::bitflags;
 use colored::Colorize;
 use indicatif::{ProgressBar};
 use serde::{Deserialize, Serialize};
@@ -20,8 +23,25 @@ pub struct Workspace {
     pub index_cache: Index,
 }
 
+#[derive(Clone, Copy)]
+pub struct RescanFlags(u8);
+
+bitflags! {
+    impl RescanFlags: u8 {
+        const ScanModules = 0b1;
+        const FetchPackageIndex = 0b10;
+        const AddDefaultPackageIndexIfNoRemoteExists = 0b100;
+    }
+}
+
+impl PartialEq<u8> for RescanFlags {
+    fn eq(&self, other: &u8) -> bool {
+        return self.bits() == *other;
+    }
+}
+
 impl Workspace {
-    pub fn new(path: path::PathBuf) -> Workspace {
+    pub fn new_empty(path: path::PathBuf) -> Workspace {
         Workspace {
             root: path,
             remotes: Vec::new(),
@@ -174,35 +194,32 @@ impl Workspace {
     pub fn scan_modules(&mut self, force_replace_in_registry: bool) {
        self.scan_modules_in_folder(self.root.clone(), force_replace_in_registry);
     }
-    pub fn rescan(directory: &path::PathBuf, fetch_index: bool) -> Result<Workspace, io::Error> {
-        let mut existing_remotes = Vec::new();
-        let mut existing_remote_index = Index { packages: HashMap::new() };
-        let res = Workspace::from_root(directory);
-        if res.is_ok() {
-            let existing_workspace = res.unwrap();
-            existing_remotes = existing_workspace.remotes;
-            existing_remote_index = existing_workspace.index_cache;
-        }
-        let mut workspace = Workspace::new(directory.clone());
-        if fetch_index {
-            if existing_remotes.is_empty() {
-                workspace.add_remote(Remote::new("default", constants::DEFAULT_PACKAGE_INDEX_REPO));
-            } else {
-                workspace.remotes = existing_remotes;
-            }
-            let index = Index::fetch(&workspace);
-            workspace.index_cache = index;
-        } else {
-            // Recover remotes
-            workspace.remotes = existing_remotes;
-            workspace.index_cache = existing_remote_index;
-        }
-
-        workspace.scan_modules(true);
-
-        println!("Saving workspace...");
+    pub fn new(directory: &PathBuf) -> Result<Workspace, CommandError> {
+        let mut workspace = Workspace::new_empty(directory.clone());
+        workspace.rescan(RescanFlags::all())?;
         workspace.save()?;
         Ok(workspace)
+    }
+    pub fn rescan(&mut self, flags: RescanFlags) -> CommandResult {
+        if flags.contains(RescanFlags::FetchPackageIndex) {
+            self.fetch_remotes((flags & RescanFlags::AddDefaultPackageIndexIfNoRemoteExists) == 1u8)?;
+        }
+        if flags.contains(RescanFlags::ScanModules) {
+            self.scan_modules(true);
+        }
+        self.save()?;
+        Ok(true)
+    }
+    pub fn fetch_remotes(&mut self, add_default_remote: bool) -> Result<(), io::Error>{
+        if self.remotes.is_empty() {
+            if add_default_remote {
+                self.add_remote(Remote::new("default", constants::DEFAULT_PACKAGE_INDEX_REPO));
+            } else {
+                return Ok(());
+            }
+        }
+        self.index_cache = Index::fetch(self);
+        self.save()
     }
 }
 
