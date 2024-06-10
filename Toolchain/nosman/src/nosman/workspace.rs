@@ -139,10 +139,10 @@ impl Workspace {
     }
     pub fn scan_modules_in_folder(&mut self, folder: path::PathBuf, force_replace_in_registry: bool) {
         // Scan folders with .noscfg and .nossys files
+        let module_manifests = get_module_manifests(&folder);
+
         let pb = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
-
-        let module_manifests = get_module_manifests(&folder, &pb);
         for (ty, path) in module_manifests {
             pb.set_message(format!("Scanning module: {}", path.display()));
             let file = match fs::File::open(&path) {

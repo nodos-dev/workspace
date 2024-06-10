@@ -1,5 +1,4 @@
-use std::{fs, path};
-use std::path::Path;
+use std::path::PathBuf;
 
 use clap::{ArgMatches};
 use colored::Colorize;
@@ -23,7 +22,7 @@ impl From<ZipError> for CommandError {
 }
 
 impl InstallCommand {
-    fn run_install(&self, module_name: &str, version: &str, exact: bool, output_dir: &path::PathBuf, prefix: Option<&String>) -> CommandResult {
+    fn run_install(&self, module_name: &str, version: &str, exact: bool, output_dir: &PathBuf, prefix: Option<&String>) -> CommandResult {
         // Fetch remotes
         let mut workspace = Workspace::get()?;
         if !exact {
@@ -94,7 +93,7 @@ impl Command for InstallCommand {
     fn run(&self, args: &ArgMatches) -> CommandResult {
         let module_name = args.get_one::<String>("module").unwrap();
         let version = args.get_one::<String>("version").unwrap();
-        let output_dir = args.get_one::<String>("out_dir").map(|p| path::PathBuf::from(p)).unwrap_or_else(|| path::PathBuf::from("."));
+        let output_dir = args.get_one::<String>("out_dir").map(|p| PathBuf::from(p)).unwrap_or_else(|| PathBuf::from("."));
         let prefix = args.get_one::<String>("prefix");
         let exact = args.get_one::<bool>("exact").unwrap().clone();
         self.run_install(module_name, version, exact, &output_dir, prefix)

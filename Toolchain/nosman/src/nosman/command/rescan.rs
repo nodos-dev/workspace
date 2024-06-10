@@ -1,6 +1,5 @@
 use clap::ArgMatches;
 use colored::Colorize;
-use crate::nosman;
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::workspace::{RescanFlags, Workspace};
 

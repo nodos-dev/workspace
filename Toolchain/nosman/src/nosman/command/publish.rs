@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path;
+use std::path::PathBuf;
 use std::time::Duration;
 use clap::{ArgMatches};
 use colored::Colorize;
@@ -19,16 +20,31 @@ use crate::nosman::workspace::Workspace;
 
 
 #[derive(Serialize, Deserialize, Debug)]
-struct PublishOptions {
+pub struct PublishOptions {
     #[serde(alias = "additional_globs")]
-    globs: Vec<String>
+    pub(crate) globs: Vec<String>
+}
+
+impl PublishOptions {
+    pub fn from_file(nospub_file: &PathBuf) -> (PublishOptions, bool) {
+        let mut nospub = PublishOptions { globs: vec![] };
+        let found = nospub_file.exists();
+        if found {
+            let contents = std::fs::read_to_string(&nospub_file).unwrap();
+            nospub = serde_json::from_str(&contents).unwrap();
+        }
+        else {
+            nospub.globs.push("**".to_string());
+        }
+        return (nospub, found);
+    }
 }
 
 pub struct PublishCommand {
 }
 
 impl PublishCommand {
-    fn run_publish(&self, dry_run: &bool, path: &path::PathBuf, mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
+    pub fn run_publish(&self, dry_run: &bool, path: &PathBuf, mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
                    mut package_type: Option<PackageType>, remote_name: &String, vendor: Option<&String>,
                    publisher_name: Option<&String>, publisher_email: Option<&String>) -> CommandResult {
         // Check if git and gh is installed.
@@ -113,14 +129,10 @@ impl PublishCommand {
                 }
             }
 
-            let nospub_file = path.join(constants::PUBLISH_OPTIONS_FILE_NAME);
-            if nospub_file.exists() {
-                let contents = std::fs::read_to_string(&nospub_file).unwrap();
-                nospub = serde_json::from_str(&contents).unwrap();
-            }
-            else {
+            let (options, found) = PublishOptions::from_file(&path.join(constants::PUBLISH_OPTIONS_FILE_NAME));
+            nospub = options;
+            if !found {
                 println!("{}", format!("No {} file found in {}. All files will be included in the release.", constants::PUBLISH_OPTIONS_FILE_NAME, path.display()).as_str().yellow());
-                nospub.globs.push("**".to_string());
             }
         }
         let package_type = package_type.unwrap();
@@ -141,7 +153,7 @@ impl PublishCommand {
         pb.set_message("Preparing release");
         let workspace = Workspace::get()?;
 
-        let mut artifact_file_path;
+        let artifact_file_path;
         let temp_dir = tempdir().unwrap();
         if path.is_dir() {
             pb.println("Following files will be included in the release:".yellow().to_string().as_str());

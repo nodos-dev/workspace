@@ -3,11 +3,9 @@ use std::{fmt, fs, path};
 use std::path::PathBuf;
 use std::time::Duration;
 use colored::Colorize;
-use indicatif::{ProgressBar, ProgressStyle};
-use crate::nosman::command::CommandError::InvalidArgumentError;
-use crate::nosman::constants;
-use crate::nosman::index::{ModuleType, PackageType};
-use crate::nosman::path::{get_plugin_manifest_file, get_rel_path_based_on, get_subsystem_manifest_file};
+use indicatif::{ProgressBar};
+use crate::nosman::index::{ModuleType};
+use crate::nosman::path::{get_plugin_manifest_file, get_subsystem_manifest_file};
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub struct ModuleIdentifier {
@@ -84,8 +82,11 @@ pub fn get_module_manifest_file_in_folder(folder: &path::PathBuf) -> Result<Opti
     Ok(Some((ModuleType::Subsystem, subsystem_manifest_file.unwrap())))
 }
 
-pub fn get_module_manifests(folder: &path::PathBuf, pb: &ProgressBar) -> Vec<(ModuleType, PathBuf)> {
-    pb.set_message("Scanning modules");
+pub fn get_module_manifests(folder: &PathBuf) -> Vec<(ModuleType, PathBuf)> {
+    let pb = ProgressBar::new_spinner();
+    pb.enable_steady_tick(Duration::from_millis(100));
+
+    pb.println(format!("Looking for Nodos modules in {:?}", folder).to_string());
     let mut module_manifest_files = vec![];
     let mut stack = vec![folder.clone()];
     while let Some(current) = stack.pop() {
@@ -116,7 +117,7 @@ pub fn get_module_manifests(folder: &path::PathBuf, pb: &ProgressBar) -> Vec<(Mo
                     module_manifest_files.push((ty, mpath));
                 }
                 else {
-                    pb.set_message("Scanning modules");
+                    pb.set_message(format!("Looking for Nodos modules in {:?}", path).to_string());
                     stack.push(path);
                 }
             }

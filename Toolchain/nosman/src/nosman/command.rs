@@ -16,7 +16,6 @@ use std::io;
 
 use clap::ArgMatches;
 use err_derive::Error;
-use zip::result::ZipError;
 
 #[derive(Debug, Error)]
 pub enum CommandError {

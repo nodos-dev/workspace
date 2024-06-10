@@ -4,8 +4,8 @@ use colored::Colorize;
 use crate::nosman;
 use crate::nosman::command::{Command, CommandResult};
 
-use crate::nosman::command::CommandError::{InvalidArgumentError, IOError};
-use crate::nosman::workspace::{find_root_from, RescanFlags, Workspace};
+use crate::nosman::command::CommandError::{InvalidArgumentError};
+use crate::nosman::workspace::{find_root_from, Workspace};
 
 pub struct InitCommand {
 }
