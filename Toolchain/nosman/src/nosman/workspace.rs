@@ -202,7 +202,7 @@ impl Workspace {
     }
     pub fn rescan(&mut self, flags: RescanFlags) -> CommandResult {
         if flags.contains(RescanFlags::FetchPackageIndex) {
-            self.fetch_remotes((flags & RescanFlags::AddDefaultPackageIndexIfNoRemoteExists) == 1u8)?;
+            self.fetch_remotes(flags.contains(RescanFlags::AddDefaultPackageIndexIfNoRemoteExists))?;
         }
         if flags.contains(RescanFlags::ScanModules) {
             self.scan_modules(true);
