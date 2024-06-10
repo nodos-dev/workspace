@@ -268,3 +268,7 @@ pub fn exists() -> bool {
     }
     res.unwrap().exists()
 }
+
+pub fn exists_in(path: &path::PathBuf) -> bool {
+    get_nosman_index_filepath_for(path).exists()
+}

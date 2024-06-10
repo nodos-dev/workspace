@@ -362,6 +362,8 @@ def package(dist_key, engine_folder, should_sign_binaries):
         exit(result.returncode)
     os.chdir(cwd)
 
+    shutil.rmtree(f"{STAGING_FOLDER}/.nosman/remote", ignore_errors=True)
+
     # Zip everything under staging
     shutil.make_archive(f"./Artifacts/Nodos-{major}.{minor}.{patch}.b{build_number}{f'-bundle-{dist_key}' if is_bundled else ''}", 'zip', f"{STAGING_FOLDER}")
 
