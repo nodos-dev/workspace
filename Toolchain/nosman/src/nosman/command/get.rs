@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;
 use clap::{ArgMatches};
@@ -54,34 +55,38 @@ impl GetCommand {
             return Err(InvalidArgumentError { message: format!("Package {} found in the index is not a Nodos package", nodos_name) });
         }
         let tmpdir = tempfile::tempdir()?;
-        let tmpdir_path = tmpdir.path().to_path_buf();
+        let downloaded_path = tmpdir.path().to_path_buf();
         pb.println(format!("Downloading and extracting {}-{}", nodos_name, release.version));
-        let res = download_and_extract(&release.url, &tmpdir_path);
+        let res = download_and_extract(&release.url, &downloaded_path);
         if res.is_err() {
             return Err(res.err().unwrap());
         }
         pb.println(format!("Installing {}-{}", nodos_name, release.version));
 
         // Get current executable's absolute path
-        let current_exe = std::env::current_exe()?;
+        let current_exe = std::env::current_exe().unwrap().canonicalize().unwrap();
 
         // Get all files in the path
-        let all = globwalk::GlobWalkerBuilder::from_patterns(&tmpdir_path, &["**"]).build().unwrap();
-        for entry in all {
+        let mut new_files = HashSet::new();
+        let glob_new = globwalk::GlobWalkerBuilder::from_patterns(&downloaded_path, &["**"]).min_depth(1).build().unwrap();
+        for entry in glob_new {
             let entry = entry.unwrap();
-            let path = entry.path();
-            let relative_path = path.strip_prefix(&tmpdir_path).unwrap();
-            let dest_path = path.join(&relative_path);
-            if path.is_dir() {
+            let curr_file_path = entry.path();
+            let relative_path = curr_file_path.strip_prefix(&downloaded_path).unwrap();
+            let dest_path = path.join(&relative_path).canonicalize().unwrap();
+            new_files.insert(dest_path.clone());
+            if curr_file_path.is_dir() {
                 // Create dir if it doesn't exist
                 std::fs::create_dir_all(&dest_path)?;
                 continue;
             }
             // If file is same as current executable, use self_replace
             if dest_path == current_exe {
-                let res = self_replace::self_replace(&path);
+                pb.println("Updating nosman");
+                let res = self_replace::self_replace(&curr_file_path);
                 if res.is_err() {
-                    return Err(InvalidArgumentError { message: format!("Error replacing executable: {}", res.err().unwrap()) });
+                    pb.finish_and_clear();
+                    return Err(IOError { file: dest_path.display().to_string(), message: format!("Error replacing executable: {}", res.err().unwrap()) });
                 }
                 continue;
             }
@@ -89,38 +94,33 @@ impl GetCommand {
             if dest_path.exists() {
                 let res = std::fs::remove_file(&dest_path);
                 if res.is_err() {
-                    // Initialize the system struct
-                    let mut system = System::new_all();
-                    system.refresh_all();
-
-                    // Iterate over all processes
-                    for (pid, process) in system.processes() {
-                        // Check if the process has the file open
-                        if process.cmd().iter().any(|arg| arg == dest_path.to_str().unwrap()) {
-                            // Kill the process
-                            let res = process.kill();
-                            if !res {
-                                return Err(IOError { file: dest_path.display().to_string(), message: format!("Unable to kill process: {}", pid.to_string()) });
-                            }
-                        }
-                    }
-                    // Try removing the file again
-                    let res = std::fs::remove_file(&dest_path);
-                    if res.is_err() {
-                        return Err(IOError { file: dest_path.display().to_string(), message: format!("Unable to remove: {}", res.err().unwrap()) });
-                    }
+                    pb.finish_and_clear();
+                    return Err(IOError { file: dest_path.display().to_string(), message: format!("Unable to remove file: {}", res.err().unwrap()) });
                 }
             }
-            std::fs::copy(&path, &dest_path)?;
+            pb.set_message(format!("Copying: {}", dest_path.display()));
+            std::fs::copy(curr_file_path, &dest_path)?;
         }
 
-        //
-        // // Remove all files in the path
-        // if path.exists() {
-        //     std::fs::remove_dir_all(&path)?;
-        // }
-        // std::fs::create_dir_all(&path)?;
-        // std::fs::rename(tmpdir_path, path)?;
+        // Remove files that are not in the downloaded package
+        let glob_prev = globwalk::GlobWalkerBuilder::from_patterns(&path, &["**"]).min_depth(1).build().unwrap();
+        for entry in glob_prev {
+            let entry = entry.unwrap();
+            let curr_file_path = entry.path().to_path_buf().canonicalize().unwrap();
+            if !new_files.contains(&curr_file_path) {
+                pb.println(format!("Removing: {}", curr_file_path.display()));
+                let res;
+                if curr_file_path.is_dir() {
+                    res = std::fs::remove_dir_all(&curr_file_path);
+                } else {
+                    res = std::fs::remove_file(&curr_file_path);
+                }
+                if res.is_err() {
+                    pb.finish_and_clear();
+                    return Err(IOError { file: curr_file_path.display().to_string(), message: format!("Unable to remove leftover file: {}", res.err().unwrap()) });
+                }
+            }
+        }
 
         Ok(true)
     }
