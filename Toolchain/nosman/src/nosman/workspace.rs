@@ -10,7 +10,7 @@ use indicatif::{ProgressBar};
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::constants;
-use crate::nosman::index::{Index, Remote, SemVer};
+use crate::nosman::index::{Index, PackageIndexEntry, PackageReleases, Remote, SemVer};
 use crate::nosman::module::{InstalledModule, get_module_manifests};
 use crate::nosman::path::{get_rel_path_based_on};
 
@@ -220,6 +220,43 @@ impl Workspace {
         }
         self.index_cache = Index::fetch(self);
         self.save()
+    }
+    pub fn fetch_package_releases(&mut self, package_name: &String) {
+        let pb = ProgressBar::new_spinner();
+        pb.enable_steady_tick(Duration::from_millis(100));
+        pb.set_message(format!("Fetching package index for {}", package_name));
+        for remote in &self.remotes {
+            pb.set_message(format!("Fetching remote {}", remote.name));
+            let res = remote.fetch(&self);
+            if let Err(e) = res {
+                pb.println(format!("Failed to fetch remote: {}", e));
+                continue;
+            }
+            let package_list: Vec<PackageIndexEntry> = res.unwrap();
+            pb.println(format!("Fetched {} packages from remote {}", package_list.len(), remote.name));
+            // For each module in list
+            for package in package_list {
+                if package.name != *package_name {
+                    continue;
+                }
+                let res = reqwest::blocking::get(&package.releases_url);
+                if let Err(e) = res {
+                    pb.println(format!("Failed to fetch package releases for {}: {}", package_name, e));
+                    continue;
+                }
+                let res = res.unwrap().json();
+                if let Err(e) = res {
+                    pb.println(format!("Failed to parse package releases for {}: {}", package_name, e));
+                    continue;
+                }
+                let versions: PackageReleases = res.unwrap();
+                pb.set_message(format!("Remote {}: Found {} releases for package {}", remote.name, versions.releases.len(), versions.name));
+                // For each version in list
+                for release in versions.releases {
+                    self.index_cache.add_package(&versions.name, package.package_type.clone(), release);
+                }
+            }
+        }
     }
 }
 

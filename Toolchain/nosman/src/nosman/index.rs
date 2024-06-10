@@ -25,10 +25,10 @@ pub enum PackageType {
 pub struct PackageIndexEntry {
     pub(crate) name: String,
     #[serde(rename = "url")]
-    releases_url: String,
+    pub(crate) releases_url: String,
     vendor: String,
     #[serde(rename = "type")]
-    package_type: PackageType,
+    pub(crate) package_type: PackageType,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
@@ -466,12 +466,12 @@ impl Index {
             for package in package_list {
                 let res = reqwest::blocking::get(&package.releases_url);
                 if let Err(e) = res {
-                    pb.println(format!("Failed to fetch package releases: {}", e));
+                    pb.println(format!("Failed to fetch package releases for {}: {}", package.name, e));
                     continue;
                 }
                 let res = res.unwrap().json();
                 if let Err(e) = res {
-                    pb.println(format!("Failed to parse package releases: {}", e));
+                    pb.println(format!("Failed to parse package releases for {}: {}", package.name, e));
                     continue;
                 }
                 let versions: PackageReleases = res.unwrap();

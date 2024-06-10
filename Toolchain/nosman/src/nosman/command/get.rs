@@ -17,7 +17,7 @@ pub struct GetCommand {
 }
 
 impl GetCommand {
-    fn run_get(&self, path: &PathBuf, nodos_name: &String, version: Option<&String>, fetch_index_if_not_found: bool) -> CommandResult {
+    fn run_get(&self, path: &PathBuf, nodos_name: &String, version: Option<&String>, fetch_index: bool) -> CommandResult {
         // If not under a workspace, init
         if !workspace::exists_in(path) {
             println!("No workspace found, initializing one under {:?}", path);
@@ -30,8 +30,16 @@ impl GetCommand {
         let pb: ProgressBar = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
         pb.set_message(format!("Getting {}", nodos_name));
-
         let mut workspace = Workspace::get()?;
+
+        if fetch_index {
+            pb.println("Updating index");
+            pb.finish_and_clear();
+            workspace.fetch_package_releases(nodos_name);
+            workspace.save()?;
+            return self.run_get(path, nodos_name, version, false)
+        }
+
         let res;
         if let Some(version) = version {
             let version_start = SemVer::parse_from_string(version).unwrap();
@@ -45,17 +53,10 @@ impl GetCommand {
             res = workspace.index_cache.get_latest_release(nodos_name);
         }
         if res.is_none() {
-            return if fetch_index_if_not_found {
-                pb.println("Updating index");
-                pb.finish_and_clear();
-                workspace.fetch_remotes(false)?;
-                self.run_get(path, nodos_name, version, false)
+            return if version.is_none() {
+                Err(InvalidArgumentError { message: format!("No release found for {}", nodos_name) })
             } else {
-                if version.is_none() {
-                    Err(InvalidArgumentError { message: format!("No release found for {}", nodos_name) })
-                } else {
-                    Err(InvalidArgumentError { message: format!("No release found for {} version {}", nodos_name, version.unwrap()) })
-                }
+                Err(InvalidArgumentError { message: format!("No release found for {} version {}", nodos_name, version.unwrap()) })
             }
         }
         let (package_type, release) = res.unwrap();
