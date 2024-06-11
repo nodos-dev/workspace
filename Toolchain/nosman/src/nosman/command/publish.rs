@@ -72,6 +72,7 @@ impl PublishCommand {
         let mut api_version: Option<SemVer> = None;
 
         // If path is a directory, search for a manifest file
+        let mut manifest_file = None;
         if path.is_dir() {
             let res = get_plugin_manifest_file(path);
             if res.is_err() {
@@ -93,14 +94,14 @@ impl PublishCommand {
                 package_type = Some(PackageType::Subsystem);
             }
 
-            let manifest_file = plugin_manifest_file.or(subsystem_manifest_file);
+            manifest_file = plugin_manifest_file.or(subsystem_manifest_file);
             if manifest_file.is_some() {
                 let package_type = package_type.as_ref().unwrap();
-                let manifest_file = manifest_file.unwrap();
-                let contents = std::fs::read_to_string(&manifest_file).unwrap();
+                let manifest_file = manifest_file.as_ref().unwrap();
+                let contents = std::fs::read_to_string(manifest_file).unwrap();
                 let manifest: serde_json::Value = serde_json::from_str(&contents).unwrap();
-                name = Some(manifest["info"]["id"]["name"].as_str().unwrap().to_string());
-                version = Some(manifest["info"]["id"]["version"].as_str().unwrap().to_string());
+                name = Some(manifest["info"]["id"]["name"].as_str().expect(format!("Module manifest file {:?} must contain info.id.name field!", manifest_file).as_str()).to_string());
+                version = Some(manifest["info"]["id"]["version"].as_str().expect(format!("Module manifest file {:?} must contain info.id.version field!", manifest_file).as_str()).to_string());
                 let binary_path = manifest["binary_path"].as_str();
                 if binary_path.is_some() {
                     // Binary path is relative to the manifest file
@@ -186,6 +187,15 @@ impl PublishCommand {
                 let mut file = File::open(file_path).unwrap();
                 pb.set_message(format!("Creating a release: {}", file_path.display()).as_str().to_string());
                 file.read_to_end(&mut buffer).unwrap();
+                // If this is the manifest file, update the version
+                if let Some(m) = &manifest_file {
+                    if file_path == m {
+                        let mut manifest: serde_json::Value = serde_json::from_slice(&buffer).unwrap();
+                        manifest["info"]["id"]["version"] = serde_json::Value::String(version.clone());
+                        pb.println(format!("Updated version to {} in manifest file: {}", version.clone(), m.display()).as_str());
+                        buffer = serde_json::to_vec_pretty(&manifest).unwrap();
+                    }
+                }
                 zip.start_file(file_path.strip_prefix(path).unwrap().to_str().unwrap(), options).unwrap();
                 zip.write_all(&buffer).unwrap();
                 buffer.clear();
