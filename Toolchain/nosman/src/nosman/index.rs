@@ -371,19 +371,6 @@ impl Remote {
                 return Err(format!("Failed to commit to the remote repository: {}", output.err().unwrap().to_string()));
             }
         }
-        // Get commit SHA
-        let res = run_if_not(dry_run, std::process::Command::new("git")
-            .current_dir(&repo_dir)
-            .arg("rev-parse")
-            .arg("HEAD"));
-        let mut commit_sha = "COMMIT_SHA_DRY_RUN".to_string();
-        if res.is_some() {
-            let output = res.unwrap();
-            if output.is_err() {
-                return Err(format!("Failed to get commit SHA from the remote repository: {}", output.err().unwrap().to_string()));
-            }
-            commit_sha = String::from_utf8(output.unwrap().stdout).unwrap().trim().to_string();
-        }
 
         // If push fails, pull with rebase first and then push
         let res = run_if_not(dry_run, std::process::Command::new("git")
@@ -411,6 +398,21 @@ impl Remote {
                 return Err(format!("Failed to publish: {}", output.err().unwrap().to_string()));
             }
         }
+
+        // Get commit SHA
+        let res = run_if_not(dry_run, std::process::Command::new("git")
+            .current_dir(&repo_dir)
+            .arg("rev-parse")
+            .arg("HEAD"));
+        let mut commit_sha = "COMMIT_SHA_DRY_RUN".to_string();
+        if res.is_some() {
+            let output = res.unwrap();
+            if output.is_err() {
+                return Err(format!("Failed to get commit SHA from the remote repository: {}", output.err().unwrap().to_string()));
+            }
+            commit_sha = String::from_utf8(output.unwrap().stdout).unwrap().trim().to_string();
+        }
+
         return Ok(commit_sha);
     }
     pub fn create_gh_release(&self, dry_run: &bool, workspace: &Workspace, commit_sha: &String, name: &String, version: &String, artifacts: Vec<PathBuf>) -> Result<(), String> {
