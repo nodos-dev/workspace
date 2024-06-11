@@ -87,6 +87,13 @@ pub fn get_module_manifests(folder: &PathBuf) -> Vec<(ModuleType, PathBuf)> {
     pb.enable_steady_tick(Duration::from_millis(100));
 
     pb.println(format!("Looking for Nodos modules in {:?}", folder).to_string());
+    let res = get_module_manifest_file_in_folder(&folder);
+    if res.is_ok() {
+        if let Some((ty, mpath)) = res.unwrap() {
+            return vec![(ty, mpath)];
+        }
+    }
+
     let mut module_manifest_files = vec![];
     let mut stack = vec![folder.clone()];
     while let Some(current) = stack.pop() {

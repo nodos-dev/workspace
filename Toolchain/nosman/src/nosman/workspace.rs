@@ -160,7 +160,7 @@ impl Workspace {
                 continue;
             }
             let module = res.unwrap();
-            installed_module.info = serde_json::from_value(module["info"].clone()).unwrap();
+            installed_module.info = serde_json::from_value(module["info"].clone()).expect(format!("Failed to parse module info from {}", path.display()).as_str());
 
             // Check custom_types field
             if let Some(custom_types) = module["custom_types"].as_array() {
@@ -189,7 +189,6 @@ impl Workspace {
             }
             self.add(installed_module);
         }
-        pb.finish_and_clear();
     }
     pub fn scan_modules(&mut self, force_replace_in_registry: bool) {
        self.scan_modules_in_folder(self.root.clone(), force_replace_in_registry);

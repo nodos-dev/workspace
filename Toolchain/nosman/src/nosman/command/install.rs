@@ -38,7 +38,7 @@ impl InstallCommand {
             } else {
                 println!("{}", format!("No installed version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), module_name).as_str().yellow());
                 if let Some((package_type, release)) = workspace.index_cache.get_latest_compatible_release_within_range(module_name, &version_start, &version_end) {
-                    if *package_type != PackageType::Plugin || *package_type != PackageType::Subsystem {
+                    if *package_type != PackageType::Plugin && *package_type != PackageType::Subsystem {
                         return Err(InvalidArgumentError { message: format!("Package {} found in the index is not a plugin or subsystem", module_name) });
                     }
                     self.run_install(module_name, &release.version, true, output_dir, prefix)
