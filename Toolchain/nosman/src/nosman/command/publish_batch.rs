@@ -22,6 +22,8 @@ impl PublishBatchCommand {
             return Err(InvalidArgumentError { message: format!("Repo {} does not exist", repo_path.display()) });
         }
 
+        let repo_path = dunce::canonicalize(repo_path).expect(format!("Failed to canonicalize repo path: {}", repo_path.display()).as_str());
+
         let mut changed_files_opt: Option<Vec<PathBuf>> = None;
         if let Some(reference) = compare_with {
             println!("Checking for changes between {} and HEAD", reference);
@@ -30,7 +32,7 @@ impl PublishBatchCommand {
                 .arg("diff")
                 .arg("--name-only")
                 .arg(format!("{}..{}", reference, "HEAD"))
-                .current_dir(repo_path)
+                .current_dir(&repo_path)
                 .output()
                 .expect("Failed to execute git diff");
             if !output.status.success() {
@@ -49,10 +51,10 @@ impl PublishBatchCommand {
 
         // Find all modules in the repo
         let mut to_be_published: Vec<PathBuf> = vec![];
-        let module_manifests = get_module_manifests(repo_path);
+        let module_manifests = get_module_manifests(&repo_path);
         for (_module_type, manifest_file_path) in module_manifests {
             let parent = manifest_file_path.parent().unwrap();
-            let relative_path = parent.strip_prefix(repo_path).unwrap();
+            let relative_path = parent.strip_prefix(&repo_path).unwrap();
             let (nospub, found) = PublishOptions::from_file(&parent.join(constants::PUBLISH_OPTIONS_FILE_NAME));
             if !found {
                 println!("{}", format!("Module at {} does not contain a {} file, skipping release", relative_path.display(), constants::PUBLISH_OPTIONS_FILE_NAME).dimmed());

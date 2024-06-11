@@ -67,6 +67,8 @@ impl PublishCommand {
             return Err(InvalidArgumentError { message: format!("Path {} does not exist", path.display()) });
         }
 
+        let path = dunce::canonicalize(path).expect(format!("Failed to canonicalize path: {}", path.display()).as_str());
+
         let mut nospub = PublishOptions { globs: vec![] };
 
         let mut api_version: Option<SemVer> = None;
@@ -74,12 +76,12 @@ impl PublishCommand {
         // If path is a directory, search for a manifest file
         let mut manifest_file = None;
         if path.is_dir() {
-            let res = get_plugin_manifest_file(path);
+            let res = get_plugin_manifest_file(&path);
             if res.is_err() {
                 return Err(InvalidArgumentError { message: res.err().unwrap() });
             }
             let plugin_manifest_file = res.unwrap();
-            let res = get_subsystem_manifest_file(path);
+            let res = get_subsystem_manifest_file(&path);
             if res.is_err() {
                 return Err(InvalidArgumentError { message: res.err().unwrap() });
             }
@@ -161,7 +163,7 @@ impl PublishCommand {
             pb.set_message("Scanning files".to_string());
             let mut files_to_release = vec![];
             for glob in nospub.globs.iter() {
-                let walker = globwalk::GlobWalkerBuilder::from_patterns(path, &[glob])
+                let walker = globwalk::GlobWalkerBuilder::from_patterns(&path, &[glob])
                     .build()
                     .unwrap();
                 for entry in walker {
@@ -196,7 +198,7 @@ impl PublishCommand {
                         buffer = serde_json::to_vec_pretty(&manifest).unwrap();
                     }
                 }
-                zip.start_file(file_path.strip_prefix(path).unwrap().to_str().unwrap(), options).unwrap();
+                zip.start_file(file_path.strip_prefix(&path).unwrap().to_str().unwrap(), options).unwrap();
                 zip.write_all(&buffer).unwrap();
                 buffer.clear();
             }
