@@ -327,6 +327,18 @@ def package(dist_key, engine_folder, should_sign_binaries):
     # SDK
     shutil.copytree(sdk_dir, f"{engine_dist_folder}/SDK")
     
+    # Call nosman init
+    cwd = os.getcwd()
+    os.chdir(STAGING_FOLDER)
+    logger.info("Running nosman init")
+    result = run(["nosman", "init"], stdout=stdout, stderr=stderr, universal_newlines=True)
+    if result.returncode != 0:
+        logger.error(f"nosman init returned with {result.returncode}")
+        exit(result.returncode)
+    os.chdir(cwd)
+
+    shutil.rmtree(f"{STAGING_FOLDER}/.nosman/remote", ignore_errors=True)
+
     # Zip SDK only release
     sdk_zip_name = f"Nodos-SDK-{major}.{minor}.{patch}.b{build_number}"
     shutil.make_archive(f"./Artifacts/{sdk_zip_name}", 'zip', f"{STAGING_FOLDER}")
@@ -351,18 +363,6 @@ def package(dist_key, engine_folder, should_sign_binaries):
 
     with open(engine_settigns_path, "w") as f:
         json.dump(engine_settings, f, indent=2)
-
-    # Call nosman init
-    cwd = os.getcwd()
-    os.chdir(STAGING_FOLDER)
-    logger.info("Running nosman init")
-    result = run(["nosman", "init"], stdout=stdout, stderr=stderr, universal_newlines=True)
-    if result.returncode != 0:
-        logger.error(f"nosman init returned with {result.returncode}")
-        exit(result.returncode)
-    os.chdir(cwd)
-
-    shutil.rmtree(f"{STAGING_FOLDER}/.nosman/remote", ignore_errors=True)
 
     # Zip everything under staging
     shutil.make_archive(f"./Artifacts/Nodos-{major}.{minor}.{patch}.b{build_number}{f'-bundle-{dist_key}' if is_bundled else ''}", 'zip', f"{STAGING_FOLDER}")

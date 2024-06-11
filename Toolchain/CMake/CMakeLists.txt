@@ -142,7 +142,7 @@ else()
 	message(STATUS "Found nosman at ${NOSMAN_EXECUTABLE}")
 endif()
 
-if (NOT EXISTS "${NOSMAN_WORKSPACE_DIR}/.nosman")
+if (NOT EXISTS "${NOSMAN_WORKSPACE_DIR}/.nosman/index")
 	message(STATUS "Initializing workspace at ${NOSMAN_WORKSPACE_DIR}")
 	execute_process(
 		COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" init
