@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::{fs, io};
+use std::{fs};
 use std::path::PathBuf;
 use std::process::Output;
 use std::time::Duration;
@@ -165,7 +165,7 @@ pub struct PackageReleases {
     pub(crate) releases: Vec<PackageReleaseEntry>,
 }
 
-pub fn run_if_not(dry_run: bool, verbose: bool, cmd: &mut std::process::Command) -> Option<Result<Output, io::Error>> {
+pub fn run_if_not(dry_run: bool, verbose: bool, cmd: &mut std::process::Command) -> Option<Output> {
     if dry_run {
         println!("Would run: {:?}", cmd);
         None
@@ -181,7 +181,7 @@ pub fn run_if_not(dry_run: bool, verbose: bool, cmd: &mut std::process::Command)
                          String::from_utf8_lossy(if output.status.success() { &output.stdout } else { &output.stderr }));
             }
         }
-        Some(res)
+        Some(res.expect(format!("Failed to run command {:?}", cmd).as_str()))
     }
 }
 
@@ -317,29 +317,27 @@ impl Remote {
         }
 
         // Set author email and name
-        if publisher_name.is_some() {
+        if let Some(user_name) = publisher_name {
             let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
                 .current_dir(&repo_dir)
                 .arg("config")
                 .arg("user.name")
-                .arg(publisher_name.unwrap()));
-            if res.is_some() {
-                let output = res.unwrap();
-                if output.is_err() {
-                    return Err(format!("Failed to set user name: {}", output.err().unwrap().to_string()));
+                .arg(user_name));
+            if let Some(output) = res {
+                if !output.status.success() {
+                    return Err(format!("Failed to set user name: {}", String::from_utf8_lossy(&output.stderr)));
                 }
             }
         }
-        if publisher_email.is_some() {
+        if let Some(user_email) = publisher_email {
             let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
                 .current_dir(&repo_dir)
                 .arg("config")
                 .arg("user.email")
-                .arg(publisher_email.unwrap()));
-            if res.is_some() {
-                let output = res.unwrap();
-                if output.is_err() {
-                    return Err(format!("Failed to set user email: {}", output.err().unwrap().to_string()));
+                .arg(user_email));
+            if let Some(output) = res {
+                if !output.status.success() {
+                    return Err(format!("Failed to set user email: {}", String::from_utf8_lossy(&output.stderr)));
                 }
             }
         }
@@ -364,10 +362,9 @@ impl Remote {
             .current_dir(&repo_dir)
             .arg("add")
             .arg("."));
-        if res.is_some() {
-            let output = res.unwrap();
-            if output.is_err() {
-                return Err(format!("Failed to add files to the remote repository: {}", output.err().unwrap().to_string()));
+        if let Some(output) = res {
+            if !output.status.success() {
+                return Err(format!("Failed to add files to the remote repository: {}", String::from_utf8_lossy(&output.stderr)));
             }
         }
 
@@ -376,10 +373,9 @@ impl Remote {
             .arg("commit")
             .arg("-m")
             .arg(format!("Add package {} version {}", name, version)));
-        if res.is_some() {
-            let output = res.unwrap();
-            if output.is_err() {
-                return Err(format!("Failed to commit to the remote repository: {}", output.err().unwrap().to_string()));
+        if let Some(output) = res {
+            if !output.status.success() {
+                return Err(format!("Failed to commit to the remote repository: {}", String::from_utf8_lossy(&output.stderr)));
             }
         }
 
@@ -390,23 +386,22 @@ impl Remote {
         if res.is_some() {
             let mut output = res.unwrap();
             let mut tries = 3;
-            while output.is_err() && tries > 0 {
-                output = std::process::Command::new("git")
+            while !output.status.success() && tries > 0 {
+                output = run_if_not(false, verbose, std::process::Command::new("git")
                     .current_dir(&repo_dir)
                     .arg("pull")
-                    .arg("--rebase")
-                    .output();
-                if output.is_err() {
-                    return Err(format!("Failed to pull with rebase from the remote repository: {}. If there were conflicts, manually solve them under {}.", output.err().unwrap().to_string(), repo_dir.display()));
+                    .arg("--rebase")).unwrap();
+                if !output.status.success() {
+                    return Err(format!("Failed to pull with rebase from the remote {}. If there were conflicts, manually solve them under {}.", self.name, repo_dir.display()));
                 }
-                output = std::process::Command::new("git")
-                    .current_dir(&repo_dir)
-                    .arg("push")
-                    .output();
+                output = run_if_not(false, verbose,
+                                    std::process::Command::new("git")
+                                        .current_dir(&repo_dir)
+                                        .arg("push")).unwrap();
                 tries -= 1;
             }
-            if output.is_err() {
-                return Err(format!("Failed to publish: {}", output.err().unwrap().to_string()));
+            if !output.status.success() {
+                return Err(format!("Failed to publish: {}", String::from_utf8_lossy(&output.stderr)));
             }
         }
 
@@ -416,15 +411,14 @@ impl Remote {
             .arg("rev-parse")
             .arg("HEAD"));
         let mut commit_sha = "COMMIT_SHA_DRY_RUN".to_string();
-        if res.is_some() {
-            let output = res.unwrap();
-            if output.is_err() {
-                return Err(format!("Failed to get commit SHA from the remote repository: {}", output.err().unwrap().to_string()));
+        if let Some(output) = res {
+            if !output.status.success() {
+                return Err(format!("Failed to get commit SHA from the remote repository: {}", String::from_utf8_lossy(&output.stderr)));
             }
-            commit_sha = String::from_utf8(output.unwrap().stdout).unwrap().trim().to_string();
+            commit_sha = String::from_utf8(output.stdout).unwrap().trim().to_string();
         }
 
-        return Ok(commit_sha);
+       Ok(commit_sha)
     }
     pub fn create_gh_release(&self, dry_run: bool, verbose: bool, workspace: &Workspace, commit_sha: &String, name: &String, version: &String, artifacts: Vec<PathBuf>) -> Result<(), String> {
         let repo_dir = workspace.get_remote_repo_dir(&self);
@@ -442,10 +436,9 @@ impl Remote {
             .arg("--target")
             .arg(commit_sha)
             .args(artifacts.iter().map(|p| p.to_str().unwrap())));
-        if res.is_some() {
-            let output = res.unwrap();
-            if output.is_err() {
-                return Err(format!("Failed to create release: {}", output.err().unwrap().to_string()));
+        if let Some(output) = res {
+            if !output.status.success() {
+                return Err(format!("Failed to create release: {}", String::from_utf8_lossy(&output.stderr)));
             }
         }
         Ok(())
