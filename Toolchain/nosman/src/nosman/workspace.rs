@@ -1,5 +1,5 @@
 use std::collections::{HashMap};
-use std::{fs, io, path};
+use std::{fs, io};
 use std::cmp::PartialEq;
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -12,12 +12,12 @@ use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::constants;
 use crate::nosman::index::{Index, PackageIndexEntry, PackageReleases, Remote, SemVer};
 use crate::nosman::module::{InstalledModule, get_module_manifests};
-use crate::nosman::path::{get_rel_path_based_on};
+use crate::nosman::path::get_rel_path_based_on;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Workspace {
     #[serde(skip_serializing, skip_deserializing)]
-    pub root: path::PathBuf,
+    pub root: PathBuf,
     pub remotes: Vec<Remote>,
     pub installed_modules: HashMap<String, HashMap<String, InstalledModule>>,
     pub index_cache: Index,
@@ -41,7 +41,7 @@ impl PartialEq<u8> for RescanFlags {
 }
 
 impl Workspace {
-    pub fn new_empty(path: path::PathBuf) -> Workspace {
+    pub fn new_empty(path: PathBuf) -> Workspace {
         Workspace {
             root: path,
             remotes: Vec::new(),
@@ -49,14 +49,14 @@ impl Workspace {
             index_cache: Index { packages: HashMap::new() },
         }
     }
-    pub fn from_root(path: &path::PathBuf) -> Result<Workspace, io::Error> {
+    pub fn from_root(path: &PathBuf) -> Result<Workspace, io::Error> {
         let index_filepath = get_nosman_index_filepath_for(&path);
         let file = std::fs::File::open(&index_filepath)?;
         let mut workspace: Workspace = serde_json::from_reader(file).unwrap();
         workspace.root = dunce::canonicalize(path).unwrap();
         Ok(workspace)
     }
-    pub fn get_remote_repo_dir(&self, remote: &Remote) -> path::PathBuf {
+    pub fn get_remote_repo_dir(&self, remote: &Remote) -> PathBuf {
         get_nosman_dir_for(&self.root).join("remote").join(remote.name.clone())
     }
     pub fn get() -> Result<Workspace, io::Error> {
@@ -76,7 +76,7 @@ impl Workspace {
         serde_json::to_writer_pretty(file, self)?;
         Ok(())
     }
-    pub fn get_nosman_index_filepath(&self) -> path::PathBuf {
+    pub fn get_nosman_index_filepath(&self) -> PathBuf {
         get_nosman_index_filepath_for(&self.root)
     }
     pub fn get_installed_module(&self, name: &str, version: &str) -> Option<&InstalledModule> {
@@ -137,7 +137,7 @@ impl Workspace {
         println!("{}", "All modules removed successfully".green());
         Ok(true)
     }
-    pub fn scan_modules_in_folder(&mut self, folder: path::PathBuf, force_replace_in_registry: bool) {
+    pub fn scan_modules_in_folder(&mut self, folder: PathBuf, force_replace_in_registry: bool) {
         // Scan folders with .noscfg and .nossys files
         let module_manifests = get_module_manifests(&folder);
 
@@ -259,7 +259,7 @@ impl Workspace {
     }
 }
 
-pub fn find_root_from(path: &path::PathBuf) -> Option<path::PathBuf> {
+pub fn find_root_from(path: &PathBuf) -> Option<PathBuf> {
     let mut current = path.clone();
     loop {
         if get_nosman_index_filepath_for(&current).exists() {
@@ -272,25 +272,25 @@ pub fn find_root_from(path: &path::PathBuf) -> Option<path::PathBuf> {
     None
 }
 
-static WORKSPACE_ROOT: OnceLock<path::PathBuf> = OnceLock::new();
+static WORKSPACE_ROOT: OnceLock<PathBuf> = OnceLock::new();
 
-pub fn set_current_root(path: path::PathBuf) {
+pub fn set_current_root(path: PathBuf) {
     WORKSPACE_ROOT.set(path).unwrap();
 }
 
-pub fn current_root<'a>() -> Option<&'a path::PathBuf> {
+pub fn current_root<'a>() -> Option<&'a PathBuf> {
     WORKSPACE_ROOT.get()
 }
 
-pub fn get_nosman_dir_for(path: &path::PathBuf) -> path::PathBuf {
+pub fn get_nosman_dir_for(path: &PathBuf) -> PathBuf {
     path.join(".nosman")
 }
 
-pub fn get_nosman_index_filepath_for(path: &path::PathBuf) -> path::PathBuf {
+pub fn get_nosman_index_filepath_for(path: &PathBuf) -> PathBuf {
     get_nosman_dir_for(path).join("index")
 }
 
-pub fn get_nosman_index_filepath<'a>() -> Option<path::PathBuf> {
+pub fn get_nosman_index_filepath<'a>() -> Option<PathBuf> {
     match current_root() {
         Some(root) => Some(get_nosman_index_filepath_for(root)),
         None => None,
@@ -305,6 +305,6 @@ pub fn exists() -> bool {
     res.unwrap().exists()
 }
 
-pub fn exists_in(path: &path::PathBuf) -> bool {
+pub fn exists_in(path: &PathBuf) -> bool {
     get_nosman_index_filepath_for(path).exists()
 }
