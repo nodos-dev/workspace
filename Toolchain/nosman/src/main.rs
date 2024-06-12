@@ -297,6 +297,14 @@ fn main() {
                 .num_args(0)
                 .required(false)
             )
+            .arg(Arg::new("yes_to_all")
+                .action(ArgAction::SetTrue)
+                .long("yes-to-all")
+                .short('y')
+                .help("Do not ask for confirmation. Execute default behaviour.")
+                .num_args(0)
+                .required(false)
+            )
         );
 
     let help_str = cmd.render_help();

@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 use crate::nosman::command::CommandError;
@@ -51,4 +51,25 @@ pub fn check_file_contents_same(path1: &PathBuf, path2: &PathBuf) -> bool {
         }
     }
     true
+}
+
+pub fn ask(question: &str, default: bool, do_default: bool) -> bool {
+    let mut answer = String::new();
+    loop {
+        let default_str = if default { "Y/n" } else { "y/N" };
+        print!("{} [{}]: ", question, default_str);
+        // Flush
+        std::io::stdout().flush().unwrap();
+        std::io::stdin().read_line(&mut answer).unwrap();
+        answer = answer.trim().to_lowercase();
+        if answer == "y" {
+            return true;
+        } else if answer == "n" {
+            return false;
+        } else if answer.is_empty() {
+            return do_default;
+        } else {
+            println!("Invalid input, please enter 'y' or 'n'");
+        }
+    }
 }

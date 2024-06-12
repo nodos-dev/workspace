@@ -17,7 +17,7 @@ pub struct GetCommand {
 }
 
 impl GetCommand {
-    fn run_get(&self, path: &PathBuf, nodos_name: &String, version: Option<&String>, fetch_index: bool) -> CommandResult {
+    fn run_get(&self, path: &PathBuf, nodos_name: &String, version: Option<&String>, fetch_index: bool, do_default: bool) -> CommandResult {
         // If not under a workspace, init
         if !workspace::exists_in(path) {
             println!("No workspace found, initializing one under {:?}", path);
@@ -28,7 +28,8 @@ impl GetCommand {
         }
 
         let pb: ProgressBar = ProgressBar::new_spinner();
-        pb.enable_steady_tick(Duration::from_millis(100));
+        let progress_tick_duration = Duration::from_millis(100);
+        pb.enable_steady_tick(progress_tick_duration);
         pb.set_message(format!("Getting {}", nodos_name));
         let mut workspace = Workspace::get()?;
 
@@ -37,7 +38,7 @@ impl GetCommand {
             pb.finish_and_clear();
             workspace.fetch_package_releases(nodos_name);
             workspace.save()?;
-            return self.run_get(path, nodos_name, version, false)
+            return self.run_get(path, nodos_name, version, false, do_default)
         }
 
         let res;
@@ -113,25 +114,42 @@ impl GetCommand {
                 if util::check_file_contents_same(&curr_file_path.to_path_buf(), &cur_dst_path) {
                     continue;
                 }
-                pb.println(format!("Updating: {}", cur_dst_path.display()));
-                let res = std::fs::remove_file(&cur_dst_path);
-                // TODO: Kill processes that uses the file.
-                if let Err(e) = res {
-                    return Err(IOError { file: cur_dst_path.display().to_string(), message: format!("Unable to remove file: {}", e) });
-                }
             }
-            pb.println(format!("Copying: {}", cur_dst_path.display()));
-            std::fs::copy(curr_file_path, &cur_dst_path)?;
+            pb.set_message(format!("Copying: {}", cur_dst_path.display()));
+            let res = std::fs::copy(curr_file_path, &cur_dst_path);
+            if let Err (e) = res {
+                pb.println(format!("Error copying {}: {}", cur_dst_path.display(), e).red().to_string());
+                pb.suspend(|| {
+                    // Ask user if we should retry
+                    while util::ask("Retry copying", false, do_default) {
+                        let res = std::fs::copy(curr_file_path, &cur_dst_path);
+                        if res.is_ok() {
+                            break;
+                        }
+                        println!("{}", format!("Error copying {}: {}", cur_dst_path.display(), res.err().unwrap()).red().to_string());
+                    }
+                });
+            }
         }
 
         for file in prev_paths {
-            pb.println(format!("Removing: {}", file.display()));
+            pb.set_message(format!("Removing: {}", file.display()));
             if !file.exists() {
                 continue;
             }
             let res = rm_rf::remove(&file);
             if let Err(e) = res {
-                pb.println(format!("Unable to remove {}: {}", file.display(), e).yellow().to_string());
+                pb.println(format!("Unable to remove {}: {}", file.display(), e).red().to_string());
+                pb.suspend(|| {
+                    // Ask user if we should retry
+                    while util::ask("Retry removing", false, do_default) {
+                        let res = rm_rf::remove(&file);
+                        if res.is_ok() {
+                            break;
+                        }
+                        println!("{}", format!("Unable to remove {}: {}", file.display(), res.err().unwrap()).red().to_string());
+                    }
+                });
             }
         }
 
@@ -147,7 +165,8 @@ impl Command for GetCommand {
     fn run(&self, args: &ArgMatches) -> CommandResult {
         let nodos_name = args.get_one::<String>("name").unwrap();
         let version = args.get_one::<String>("version");
-        self.run_get(&workspace::current_root().unwrap(), nodos_name, version, true)
+        let do_default = args.get_one::<bool>("yes_to_all").unwrap();
+        self.run_get(&workspace::current_root().unwrap(), nodos_name, version, true, *do_default)
     }
 
     fn needs_workspace(&self) -> bool {
