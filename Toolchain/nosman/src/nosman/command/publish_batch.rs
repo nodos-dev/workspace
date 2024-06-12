@@ -15,7 +15,7 @@ pub struct PublishBatchCommand {
 }
 
 impl PublishBatchCommand {
-    fn run_publish_batch(&self, dry_run: &bool, remote_name: &String, repo_path: &PathBuf, compare_with: Option<&String>,
+    fn run_publish_batch(&self, dry_run: bool, verbose: bool, remote_name: &String, repo_path: &PathBuf, compare_with: Option<&String>,
                         version_suffix: &String, vendor: Option<&String>, publisher_name: Option<&String>,
                         publisher_email: Option<&String>) -> CommandResult {
         if !repo_path.exists() {
@@ -90,7 +90,7 @@ impl PublishBatchCommand {
         }
 
         for module_root in to_be_published {
-            PublishCommand {}.run_publish( &dry_run, &module_root, None, None, version_suffix, None, remote_name, vendor, publisher_name, publisher_email)?;
+            PublishCommand {}.run_publish(dry_run, verbose, &module_root, None, None, version_suffix, None, remote_name, vendor, publisher_name, publisher_email)?;
         }
 
         return Ok(true);
@@ -108,6 +108,7 @@ impl Command for PublishBatchCommand {
 
     fn run(&self, args: &ArgMatches) -> CommandResult {
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
+        let verbose = args.get_one::<bool>("verbose").unwrap();
         let remote_name = args.get_one::<String>("remote").unwrap();
         let repo_path = PathBuf::from(args.get_one::<String>("repo_path").unwrap());
         let compare_with = args.get_one::<String>("compare_with");
@@ -115,6 +116,6 @@ impl Command for PublishBatchCommand {
         let vendor = args.get_one::<String>("vendor");
         let publisher_name = args.get_one::<String>("publisher_name");
         let publisher_email = args.get_one::<String>("publisher_email");
-        self.run_publish_batch(&dry_run, &remote_name, &repo_path, compare_with, &version_suffix, vendor, publisher_name, publisher_email)
+        self.run_publish_batch(*dry_run, *verbose, &remote_name, &repo_path, compare_with, &version_suffix, vendor, publisher_name, publisher_email)
     }
 }

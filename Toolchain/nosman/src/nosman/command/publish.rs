@@ -44,7 +44,7 @@ pub struct PublishCommand {
 }
 
 impl PublishCommand {
-    pub fn run_publish(&self, dry_run: &bool, path: &PathBuf, mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
+    pub fn run_publish(&self, dry_run: bool, verbose: bool, path: &PathBuf, mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
                    mut package_type: Option<PackageType>, remote_name: &String, vendor: Option<&String>,
                    publisher_name: Option<&String>, publisher_email: Option<&String>) -> CommandResult {
         // Check if git and gh is installed.
@@ -233,14 +233,14 @@ impl PublishCommand {
         pb.finish_and_clear();
 
         println!("Adding package {} version {} release entry to remote {}", name, version, remote.name);
-        let res = remote.fetch_add(&dry_run, &workspace, &name, vendor, &package_type, release, publisher_name, publisher_email);
+        let res = remote.fetch_add(dry_run, verbose, &workspace, &name, vendor, &package_type, release, publisher_name, publisher_email);
         if res.is_err() {
             return Err(GenericError { message: res.err().unwrap() });
         }
         let commit_sha = res.unwrap();
 
         println!("Uploading release {} for package {} version {} on remote {}", format!("{}-{}", name, version), name, version, remote.name);
-        let res = remote.create_gh_release(&dry_run, &workspace, &commit_sha, &name, &version, vec![artifact_file_path]);
+        let res = remote.create_gh_release(dry_run, verbose, &workspace, &commit_sha, &name, &version, vec![artifact_file_path]);
         if res.is_err() {
             return Err(GenericError { message: res.err().unwrap() });
         }
@@ -269,8 +269,9 @@ impl Command for PublishCommand {
         let name = if opt_name.is_some() { Some(opt_name.unwrap().clone()) } else { None };
         let vendor = args.get_one::<String>("vendor");
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
+        let verbose = args.get_one::<bool>("verbose").unwrap();
         let publisher_name = args.get_one::<String>("publisher_name");
         let publisher_email = args.get_one::<String>("publisher_email");
-        self.run_publish(dry_run, &path, name, version, version_suffix, package_type, &remote_name, vendor, publisher_name, publisher_email)
+        self.run_publish(*dry_run, *verbose, &path, name, version, version_suffix, package_type, &remote_name, vendor, publisher_name, publisher_email)
     }
 }

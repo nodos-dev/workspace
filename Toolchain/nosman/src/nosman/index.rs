@@ -165,12 +165,23 @@ pub struct PackageReleases {
     pub(crate) releases: Vec<PackageReleaseEntry>,
 }
 
-pub fn run_if_not(dry_run: &bool, cmd: &mut std::process::Command) -> Option<Result<Output, io::Error>> {
-    if *dry_run {
+pub fn run_if_not(dry_run: bool, verbose: bool, cmd: &mut std::process::Command) -> Option<Result<Output, io::Error>> {
+    if dry_run {
         println!("Would run: {:?}", cmd);
         None
     } else {
-        Some(cmd.output())
+        if verbose {
+            println!("Running: {:?}", cmd);
+        }
+        let res = cmd.output();
+        if verbose {
+            if res.is_ok() {
+                let output = res.as_ref().unwrap();
+                println!("{}:\n{}", if output.status.success() { "stdout" } else { "stderr" },
+                         String::from_utf8_lossy(if output.status.success() { &output.stdout } else { &output.stderr }));
+            }
+        }
+        Some(res)
     }
 }
 
@@ -266,7 +277,7 @@ impl Remote {
         let branch_name = String::from_utf8(output.unwrap().stdout).unwrap();
         branch_name.trim().to_string()
     }
-    pub fn fetch_add(&self, dry_run: &bool, workspace: &Workspace, name: &String,
+    pub fn fetch_add(&self, dry_run: bool, verbose: bool, workspace: &Workspace, name: &String,
                      vendor: Option<&String>, package_type: &PackageType,
                      release: PackageReleaseEntry, publisher_name: Option<&String>,
                      publisher_email: Option<&String>) -> Result<String, String> {
@@ -307,7 +318,7 @@ impl Remote {
 
         // Set author email and name
         if publisher_name.is_some() {
-            let res = run_if_not(dry_run, std::process::Command::new("git")
+            let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
                 .current_dir(&repo_dir)
                 .arg("config")
                 .arg("user.name")
@@ -320,7 +331,7 @@ impl Remote {
             }
         }
         if publisher_email.is_some() {
-            let res = run_if_not(dry_run, std::process::Command::new("git")
+            let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
                 .current_dir(&repo_dir)
                 .arg("config")
                 .arg("user.email")
@@ -349,7 +360,7 @@ impl Remote {
         }
 
         // Commit and push
-        let res = run_if_not(dry_run, std::process::Command::new("git")
+        let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
             .current_dir(&repo_dir)
             .arg("add")
             .arg("."));
@@ -360,7 +371,7 @@ impl Remote {
             }
         }
 
-        let res = run_if_not(dry_run, std::process::Command::new("git")
+        let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
             .current_dir(&repo_dir)
             .arg("commit")
             .arg("-m")
@@ -373,7 +384,7 @@ impl Remote {
         }
 
         // If push fails, pull with rebase first and then push
-        let res = run_if_not(dry_run, std::process::Command::new("git")
+        let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
             .current_dir(&repo_dir)
             .arg("push"));
         if res.is_some() {
@@ -400,7 +411,7 @@ impl Remote {
         }
 
         // Get commit SHA
-        let res = run_if_not(dry_run, std::process::Command::new("git")
+        let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
             .current_dir(&repo_dir)
             .arg("rev-parse")
             .arg("HEAD"));
@@ -415,11 +426,11 @@ impl Remote {
 
         return Ok(commit_sha);
     }
-    pub fn create_gh_release(&self, dry_run: &bool, workspace: &Workspace, commit_sha: &String, name: &String, version: &String, artifacts: Vec<PathBuf>) -> Result<(), String> {
+    pub fn create_gh_release(&self, dry_run: bool, verbose: bool, workspace: &Workspace, commit_sha: &String, name: &String, version: &String, artifacts: Vec<PathBuf>) -> Result<(), String> {
         let repo_dir = workspace.get_remote_repo_dir(&self);
         let (org_name, repo_name) = self.get_gh_remote_org_repo();
 
-        let res = run_if_not(&dry_run, std::process::Command::new("gh")
+        let res = run_if_not(dry_run, verbose, std::process::Command::new("gh")
             .current_dir(&repo_dir)
             .arg("release")
             .arg("create")
