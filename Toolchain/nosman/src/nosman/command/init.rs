@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use clap::{ArgMatches};
 use colored::Colorize;
 
@@ -11,8 +12,7 @@ pub struct InitCommand {
 }
 
 impl InitCommand {
-    pub(crate) fn run_init(&self) -> CommandResult {
-        let directory = nosman::workspace::current_root().unwrap();
+    pub(crate) fn run_init(&self, directory: &PathBuf) -> CommandResult {
         if let Some(ws) = find_root_from(&directory.to_path_buf()) {
             return Err(InvalidArgumentError { message: format!("Directory {} is already under a workspace: {}", directory.display(), ws.display())});
         }
@@ -35,6 +35,7 @@ impl Command for InitCommand {
     }
 
     fn run(&self, _args: &ArgMatches) -> CommandResult {
-        self.run_init()
+        let directory = nosman::workspace::current_root().unwrap();
+        self.run_init(directory)
     }
 }

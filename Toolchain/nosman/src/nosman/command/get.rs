@@ -21,7 +21,7 @@ impl GetCommand {
         // If not under a workspace, init
         if !workspace::exists_in(path) {
             println!("No workspace found, initializing one under {:?}", path);
-            let res = InitCommand{}.run_init();
+            let res = InitCommand{}.run_init(path);
             if res.is_err() {
                 return res;
             }
@@ -145,10 +145,9 @@ impl Command for GetCommand {
     }
 
     fn run(&self, args: &ArgMatches) -> CommandResult {
-        let path = PathBuf::from(args.get_one::<String>("path").unwrap());
         let nodos_name = args.get_one::<String>("name").unwrap();
         let version = args.get_one::<String>("version");
-        self.run_get(&path, nodos_name, version, true)
+        self.run_get(&workspace::current_root().unwrap(), nodos_name, version, true)
     }
 
     fn needs_workspace(&self) -> bool {

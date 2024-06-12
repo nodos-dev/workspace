@@ -160,7 +160,7 @@ fn main() {
             )
         )
         .subcommand(Command::new("get")
-            .about("Gets a Nodos release under path. If there is an existing Nodos release under path,\n\
+            .about("Gets a Nodos release under workspace (with --workspace option). If there is an existing Nodos release,\n\
             updates it (note that this will remove all installed Nodos engines and modules!)")
             .arg(Arg::new("name")
                 .help("Name of the Nodos release to bring. Can be 'nodos' or some bundled version.")
@@ -172,12 +172,6 @@ fn main() {
                 .long("version")
                 .short('v')
                 .required(false)
-            )
-            .arg(Arg::new("path")
-                .long("path")
-                .short('p')
-                .help("Path to the root folder of the Nodos release.")
-                .default_value(".")
             )
         )
         .subcommand(Command::new("publish")
