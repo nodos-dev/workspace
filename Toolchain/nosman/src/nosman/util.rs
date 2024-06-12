@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::Output;
 use zip::ZipArchive;
 use crate::nosman::command::CommandError;
 
@@ -73,3 +74,24 @@ pub fn ask(question: &str, default: bool, do_default: bool) -> bool {
         }
     }
 }
+
+pub fn run_if_not(dry_run: bool, verbose: bool, cmd: &mut std::process::Command) -> Option<Output> {
+    if dry_run {
+        println!("Would run: {:?}", cmd);
+        None
+    } else {
+        if verbose {
+            println!("Running: {:?}", cmd);
+        }
+        let res = cmd.output();
+        if verbose {
+            if res.is_ok() {
+                let output = res.as_ref().unwrap();
+                println!("{}:\n{}", if output.status.success() { "stdout" } else { "stderr" },
+                         String::from_utf8_lossy(if output.status.success() { &output.stdout } else { &output.stderr }));
+            }
+        }
+        Some(res.expect(format!("Failed to run command {:?}", cmd).as_str()))
+    }
+}
+

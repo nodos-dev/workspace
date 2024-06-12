@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::{fs};
 use std::path::PathBuf;
-use std::process::Output;
 use std::time::Duration;
 use indicatif::{ProgressBar};
 use serde::{Deserialize, Serialize};
 use crate::nosman::constants;
 use crate::nosman::workspace::Workspace;
+use crate::nosman::util::{run_if_not};
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub enum PackageType {
@@ -163,26 +163,6 @@ pub struct PackageReleaseEntry {
 pub struct PackageReleases {
     pub(crate) name: String,
     pub(crate) releases: Vec<PackageReleaseEntry>,
-}
-
-pub fn run_if_not(dry_run: bool, verbose: bool, cmd: &mut std::process::Command) -> Option<Output> {
-    if dry_run {
-        println!("Would run: {:?}", cmd);
-        None
-    } else {
-        if verbose {
-            println!("Running: {:?}", cmd);
-        }
-        let res = cmd.output();
-        if verbose {
-            if res.is_ok() {
-                let output = res.as_ref().unwrap();
-                println!("{}:\n{}", if output.status.success() { "stdout" } else { "stderr" },
-                         String::from_utf8_lossy(if output.status.success() { &output.stdout } else { &output.stderr }));
-            }
-        }
-        Some(res.expect(format!("Failed to run command {:?}", cmd).as_str()))
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

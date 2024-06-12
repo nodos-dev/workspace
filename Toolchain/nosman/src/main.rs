@@ -1,8 +1,11 @@
 extern crate clap;
+
 use clap::{Arg, ArgAction, Command};
 
 use std::error::Error;
 use colored::Colorize;
+use native_dialog::MessageDialog;
+use sysinfo::System;
 use crate::nosman::{constants, workspace};
 
 mod nosman;
@@ -14,6 +17,90 @@ fn print_error(e: &dyn Error) {
         eprintln!("{}", format!("Caused by: {}", e).as_str().red());
         cause = e.source();
     }
+}
+
+fn launched_from_file_explorer() -> bool {
+    let mut sys = System::new_all();
+    sys.refresh_all();
+    if let Ok(pid) = sysinfo::get_current_pid() {
+        if let Some(process) = sys.process(pid) {
+            if let Some(parent_pid) = process.parent() {
+                if let Some(parent_process) = sys.process(parent_pid) {
+                    #[cfg(target_os = "windows")]
+                    return parent_process.name().to_lowercase() == "explorer.exe";
+                    #[cfg(target_os = "macos")]
+                    return parent_process.name() == "Finder";
+                    #[cfg(target_os = "linux")]
+                    return ["nautilus", "dolphin", "nemo", "thunar"]
+                        .iter()
+                        .any(|&name| parent_process.name().to_lowercase() == name);
+                }
+            }
+        }
+    }
+    false
+}
+
+fn launch_nodos() {
+    // Assume workspace is cwd.
+    let workspace_dir = std::env::current_dir().unwrap();
+    let engines_dir = nosman::path::get_default_engines_dir(&workspace_dir);
+    if !engines_dir.exists() {
+        MessageDialog::new()
+            .set_title("Nodos")
+            .set_text("No installed Nodos engine found in workspace.")
+            .show_alert().unwrap();
+        std::process::exit(1);
+    }
+
+    let mut opt_editor_path = None;
+    let mut opt_engine_path = None;
+    // For each folder in engines_dir, check if it has SDK/version.json
+    for entry in std::fs::read_dir(engines_dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let binaries_dir = path.join("Binaries");
+        if !binaries_dir.exists() {
+            continue;
+        }
+        // Launch nosEditor and nosEngine
+        let mut editor_path = binaries_dir.join("nosEditor");
+        let mut engine_path = binaries_dir.join("nosLauncher");
+        if cfg!(target_os = "windows") {
+            editor_path = editor_path.with_extension("exe");
+            engine_path = engine_path.with_extension("exe");
+        }
+        if !editor_path.exists() || !engine_path.exists() {
+            continue;
+        }
+        opt_editor_path = Some(editor_path);
+        opt_engine_path = Some(engine_path);
+        break;
+    }
+    if opt_editor_path.is_none() || opt_engine_path.is_none() {
+        MessageDialog::new()
+            .set_title("Nodos")
+            .set_text("No installed Nodos engine found in workspace. Check Engine folder.")
+            .show_alert().unwrap();
+        std::process::exit(1);
+    }
+    let editor_path = opt_editor_path.unwrap();
+    let engine_path = opt_engine_path.unwrap();
+    let editor_thread = std::thread::spawn(move || {
+        std::process::Command::new(&editor_path)
+            .current_dir(editor_path.parent().unwrap())
+            .spawn().unwrap().wait().expect("Failed to launch nosEditor");
+    });
+    let engine_thread = std::thread::spawn(move || {
+        std::process::Command::new(&engine_path)
+            .current_dir(engine_path.parent().unwrap())
+            .spawn().unwrap().wait().expect("Failed to launch nosLauncher");
+    });
+    engine_thread.join().unwrap();
+    editor_thread.join().unwrap();
 }
 
 fn main() {
@@ -173,6 +260,13 @@ fn main() {
                 .short('v')
                 .required(false)
             )
+            .arg(Arg::new("yes_to_all")
+                .help("Do not ask for confirmation. Execute default behaviour.")
+                .short('y')
+                .action(ArgAction::SetTrue)
+                .num_args(0)
+                .required(false)
+            )
         )
         .subcommand(Command::new("publish")
             .about("Publish a package")
@@ -297,18 +391,19 @@ fn main() {
                 .num_args(0)
                 .required(false)
             )
-            .arg(Arg::new("yes_to_all")
-                .action(ArgAction::SetTrue)
-                .long("yes-to-all")
-                .short('y')
-                .help("Do not ask for confirmation. Execute default behaviour.")
-                .num_args(0)
-                .required(false)
-            )
         );
 
     let help_str = cmd.render_help();
     let matches = cmd.get_matches();
+
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() == 1 {
+        // Get parent process name. If it is a file explorer, open Nodos
+        if launched_from_file_explorer() {
+            launch_nodos();
+            return;
+        }
+    }
 
     let mut matched = false;
     for command in nosman::command::commands().iter() {

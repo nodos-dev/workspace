@@ -2,6 +2,7 @@ use clap::{ArgMatches};
 use serde::{Deserialize, Serialize};
 
 use crate::nosman::command::{Command, CommandResult};
+use crate::nosman::path::get_default_engines_dir;
 use crate::nosman::workspace;
 
 pub struct SdkInfoCommand {
@@ -17,7 +18,7 @@ impl SdkInfoCommand {
     fn run_get_sdk_info(&self, requested_version: &str) -> CommandResult {
         // Search ./Engine directory under workspace dir and find the version.json with bin/ include/ folders in it
         let workspace_dir = workspace::current_root().unwrap();
-        let engines_dir = workspace_dir.join("Engine");
+        let engines_dir = get_default_engines_dir(&workspace_dir);
         if !engines_dir.exists() {
             return Err(crate::nosman::command::CommandError::InvalidArgumentError { message: "No Engine directory found in workspace".to_string() });
         }
