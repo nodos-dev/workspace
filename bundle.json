@@ -1,14 +1,14 @@
 [
     {
         "key": "default",
-        "module_index_url": "https://raw.githubusercontent.com/mediaz/mediaz-directory/dev/all_modules.json",
+        "module_index_url": "https://raw.githubusercontent.com/mediaz/nodos-index/main/index",
         "engine_index_url": "https://raw.githubusercontent.com/mediaz/engine-releases/main/index.json",
         "local_modules_folder": "D:/Builds/Nodos-Modules",
         "bundled_modules": []
     },
     {
         "key": "nodos_full",
-        "module_index_url": "https://raw.githubusercontent.com/mediaz/mediaz-directory/dev/all_modules.json",
+        "module_index_url": "https://raw.githubusercontent.com/mediaz/nodos-index/main/index",
         "engine_index_url": "https://raw.githubusercontent.com/mediaz/engine-releases/main/index.json",
         "local_modules_folder": "D:/Builds/Nodos-Modules",
         "bundled_modules": [
@@ -24,7 +24,7 @@
     },
     {
         "key": "nodos_standard",
-        "module_index_url": "https://raw.githubusercontent.com/mediaz/mediaz-directory/dev/presets/nodos_standard.json",
+        "module_index_url": "https://raw.githubusercontent.com/mediaz/nodos-index/main/presets/nodos_standard.json",
         "engine_index_url": "https://raw.githubusercontent.com/mediaz/engine-releases/main/index.json",
         "local_modules_folder": "D:/Builds/Nodos-Modules",
         "bundled_modules": [
