@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 use crate::nosman::command::CommandError;
@@ -28,4 +29,26 @@ pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandEr
         }
     }
     Ok(())
+}
+
+pub fn check_file_contents_same(path1: &PathBuf, path2: &PathBuf) -> bool {
+    // Efficiently compare file contents
+    let mut file1 = fs::File::open(path1).expect(format!("Failed to open {:?}", path1).as_str());
+    let mut file2 = fs::File::open(path2).expect(format!("Failed to open {:?}", path2).as_str());
+    let mut buf1 = [0; 1024];
+    let mut buf2 = [0; 1024];
+    if file1.metadata().unwrap().len() != file2.metadata().unwrap().len() {
+        return false;
+    }
+    loop {
+        let n1 = file1.read(&mut buf1).expect(format!("Failed to read {}", path1.display()).as_str());
+        let n2 = file2.read(&mut buf2).expect(format!("Failed to read {}", path2.display()).as_str());
+        if n1 != n2 || buf1 != buf2 {
+            return false;
+        }
+        if n1 == 0 {
+            break;
+        }
+    }
+    true
 }

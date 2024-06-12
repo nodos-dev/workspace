@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;
 use clap::{ArgMatches};
@@ -9,7 +10,7 @@ use crate::nosman::command::CommandError::{InvalidArgumentError, IOError};
 use crate::nosman::command::init::InitCommand;
 use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::util::download_and_extract;
-use crate::nosman::workspace;
+use crate::nosman::{util, workspace};
 use crate::nosman::workspace::Workspace;
 
 pub struct GetCommand {
@@ -72,27 +73,16 @@ impl GetCommand {
         pb.println(format!("Installing {}-{}", nodos_name, release.version));
 
         // Get current executable's absolute path
-        let dst_path = path.canonicalize().unwrap();
-        let current_exe = std::env::current_exe().unwrap().canonicalize().unwrap();
+        let dst_path = dunce::canonicalize(path).unwrap();
+        let current_exe = dunce::canonicalize(std::env::current_exe().unwrap()).unwrap();
 
         // Remove all files
         let glob_prev = globwalk::GlobWalkerBuilder::from_patterns(&dst_path, &["**"]).min_depth(1).build().unwrap();
+        let mut prev_paths: HashSet<PathBuf> = HashSet::new();
         for entry in glob_prev {
             let entry = entry.unwrap();
             let curr_path = entry.path().to_path_buf();
-            pb.set_message(format!("Removing: {}", curr_path.display()));
-            let res;
-            if curr_path.is_dir() {
-                res = std::fs::remove_dir_all(&curr_path);
-            } else {
-                res = std::fs::remove_file(&curr_path);
-            }
-            if curr_path == current_exe {
-                continue;
-            }
-            if let Err(e) = res {
-                pb.println(format!("Unable to remove {}: {}", curr_path.display(), e).yellow().to_string());
-            }
+            prev_paths.insert(curr_path.clone());
         }
 
         // Get all files in the path
@@ -102,6 +92,7 @@ impl GetCommand {
             let curr_file_path = entry.path();
             let relative_path = curr_file_path.strip_prefix(&downloaded_path).unwrap();
             let cur_dst_path = dst_path.join(&relative_path);
+            prev_paths.remove(&cur_dst_path);
             if curr_file_path.is_dir() {
                 // Create dir if it doesn't exist
                 std::fs::create_dir_all(&cur_dst_path)?;
@@ -118,14 +109,30 @@ impl GetCommand {
             }
             // If destination file exists and someone is using it, kill them.
             if cur_dst_path.exists() {
+                // Check if files are same
+                if util::check_file_contents_same(&curr_file_path.to_path_buf(), &cur_dst_path) {
+                    continue;
+                }
+                pb.println(format!("Updating: {}", cur_dst_path.display()));
                 let res = std::fs::remove_file(&cur_dst_path);
                 // TODO: Kill processes that uses the file.
                 if let Err(e) = res {
                     return Err(IOError { file: cur_dst_path.display().to_string(), message: format!("Unable to remove file: {}", e) });
                 }
             }
-            pb.set_message(format!("Copying: {}", cur_dst_path.display()));
+            pb.println(format!("Copying: {}", cur_dst_path.display()));
             std::fs::copy(curr_file_path, &cur_dst_path)?;
+        }
+
+        for file in prev_paths {
+            pb.println(format!("Removing: {}", file.display()));
+            if !file.exists() {
+                continue;
+            }
+            let res = rm_rf::remove(&file);
+            if let Err(e) = res {
+                pb.println(format!("Unable to remove {}: {}", file.display(), e).yellow().to_string());
+            }
         }
 
         Ok(true)

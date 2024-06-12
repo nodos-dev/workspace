@@ -1,6 +1,7 @@
 import argparse
 import io
 from subprocess import CompletedProcess, call, run
+import subprocess
 from sys import stderr, stdout
 import zipfile
 from loguru import logger
@@ -281,6 +282,13 @@ def build_nosman(nosman_src_dir, is_release) -> str:
     return f"{nosman_src_dir}/target/{'release' if is_release else 'debug'}/nosman{platform.system() == 'Windows' and '.exe' or ''}"
 
 
+def remove_dir(d):
+    if os.name == 'nt':
+        subprocess.check_output(['cmd', '/C', 'rmdir', '/S', '/Q', os.path.abspath(d)])
+    else:
+        subprocess.check_output(['rm', '-rf', os.path.abspath(d)])
+
+
 def package(dist_key, engine_folder, should_sign_binaries):
     logger.info("Packaging Nodos")
     shutil.rmtree(ARTIFACTS_FOLDER, ignore_errors=True)
@@ -337,7 +345,7 @@ def package(dist_key, engine_folder, should_sign_binaries):
         exit(result.returncode)
     os.chdir(cwd)
 
-    shutil.rmtree(f"{STAGING_FOLDER}/.nosman/remote", ignore_errors=True)
+    remove_dir(f"{STAGING_FOLDER}/.nosman/remote")
 
     # Zip SDK only release
     sdk_zip_name = f"Nodos-SDK-{major}.{minor}.{patch}.b{build_number}"
