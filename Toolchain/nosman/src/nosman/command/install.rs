@@ -10,7 +10,7 @@ use zip::result::ZipError;
 use nosman::workspace::Workspace;
 use crate::nosman::command::CommandError::{GenericError, InvalidArgumentError};
 use crate::nosman::index::{PackageType, SemVer};
-use crate::nosman::util::download_and_extract;
+use crate::nosman::common::download_and_extract;
 
 pub struct InstallCommand {
 }

@@ -165,7 +165,12 @@ impl Workspace {
             // Check custom_types field
             if let Some(custom_types) = module["custom_types"].as_array() {
                 for custom_type_file in custom_types {
-                    installed_module.type_schema_files.push(get_rel_path_based_on(&path.parent().unwrap().join(custom_type_file.as_str().unwrap()).canonicalize().unwrap(), &self.root));
+                    let type_file = path.parent().unwrap().join(custom_type_file.as_str().unwrap());
+                    if !type_file.exists() {
+                        pb.println(format!("Module {} ({}) references a non-existent data schema file: {}", installed_module.info.id.name, path.display(), type_file.display()).as_str().red().to_string());
+                        continue;
+                    }
+                    installed_module.type_schema_files.push(get_rel_path_based_on(&type_file.canonicalize().unwrap(), &self.root));
                 }
             }
 

@@ -1,4 +1,5 @@
 use std::fs;
+use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Output;
@@ -34,8 +35,8 @@ pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandEr
 
 pub fn check_file_contents_same(path1: &PathBuf, path2: &PathBuf) -> bool {
     // Efficiently compare file contents
-    let mut file1 = fs::File::open(path1).expect(format!("Failed to open {:?}", path1).as_str());
-    let mut file2 = fs::File::open(path2).expect(format!("Failed to open {:?}", path2).as_str());
+    let mut file1 = File::open(path1).expect(format!("Failed to open {:?}", path1).as_str());
+    let mut file2 = File::open(path2).expect(format!("Failed to open {:?}", path2).as_str());
     let mut buf1 = [0; 1024];
     let mut buf2 = [0; 1024];
     if file1.metadata().unwrap().len() != file2.metadata().unwrap().len() {
@@ -59,7 +60,6 @@ pub fn ask(question: &str, default: bool, do_default: bool) -> bool {
     loop {
         let default_str = if default { "Y/n" } else { "y/N" };
         print!("{} [{}]: ", question, default_str);
-        // Flush
         std::io::stdout().flush().unwrap();
         std::io::stdin().read_line(&mut answer).unwrap();
         answer = answer.trim().to_lowercase();
@@ -94,4 +94,3 @@ pub fn run_if_not(dry_run: bool, verbose: bool, cmd: &mut std::process::Command)
         Some(res.expect(format!("Failed to run command {:?}", cmd).as_str()))
     }
 }
-

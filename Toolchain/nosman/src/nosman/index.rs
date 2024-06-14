@@ -6,7 +6,7 @@ use indicatif::{ProgressBar};
 use serde::{Deserialize, Serialize};
 use crate::nosman::constants;
 use crate::nosman::workspace::Workspace;
-use crate::nosman::util::{run_if_not};
+use crate::nosman::common::{run_if_not};
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub enum PackageType {

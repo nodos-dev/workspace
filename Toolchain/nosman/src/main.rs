@@ -246,9 +246,9 @@ fn main() {
                 .num_args(1)
             )
         )
-        .subcommand(Command::new("get")
-            .about("Gets a Nodos release under workspace (with --workspace option). If there is an existing Nodos release,\n\
-            updates it (note that this will remove all installed Nodos engines and modules!)")
+        .subcommand(Command::new("get").visible_alias("update")
+            .about("Brings a Nodos release under workspace (with --workspace option).\n\
+            If there is an existing Nodos release, updates it (note that this will remove all installed Nodos engines and modules!)")
             .arg(Arg::new("name")
                 .help("Name of the Nodos release to bring. Can be 'nodos' or some bundled version.")
                 .long("name")
