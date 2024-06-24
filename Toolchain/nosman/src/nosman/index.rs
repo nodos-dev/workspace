@@ -296,8 +296,8 @@ impl Remote {
     }
     pub fn fetch_add(&self, dry_run: bool, verbose: bool, workspace: &Workspace, name: &String,
                      vendor: Option<&String>, package_type: &PackageType,
-                     release: PackageReleaseEntry, publisher_name: Option<&String>,
-                     publisher_email: Option<&String>) -> Result<String, String> {
+                     release: PackageReleaseEntry, publisher_name: &String,
+                     publisher_email: &String) -> Result<String, String> {
         let repo_dir = workspace.get_remote_repo_dir(&self);
         let mut package_list: Vec<PackageIndexEntry> = self.fetch(workspace)?;
         // If package does not exist, add it
@@ -340,17 +340,8 @@ impl Remote {
 
         // Set author email and name
         let repo = Repository::open(&repo_dir).expect(format!("Failed to open the remote repository {}", repo_dir.display()).as_str());
-        let mut user_name = repo.config().expect("Failed to get config").get_string("user.name").unwrap();
-        let mut user_email = repo.config().expect("Failed to get config").get_string("user.email").unwrap();
-
-        if let Some(given_user_name) = publisher_name {
-            user_name = given_user_name.clone();
-        }
-        if let Some(given_user_email) = publisher_email {
-            user_email = given_user_email.clone();
-        }
-        repo.config().expect("Failed to get config").set_str("user.name", &user_name).unwrap();
-        repo.config().expect("Failed to get config").set_str("user.email", &user_email).unwrap();
+        repo.config().expect("Failed to get config").set_str("user.name", &publisher_name).unwrap();
+        repo.config().expect("Failed to get config").set_str("user.email", &publisher_email).unwrap();
 
         let release_list_file = repo_dir.join("releases").join(format!("{}.json", name));
         if !release_list_file.parent().unwrap().exists() {

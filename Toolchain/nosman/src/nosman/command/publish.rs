@@ -46,7 +46,7 @@ pub struct PublishCommand {
 impl PublishCommand {
     pub fn run_publish(&self, dry_run: bool, verbose: bool, path: &PathBuf, mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
                    mut package_type: Option<PackageType>, remote_name: &String, vendor: Option<&String>,
-                   publisher_name: Option<&String>, publisher_email: Option<&String>) -> CommandResult {
+                   publisher_name: &String, publisher_email: &String) -> CommandResult {
         // Check if git and gh is installed.
         let git_installed = std::process::Command::new("git")
             .arg("--version")
@@ -270,8 +270,8 @@ impl Command for PublishCommand {
         let vendor = args.get_one::<String>("vendor");
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
         let verbose = args.get_one::<bool>("verbose").unwrap();
-        let publisher_name = args.get_one::<String>("publisher_name");
-        let publisher_email = args.get_one::<String>("publisher_email");
+        let publisher_name = args.get_one::<String>("publisher_name").unwrap();
+        let publisher_email = args.get_one::<String>("publisher_email").unwrap();
         self.run_publish(*dry_run, *verbose, &path, name, version, version_suffix, package_type, &remote_name, vendor, publisher_name, publisher_email)
     }
 }

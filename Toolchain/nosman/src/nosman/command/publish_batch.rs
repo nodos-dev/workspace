@@ -16,8 +16,8 @@ pub struct PublishBatchCommand {
 
 impl PublishBatchCommand {
     fn run_publish_batch(&self, dry_run: bool, verbose: bool, remote_name: &String, repo_path: &PathBuf, compare_with: Option<&String>,
-                        version_suffix: &String, vendor: Option<&String>, publisher_name: Option<&String>,
-                        publisher_email: Option<&String>) -> CommandResult {
+                        version_suffix: &String, vendor: Option<&String>, publisher_name: &String,
+                        publisher_email: &String) -> CommandResult {
         if !repo_path.exists() {
             return Err(InvalidArgumentError { message: format!("Repo {} does not exist", repo_path.display()) });
         }
@@ -120,8 +120,8 @@ impl Command for PublishBatchCommand {
         let compare_with = args.get_one::<String>("compare_with");
         let version_suffix = args.get_one::<String>("version_suffix").unwrap();
         let vendor = args.get_one::<String>("vendor");
-        let publisher_name = args.get_one::<String>("publisher_name");
-        let publisher_email = args.get_one::<String>("publisher_email");
+        let publisher_name = args.get_one::<String>("publisher_name").unwrap();
+        let publisher_email = args.get_one::<String>("publisher_email").unwrap();
         self.run_publish_batch(*dry_run, *verbose, &remote_name, &repo_path, compare_with, &version_suffix, vendor, publisher_name, publisher_email)
     }
 }
