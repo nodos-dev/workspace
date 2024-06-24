@@ -9,6 +9,7 @@ use colored::Colorize;
 use indicatif::{ProgressBar};
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
+use crate::nosman::command::CommandError::InvalidArgumentError;
 use crate::nosman::constants;
 use crate::nosman::index::{Index, PackageIndexEntry, PackageReleases, Remote, SemVer};
 use crate::nosman::module::{InstalledModule, get_module_manifests};
@@ -51,7 +52,7 @@ impl Workspace {
     }
     pub fn from_root(path: &PathBuf) -> Result<Workspace, io::Error> {
         let index_filepath = get_nosman_index_filepath_for(&path);
-        let file = std::fs::File::open(&index_filepath)?;
+        let file = fs::File::open(&index_filepath)?;
         let mut workspace: Workspace = serde_json::from_reader(file).unwrap();
         workspace.root = dunce::canonicalize(path).unwrap();
         Ok(workspace)
@@ -113,7 +114,7 @@ impl Workspace {
     pub fn remove(&mut self, name: &str, version: &str) -> CommandResult {
         let res = self.get_installed_module(name, version);
         if res.is_none() {
-            return Err(CommandError::InvalidArgumentError { message: format!("Module {} version {} is not installed", name, version) });
+            return Err(InvalidArgumentError { message: format!("Module {} version {} is not installed", name, version) });
         }
         println!("Removing module {} version {}", name, version);
         let module = res.unwrap();

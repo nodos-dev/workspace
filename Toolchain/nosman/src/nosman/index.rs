@@ -2,11 +2,12 @@ use std::collections::HashMap;
 use std::{fs};
 use std::path::PathBuf;
 use std::time::Duration;
+use git2::Repository;
 use indicatif::{ProgressBar};
 use serde::{Deserialize, Serialize};
 use crate::nosman::constants;
 use crate::nosman::workspace::Workspace;
-use crate::nosman::common::{run_if_not};
+use crate::nosman::common::{run_fn, run_if_not};
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub enum PackageType {
@@ -178,45 +179,85 @@ impl Remote {
             url: url.to_string(),
         }
     }
-    pub fn fetch(&self, workspace: &Workspace) -> Result<Vec<PackageIndexEntry>, String> {
+    pub fn fetch_repo(&self, workspace: &Workspace) -> Result<(), String> {
         let repo_dir = workspace.get_remote_repo_dir(&self);
         if !repo_dir.parent().unwrap().exists() {
             fs::create_dir_all(repo_dir.parent().unwrap()).unwrap();
         }
         if !repo_dir.exists() {
-            let output = std::process::Command::new("git")
-                .arg("clone")
-                .arg(&self.url)
-                .arg(&repo_dir)
-                .output();
-            if output.is_err() {
-                return Err(format!("Failed to clone the remote repository: {}", output.err().unwrap().to_string()));
+            let res = Repository::clone_recurse(&self.url, &repo_dir);
+            if let Err(e) = res {
+                return Err(format!("Failed to clone the remote repository: {}", e.to_string()));
             }
         } else {
-            let output = std::process::Command::new("git")
-                .current_dir(&repo_dir)
-                .arg("clean")
-                .arg("-ffdx")
-                .output();
-            if output.is_err() {
-                return Err(format!("Failed to clean the remote repository: {}", output.err().unwrap().to_string()));
+            let repo = match Repository::open(&repo_dir) {
+                Ok(repo) => repo,
+                Err(e) => return Err(format!("Failed to open the remote repository: {}", e.to_string())),
+            };
+            let mut status_opts = git2::StatusOptions::new();
+            let res = repo.statuses(Some(&mut status_opts));
+            if let Err(e) = res {
+                return Err(format!("Failed to get status of the remote repository: {}", e.to_string()));
             }
-            let output = std::process::Command::new("git")
-                .current_dir(&repo_dir)
-                .arg("reset")
-                .arg("--hard")
-                .output();
-            if output.is_err() {
-                return Err(format!("Failed to clean the remote repository: {}", output.err().unwrap().to_string()));
+            let statuses = res.unwrap();
+            for entry in statuses.iter() {
+                if entry.status().contains(git2::Status::INDEX_NEW) || entry.status().contains(git2::Status::IGNORED) {
+                    let res = fs::remove_file(repo_dir.join(entry.path().unwrap()));
+                    if let Err(e) = res {
+                        return Err(format!("Failed to remove new file {}: {}", entry.path().unwrap(), e));
+                    }
+                }
             }
-            let output = std::process::Command::new("git")
-                .current_dir(&repo_dir)
-                .arg("pull")
-                .arg("--force")
-                .output();
-            if output.is_err() {
-                return Err(format!("Failed to pull the remote repository: {}", output.err().unwrap().to_string()));
+            // Reset
+            let mut checkout_builder = git2::build::CheckoutBuilder::new();
+            checkout_builder.force();
+            let res = repo.checkout_head(Some(&mut checkout_builder));
+            if let Err(e) = res {
+                return Err(format!("Failed to reset the remote repository: {}", e.to_string()));
             }
+            // Pull
+            let res = repo.find_remote("origin");
+            if let Err(e) = res {
+                return Err(format!("Failed to find remote origin: {}", e.to_string()));
+            }
+            let mut remote: git2::Remote = res.unwrap();
+            let refspec= format!("refs/remotes/origin/{}", self.get_default_branch_name(workspace));
+            let res = remote.fetch(&[refspec], None, None);
+            if let Err(e) = res {
+                return Err(format!("Failed to fetch the remote repository: {}", e.to_string()));
+            }
+            // Merge
+            let annotated_commit = repo.reference_to_annotated_commit(&repo.find_reference("refs/remotes/origin/HEAD").unwrap());
+            if let Err(e) = annotated_commit {
+                return Err(format!("Failed to get annotated commit: {}", e.to_string()));
+            }
+            let res = repo.merge_analysis(&[&annotated_commit.unwrap()]);
+            if let Err(e) = res {
+                return Err(format!("Failed to analyze the remote repository: {}", e.to_string()));
+            }
+            let analysis = res.unwrap();
+            if analysis.0.is_fast_forward() {
+                let annotated_commit = repo.reference_to_annotated_commit(&repo.head().unwrap());
+                if let Err(e) = annotated_commit {
+                    return Err(format!("Failed to get annotated commit: {}", e.to_string()));
+                }
+                let res = repo.merge(&[], None, None);
+                if let Err(e) = res {
+                    return Err(format!("Failed to merge the remote repository: {}", e.to_string()));
+                }
+                let res = repo.cleanup_state();
+                if let Err(e) = res {
+                    return Err(format!("Failed to cleanup the remote repository: {}", e.to_string()));
+                }
+            }
+        }
+        Ok(())
+    }
+    pub fn fetch(&self, workspace: &Workspace) -> Result<Vec<PackageIndexEntry>, String> {
+        let repo_dir = workspace.get_remote_repo_dir(&self);
+        let res = self.fetch_repo(workspace);
+        if let Err(e) = res {
+            return Err(format!("Failed to fetch remote module index repo {}: {}", repo_dir.display(), e));
         }
         let package_index_root_fp = repo_dir.join(constants::PACKAGE_INDEX_ROOT_FILE);
         if !package_index_root_fp.exists() {
@@ -248,14 +289,10 @@ impl Remote {
     }
     pub fn get_default_branch_name(&self, workspace: &Workspace) -> String {
         let repo_dir = workspace.get_remote_repo_dir(&self);
-        let output = std::process::Command::new("git")
-            .current_dir(&repo_dir)
-            .arg("symbolic-ref")
-            .arg("HEAD")
-            .arg("--short")
-            .output();
-        let branch_name = String::from_utf8(output.unwrap().stdout).unwrap();
-        branch_name.trim().to_string()
+        let repo = Repository::open(&repo_dir).expect(format!("Failed to open the remote repository {}", repo_dir.display()).as_str());
+        let head = repo.head().expect("Failed to get HEAD");
+        let branch_name = head.name().expect("Failed to get branch name");
+        branch_name.to_string()
     }
     pub fn fetch_add(&self, dry_run: bool, verbose: bool, workspace: &Workspace, name: &String,
                      vendor: Option<&String>, package_type: &PackageType,
@@ -296,31 +333,24 @@ impl Remote {
             }
         }
 
+        let res = self.fetch_repo(workspace);
+        if let Err(e) = res {
+            return Err(format!("Failed to fetch remote module index repo {}: {}", repo_dir.display(), e));
+        }
+
         // Set author email and name
-        if let Some(user_name) = publisher_name {
-            let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
-                .current_dir(&repo_dir)
-                .arg("config")
-                .arg("user.name")
-                .arg(user_name));
-            if let Some(output) = res {
-                if !output.status.success() {
-                    return Err(format!("Failed to set user name: {}", String::from_utf8_lossy(&output.stderr)));
-                }
-            }
+        let repo = Repository::open(&repo_dir).expect(format!("Failed to open the remote repository {}", repo_dir.display()).as_str());
+        let mut user_name = repo.config().expect("Failed to get config").get_string("user.name").unwrap();
+        let mut user_email = repo.config().expect("Failed to get config").get_string("user.email").unwrap();
+
+        if let Some(given_user_name) = publisher_name {
+            user_name = given_user_name.clone();
         }
-        if let Some(user_email) = publisher_email {
-            let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
-                .current_dir(&repo_dir)
-                .arg("config")
-                .arg("user.email")
-                .arg(user_email));
-            if let Some(output) = res {
-                if !output.status.success() {
-                    return Err(format!("Failed to set user email: {}", String::from_utf8_lossy(&output.stderr)));
-                }
-            }
+        if let Some(given_user_email) = publisher_email {
+            user_email = given_user_email.clone();
         }
+        repo.config().expect("Failed to get config").set_str("user.name", &user_name).unwrap();
+        repo.config().expect("Failed to get config").set_str("user.email", &user_email).unwrap();
 
         let release_list_file = repo_dir.join("releases").join(format!("{}.json", name));
         if !release_list_file.parent().unwrap().exists() {
@@ -337,68 +367,53 @@ impl Remote {
             return Err(format!("Failed to write remote package releases: {}", e));
         }
 
-        // Commit and push
-        let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
-            .current_dir(&repo_dir)
-            .arg("add")
-            .arg("."));
-        if let Some(output) = res {
-            if !output.status.success() {
-                return Err(format!("Failed to add files to the remote repository: {}", String::from_utf8_lossy(&output.stderr)));
-            }
+        // Add files
+        let res = run_fn("Add files", dry_run, verbose, || {
+            let mut index = repo.index().expect("Failed to get index");
+            index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None).expect("Failed to add files to index");
+            index.write().expect("Failed to write index");
+            Ok(())
+        });
+        if let Err(msg) = res {
+            return Err(format!("Failed to add files to the remote repository: {}", msg));
+        }
+        // Commit
+        let mut commit_id= "COMMIT_SHA_DRY_RUN".to_string();
+        let res = run_fn("Commit", dry_run, verbose, || {
+           let mut index = repo.index().expect("Failed to get index");
+            let tree_id = index.write_tree().expect("Failed to write tree");
+            let tree = repo.find_tree(tree_id).expect("Failed to find tree");
+            let head = repo.head().expect("Failed to get HEAD");
+            let parent = repo.find_commit(head.target().expect("Failed to get HEAD target")).expect("Failed to find commit");
+            let sig = repo.signature().expect("Failed to get signature");
+            commit_id = repo.commit(Some("HEAD"), &sig, &sig, &format!("Add package {} version {}", name, version), &tree, &[&parent]).expect("Failed to commit").to_string();
+            Ok(())
+        });
+        if let Err(msg) = res {
+            return Err(format!("Failed to commit to the remote repository: {}", msg));
         }
 
-        let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
-            .current_dir(&repo_dir)
-            .arg("commit")
-            .arg("-m")
-            .arg(format!("Add package {} version {}", name, version)));
-        if let Some(output) = res {
-            if !output.status.success() {
-                return Err(format!("Failed to commit to the remote repository: {}", String::from_utf8_lossy(&output.stderr)));
-            }
-        }
-
-        // If push fails, pull with rebase first and then push
-        let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
-            .current_dir(&repo_dir)
-            .arg("push"));
-        if res.is_some() {
-            let mut output = res.unwrap();
-            let mut tries = 3;
-            while !output.status.success() && tries > 0 {
-                output = run_if_not(false, verbose, std::process::Command::new("git")
-                    .current_dir(&repo_dir)
-                    .arg("pull")
-                    .arg("--rebase")).unwrap();
-                if !output.status.success() {
-                    return Err(format!("Failed to pull with rebase from the remote {}. If there were conflicts, manually solve them under {}.", self.name, repo_dir.display()));
+        // Push with HTTPS
+        let default_branch_name = self.get_default_branch_name(workspace);
+        let res = run_fn("Push", dry_run, verbose, || {
+            let mut origin = repo.find_remote("origin").expect("Failed to find remote origin");
+            let mut callbacks = git2::RemoteCallbacks::new();
+            callbacks.credentials(|_url, username_from_url, allowed_types| {
+                let username = username_from_url.unwrap_or("git");
+                if allowed_types.is_user_pass_plaintext() {
+                    return git2::Cred::userpass_plaintext(username, "");
                 }
-                output = run_if_not(false, verbose,
-                                    std::process::Command::new("git")
-                                        .current_dir(&repo_dir)
-                                        .arg("push")).unwrap();
-                tries -= 1;
-            }
-            if !output.status.success() {
-                return Err(format!("Failed to publish: {}", String::from_utf8_lossy(&output.stderr)));
-            }
+                git2::Cred::default()
+            });
+            let mut opts = git2::PushOptions::new();
+            opts.remote_callbacks(callbacks);
+            origin.push(&[format!("refs/heads/{}:refs/heads/{}", default_branch_name, default_branch_name)], Some(&mut opts)).expect("Failed to push");
+            Ok(())
+        });
+        if let Err(msg) = res {
+            return Err(format!("Failed to push to the remote repository: {}", msg));
         }
-
-        // Get commit SHA
-        let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
-            .current_dir(&repo_dir)
-            .arg("rev-parse")
-            .arg("HEAD"));
-        let mut commit_sha = "COMMIT_SHA_DRY_RUN".to_string();
-        if let Some(output) = res {
-            if !output.status.success() {
-                return Err(format!("Failed to get commit SHA from the remote repository: {}", String::from_utf8_lossy(&output.stderr)));
-            }
-            commit_sha = String::from_utf8(output.stdout).unwrap().trim().to_string();
-        }
-
-       Ok(commit_sha)
+       Ok(commit_id)
     }
     pub fn create_gh_release(&self, dry_run: bool, verbose: bool, workspace: &Workspace, commit_sha: &String, name: &String, version: &String, artifacts: Vec<PathBuf>) -> Result<(), String> {
         let repo_dir = workspace.get_remote_repo_dir(&self);

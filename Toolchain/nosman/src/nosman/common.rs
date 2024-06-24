@@ -94,3 +94,15 @@ pub fn run_if_not(dry_run: bool, verbose: bool, cmd: &mut std::process::Command)
         Some(res.expect(format!("Failed to run command {:?}", cmd).as_str()))
     }
 }
+
+pub fn run_fn(name: &str, dry_run: bool, verbose: bool, f: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
+    if dry_run {
+        println!("Would run: {}", name);
+        Ok(())
+    } else {
+        if verbose {
+            println!("Running: {}", name);
+        }
+        f()
+    }
+}

@@ -77,7 +77,7 @@ impl GetCommand {
         if let Err(e) = res.as_ref() {
             pb.println(format!("Unable to remove {}: {}", src.display(), e).red().to_string());
             pb.suspend(|| {
-                while common::ask("Retry removing", false, do_default) {
+                while common::ask("Make sure Nodos isn't running. Retry removing", false, do_default) {
                     res = Self::move_file_or_dir(src, dst);
                     if let Err(e) = res.as_ref() {
                         println!("{}", format!("Unable to remove {}: {}", src.display(), e).red().to_string());
@@ -244,7 +244,7 @@ impl GetCommand {
                 if let Err(e) = res.as_ref() {
                     pb.println(format!("Error copying {}: {}", cur_dst_path.display(), e).red().to_string());
                     pb.suspend(|| {
-                        while common::ask("Retry copying", false, do_default) {
+                        while common::ask("Make sure Nodos isn't running. Retry copying", false, do_default) {
                             res = fs::copy(curr_file_path, &cur_dst_path);
                             if let Err(e) = res.as_ref() {
                                 println!("{}", format!("Error copying {}: {}",  cur_dst_path.display(), e).red().to_string());

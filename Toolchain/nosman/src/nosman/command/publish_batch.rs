@@ -28,20 +28,26 @@ impl PublishBatchCommand {
         if let Some(reference) = compare_with {
             println!("Checking for changes between {} and HEAD", reference);
             let mut changed_files = vec![];
-            let output = std::process::Command::new("git")
-                .arg("diff")
-                .arg("--name-only")
-                .arg(format!("{}..{}", reference, "HEAD"))
-                .current_dir(&repo_path)
-                .output()
-                .expect("Failed to execute git diff");
-            if !output.status.success() {
-                return Err(InvalidArgumentError { message: format!("Failed to execute git diff: {}", String::from_utf8_lossy(&output.stderr)) });
+            let repo = git2::Repository::open(&repo_path).expect(format!("Failed to open repo at {}", repo_path.display()).as_str());
+            // Diff between reference and HEAD
+            let diff = repo.diff_tree_to_tree(
+                Some(&repo.revparse_single(reference).expect(format!("Failed to revparse {}", reference).as_str()).peel_to_tree().expect("Failed to peel to tree")),
+                Some(&repo.revparse_single("HEAD").expect("Failed to revparse HEAD").peel_to_tree().expect("Failed to peel to tree")),
+                None).expect("Failed to get diff");
+            // Get file paths
+            let diff_deltas = diff.deltas();
+            for delta in diff_deltas {
+                let old_file = delta.old_file().path();
+                let new_file = delta.new_file().path();
+                if old_file.is_none() {
+                    changed_files.push(PathBuf::from(new_file.unwrap()));
+                }
+                else {
+                    changed_files.push(PathBuf::from(old_file.unwrap()));
+                }
             }
-            let output = String::from_utf8_lossy(&output.stdout);
-            for line in output.lines() {
-                println!("{}", format!("Changed file: {}", line).dimmed());
-                changed_files.push(PathBuf::from(line.to_string()));
+            for changed_file in &changed_files {
+                println!("{}", format!("Changed file: {}", changed_file.display()).dimmed());
             }
             changed_files_opt = Some(changed_files);
         }
