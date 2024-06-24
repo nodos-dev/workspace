@@ -389,16 +389,12 @@ impl Remote {
         let res = run_fn("Push", dry_run, verbose, || {
             let mut origin = repo.find_remote("origin").expect("Failed to find remote origin");
             let mut callbacks = git2::RemoteCallbacks::new();
-            callbacks.credentials(|_url, username_from_url, allowed_types| {
-                let username = username_from_url.unwrap_or("git");
-                if allowed_types.is_user_pass_plaintext() {
-                    return git2::Cred::userpass_plaintext(username, "");
-                }
-                git2::Cred::default()
+            callbacks.credentials(|url, _username_from_url, _allowed_types| {
+                git2::Cred::credential_helper(&repo.config().expect("Failed to get git config"), url, Some(publisher_name))
             });
             let mut opts = git2::PushOptions::new();
             opts.remote_callbacks(callbacks);
-            origin.push(&[format!("refs/heads/{}:refs/heads/{}", default_branch_name, default_branch_name)], Some(&mut opts)).expect("Failed to push");
+            origin.push(&[format!("refs/heads/{}:refs/heads/{}", default_branch_name, default_branch_name).as_str()], Some(&mut opts)).expect("Failed to push");
             Ok(())
         });
         if let Err(msg) = res {
