@@ -1,11 +1,13 @@
-use std::collections::HashSet;
-use std::fs::{File};
-use std::{fs};
+use std::{fs, io};
+use std::fs::File;
+use std::io::Error;
 use std::path::{PathBuf};
 use std::time::Duration;
 use clap::{ArgMatches};
 use colored::Colorize;
+use filetime::FileTime;
 use indicatif::ProgressBar;
+use linked_hash_set::LinkedHashSet;
 
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgumentError, IOError};
@@ -19,31 +21,49 @@ pub struct GetCommand {
 }
 
 impl GetCommand {
-    fn force_move(src: &PathBuf, dst: &PathBuf) -> Result<(), rm_rf::Error> {
+    fn move_file_or_dir(src: &PathBuf, dst: &PathBuf) -> Result<(), io::Error> {
         if src.is_dir() {
-            let res = fs::rename(src, dst);
+            let opts = fs_more::directory::DirectoryMoveOptions {
+                destination_directory_rule: fs_more::directory::DestinationDirectoryRule::AllowNonEmpty {
+                    existing_destination_file_behaviour: fs_more::file::ExistingFileBehaviour::Overwrite,
+                    existing_destination_subdirectory_behaviour: fs_more::directory::ExistingSubDirectoryBehaviour::Continue,
+                },
+            };
+            let res = fs_more::directory::move_directory(src, dst, opts);
             if let Err(e) = res {
-                return Err(rm_rf::Error::IoError(e));
+                return Err(Error::new(io::ErrorKind::Other, e.to_string()));
             }
-            return Ok(());
-        }
-        let res = File::open(&src);
-        if let Err(e) = res {
-            return Err(rm_rf::Error::IoError(e));
-        }
-        let mut source = res.unwrap();
-        let res = File::create(&dst);
-        if let Err(e) = res {
-            return Err(rm_rf::Error::IoError(e));
-        }
-        let mut target = res.unwrap();
-        let res = std::io::copy(&mut source, &mut target);
-        if let Err(e) = res {
-            return Err(rm_rf::Error::IoError(e));
-        }
-        let res = rm_rf::remove(src);
-        if let Err(e) = res {
-            return Err(e);
+        } else {
+            let res = File::open(&src);
+            if let Err(e) = res {
+                return Err(e);
+            }
+            let mut source = res.unwrap();
+            let res = File::create(&dst);
+            if let Err(e) = res {
+                return Err(e);
+            }
+            let mut target = res.unwrap();
+            let res = std::io::copy(&mut source, &mut target);
+            if let Err(e) = res {
+                return Err(e);
+            }
+            // Copy last access and modification times
+            let metadata = fs::metadata(src);
+            if let Err(e) = metadata {
+                return Err(e);
+            }
+            let metadata = metadata.unwrap();
+            let atime = FileTime::from_last_access_time(&metadata);
+            let mtime = FileTime::from_last_modification_time(&metadata);
+            let res = filetime::set_file_times(dst, atime, mtime);
+            if let Err(e) = res {
+                return Err(e);
+            }
+            let res = rm_rf::remove(src);
+            if let Err(e) = res {
+                return Err(Error::new(io::ErrorKind::Other, e.to_string()));
+            }
         }
         Ok(())
     }
@@ -53,12 +73,12 @@ impl GetCommand {
                 fs::create_dir_all(parent).expect(format!("Failed to create directory {:?}", parent).as_str());
             }
         }
-        let mut res = Self::force_move(src, dst);
+        let mut res = Self::move_file_or_dir(src, dst);
         if let Err(e) = res.as_ref() {
             pb.println(format!("Unable to remove {}: {}", src.display(), e).red().to_string());
             pb.suspend(|| {
                 while common::ask("Retry removing", false, do_default) {
-                    res = Self::force_move(src, dst);
+                    res = Self::move_file_or_dir(src, dst);
                     if let Err(e) = res.as_ref() {
                         println!("{}", format!("Unable to remove {}: {}", src.display(), e).red().to_string());
                         continue;
@@ -69,13 +89,12 @@ impl GetCommand {
         }
         res.is_ok()
     }
-    fn rollback(pb: &ProgressBar, removed: &Vec<(PathBuf, PathBuf)>, new_paths: &Vec<PathBuf>) {
+    fn rollback(pb: &ProgressBar, removed: &Vec<(PathBuf, PathBuf)>, new_paths: &LinkedHashSet<PathBuf>) {
         pb.println("Rolling back changes".yellow().to_string());
         pb.set_message("Rolling back changes".yellow().to_string());
-        // Reorder new_paths to remove children first
-        let mut new_paths = new_paths.clone();
-        new_paths.sort_by(|a, b| b.cmp(a));
-        for path in new_paths {
+        let mut remove_order = new_paths.clone();
+        Self::sort_paths(&mut remove_order);
+        for path in remove_order {
             pb.println(format!("Rolling back: Remove {}", path.display()).yellow().dimmed().to_string());
             if path.is_dir() {
                 let _ = fs::remove_dir_all(path);
@@ -86,14 +105,27 @@ impl GetCommand {
         }
         for (removed_path, original_path) in removed {
             pb.println(format!("Rolling back: Restore {}", original_path.display()).yellow().dimmed().to_string());
-            let err = fs::rename(&removed_path, &original_path);
-            if let Err(e) = err {
+            let res = Self::move_file_or_dir(&removed_path, &original_path);
+            if let Err(e) = res {
                 pb.println(format!("Failed to rollback: {}", e).red().to_string());
             }
         }
         pb.println("Rollback complete".yellow().to_string());
     }
-    fn remove_or_rollback(pb: &ProgressBar, cur_dst_path: &PathBuf, removed_path: &PathBuf, removed: &Vec<(PathBuf, PathBuf)>, new_paths: & Vec<PathBuf>, do_default: bool) -> Result<(), CommandError> {
+    fn sort_paths(paths: &mut LinkedHashSet<PathBuf>) {
+        // Sort paths such that children come before parents
+        let mut paths_vec: Vec<PathBuf> = paths.iter().cloned().collect();
+        paths_vec.sort_by(|a, b| {
+            let a = a.components().count();
+            let b = b.components().count();
+            b.cmp(&a)
+        });
+        paths.clear();
+        for path in paths_vec {
+            paths.insert(path);
+        }
+    }
+    fn remove_or_rollback(pb: &ProgressBar, cur_dst_path: &PathBuf, removed_path: &PathBuf, removed: &Vec<(PathBuf, PathBuf)>, new_paths: &LinkedHashSet<PathBuf>, do_default: bool) -> Result<(), CommandError> {
         if !Self::temp_remove(&pb, &cur_dst_path, &removed_path, do_default) {
             pb.println(format!("Failed to remove file: {}", cur_dst_path.display()).red().to_string());
             Self::rollback(&pb, removed, new_paths);
@@ -163,9 +195,9 @@ impl GetCommand {
         let removed_dir = tempfile::tempdir()?;
 
         let glob_prev = globwalk::GlobWalkerBuilder::from_patterns(&dst_path, &["**"]).min_depth(1).build().unwrap();
-        let mut prev_paths: HashSet<PathBuf> = HashSet::new();
+        let mut prev_paths: LinkedHashSet<PathBuf> = LinkedHashSet::new();
         let mut removed: Vec<(PathBuf, PathBuf)> = Vec::new(); // (removed, original)
-        let mut new_paths: Vec<PathBuf> = Vec::new();
+        let mut new_paths: LinkedHashSet<PathBuf> = LinkedHashSet::new();
         for entry in glob_prev {
             let entry = entry.unwrap();
             let curr_path = entry.path().to_path_buf();
@@ -185,7 +217,7 @@ impl GetCommand {
             if curr_file_path.is_dir() {
                 // Create dir if it doesn't exist
                 if !cur_dst_path.exists() {
-                    new_paths.push(cur_dst_path.clone());
+                    new_paths.insert(cur_dst_path.clone());
                 }
                 fs::create_dir_all(&cur_dst_path)?;
                 continue;
@@ -226,18 +258,20 @@ impl GetCommand {
                     Self::rollback(&pb, &removed, &new_paths);
                     return Err(IOError { file: cur_dst_path.display().to_string(), message: "Failed to copy file".to_string() });
                 }
-                new_paths.insert(0, cur_dst_path.clone());
+                new_paths.insert(cur_dst_path.clone());
             }
         }
+        pb.println("Removing previous files");
         for path in prev_paths {
             let mut parent_opt = path.parent();
             while let Some(parent) = parent_opt {
                 if leftovers.contains(parent) {
-                    leftovers.remove(&parent.to_path_buf());
+                    leftovers.remove(&path);
                 }
                 parent_opt = parent.parent();
             }
         }
+        Self::sort_paths(&mut leftovers);
         for file in leftovers {
             pb.set_message(format!("Removing: {}", file.display()));
             if !file.exists() {
