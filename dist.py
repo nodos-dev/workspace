@@ -113,7 +113,7 @@ def parse_version(filepath, version_define_prefix):
         return {"major": major, "minor": minor, "patch": patch}
 
 
-def create_nodos_release(gh_release_repo, gh_release_notes, gh_release_title_postfix, gh_release_target_branch, dry_run_release):
+def create_nodos_release(gh_release_repo, gh_release_notes, gh_release_title_postfix, gh_release_target_branch, dry_run_release, skip_nosman_publish):
     release_repo, release_notes, title_postfix, target_branch = gh_release_repo, gh_release_notes, gh_release_title_postfix, gh_release_target_branch
     artifacts = get_release_artifacts(ARTIFACTS_FOLDER)
     for path in artifacts:
@@ -140,6 +140,8 @@ def create_nodos_release(gh_release_repo, gh_release_notes, gh_release_title_pos
         logger.error(f"GitHub CLI returned with {result.returncode}")
         exit(result.returncode)
     logger.info("GitHub release successful")
+    if skip_nosman_publish:
+        return
 
     version = f"{major}.{minor}.{patch}.b{build_number}"
     nodos_zip_prefix = f"Nodos-{version}"
@@ -416,6 +418,10 @@ if __name__ == "__main__":
                         action='store_true',
                         default=False)
     
+    parser.add_argument('--skip-nosman-publish',
+                        action='store_true',
+                        default=False)
+    
     parser.add_argument('--pack',
                         action='store_true',
                         default=False,
@@ -427,4 +433,4 @@ if __name__ == "__main__":
         package(args.dist_key, args.engine_folder, False)
 
     if args.gh_release:
-        create_nodos_release(args.gh_release_repo, args.gh_release_notes, args.gh_release_title_postfix, args.gh_release_target_branch, args.dry_run_release)
+        create_nodos_release(args.gh_release_repo, args.gh_release_notes, args.gh_release_title_postfix, args.gh_release_target_branch, args.dry_run_release, args.skip_nosman_publish)
