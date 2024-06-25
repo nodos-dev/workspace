@@ -38,6 +38,7 @@ native-dialog = "0.7.0"
 fs-more = "0.6.0"
 filetime = "0.2.23"
 linked_hash_set = "0.1.4"
+rusty
 
 [build-dependencies]
 vergen = { version = "7.5.1", default-features = false, features = ["build"]}

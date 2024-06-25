@@ -50,6 +50,7 @@ pub struct SemVer {
 
 impl SemVer {
     pub fn parse_from_string(s: &str) -> Option<SemVer> {
+        // Parse 1.2.3.b4 -> (1, 2, 3, Some(4))
         // Parse 1.2.3.4 -> (1, 2, 3, Some(4))
         // Parse 1.2.3 -> (1, 2, 3, None)
         // Parse 1.2 -> (1, 2, 0, None)
@@ -58,7 +59,12 @@ impl SemVer {
         let major = parts.get(0).and_then(|s| s.parse::<u32>().ok());
         let minor = parts.get(1).and_then(|s| s.parse::<u32>().ok());
         let patch = parts.get(2).and_then(|s| s.parse::<u32>().ok());
-        let build_number = parts.get(3).and_then(|s| s.parse::<u32>().ok());
+        let build_number = parts.get(3).and_then(|s|
+            if s.starts_with("b") {
+                s.get(1..).and_then(|s| s.parse::<u32>().ok())
+            } else {
+                s.parse::<u32>().ok()
+            });
         if major.is_none() {
             return None;
         }
@@ -99,12 +105,22 @@ impl SemVer {
             build_number: None,
         }
     }
+    pub fn upper_build(&self) -> SemVer {
+        SemVer {
+            major: self.major,
+            minor: self.minor,
+            patch: self.patch,
+            build_number: self.build_number.map(|b| b + 1),
+        }
+    }
     pub fn get_one_up(&self) -> SemVer {
         let version_start = self.clone();
         return if version_start.patch.is_none() {
             version_start.upper_minor()
-        } else {
+        } else if version_start.build_number.is_none() {
             version_start.upper_patch()
+        } else {
+            version_start.upper_build()
         }
     }
 }
