@@ -1,6 +1,6 @@
 use std::{fs, io};
 use std::fs::File;
-use std::io::Error;
+use std::io::{Error, Read, Write};
 use std::path::{PathBuf};
 use std::time::Duration;
 use clap::{ArgMatches};
@@ -198,10 +198,26 @@ impl GetCommand {
         let mut prev_paths: LinkedHashSet<PathBuf> = LinkedHashSet::new();
         let mut removed: Vec<(PathBuf, PathBuf)> = Vec::new(); // (removed, original)
         let mut new_paths: LinkedHashSet<PathBuf> = LinkedHashSet::new();
+        let mut eula_confirmed_opt = None;
         for entry in glob_prev {
             let entry = entry.unwrap();
             let curr_path = entry.path().to_path_buf();
             prev_paths.insert(curr_path.clone());
+            let relative_path = curr_path.strip_prefix(&dst_path).unwrap();
+            // If file is Engine/*/EULA_CONFIRMED.json, save it and check if text changed.
+            eula_confirmed_opt = if relative_path.starts_with("Engine/") && relative_path.ends_with("EULA_CONFIRMED.json") {
+                let mut file = File::open(&curr_path)?;
+                let mut contents = String::new();
+                file.read_to_string(&mut contents)?;
+                if eula_confirmed_opt.is_none() {
+                    Some(contents)
+                } else {
+                    // Multiple EULA_CONFIRMED.json files found
+                    None
+                }
+            } else {
+                eula_confirmed_opt
+            };
         }
 
         // Get all files in the path
@@ -213,6 +229,42 @@ impl GetCommand {
             let curr_file_path = entry.path();
             let relative_path = curr_file_path.strip_prefix(&downloaded_path).unwrap();
             let cur_dst_path = dst_path.join(&relative_path);
+            if let Some(eula_confirmed_contents) = eula_confirmed_opt.as_ref() {
+                if relative_path.starts_with("Engine/") && relative_path.ends_with("EULA_UNCONFIRMED.json") {
+                    // If 'text' field is same as EULA_CONFIRMED.json, remove EULA_UNCONFIRMED.json
+                    let mut file = File::open(&curr_file_path)?;
+                    let mut contents = String::new();
+                    file.read_to_string(&mut contents)?;
+                    // Check "text" field in JSON
+                    let res= serde_json::from_str::<serde_json::Value>(&contents);
+                    if let Err(e) = res {
+                        pb.println(format!("Error parsing {}: {}", curr_file_path.display(), e).yellow().to_string());
+                    }
+                    else
+                    {
+                        let json: serde_json::Value = res.unwrap();
+                        if let Some(text) = json.get("license_text") {
+                            let res = serde_json::from_str::<serde_json::Value>(eula_confirmed_contents);
+                            if let Err(e) = res {
+                                pb.println(format!("Error parsing new EULA_CONFIRMED.json: {}", e).yellow().to_string());
+                            }
+                            else {
+                                let eula_confirmed_json: serde_json::Value = res.unwrap();
+                                if let Some(eula_confirmed_text) = eula_confirmed_json.get("license_text") {
+                                    if text == eula_confirmed_text {
+                                        pb.println("The accepted EULA has not changed. Skipping EULA confirmation.".yellow().to_string());
+                                        // Write eula_confirmed_contents to EULA_CONFIRMED.json
+                                        let eula_confirmed_path = cur_dst_path.parent().unwrap().join("EULA_CONFIRMED.json");
+                                        let mut file = File::create(&eula_confirmed_path)?;
+                                        file.write_all(eula_confirmed_contents.as_bytes())?;
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             leftovers.remove(&cur_dst_path);
             if curr_file_path.is_dir() {
                 // Create dir if it doesn't exist
