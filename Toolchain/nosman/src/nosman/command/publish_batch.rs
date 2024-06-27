@@ -95,6 +95,10 @@ impl PublishBatchCommand {
             println!("{}", format!("Will publish module at {:?}", module_root).green());
         }
 
+        if to_be_published.is_empty() {
+            println!("{}", "No modules need publishing".yellow());
+            return Ok(true);
+        }
         for module_root in to_be_published {
             PublishCommand {}.run_publish(dry_run, verbose, &module_root, None, None, version_suffix, None, remote_name, vendor, publisher_name, publisher_email)?;
         }
