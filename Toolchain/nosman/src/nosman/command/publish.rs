@@ -1,6 +1,10 @@
 use std::fs::File;
 use std::io::{Read, Write};
+#[cfg(not(target_os = "windows"))]
+use std::{env};
 use std::path;
+use std::ffi::OsString;
+use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::time::Duration;
 use clap::{ArgMatches};
@@ -11,13 +15,12 @@ use serde::{Deserialize, Serialize};
 use tempfile::{tempdir};
 use zip::write::{SimpleFileOptions};
 
-use crate::nosman::command::{Command, CommandResult};
+use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::command::CommandError::{GenericError, InvalidArgumentError};
 use crate::nosman::constants;
 use crate::nosman::index::{PackageReleaseEntry, PackageType, SemVer};
 use crate::nosman::path::{get_plugin_manifest_file, get_subsystem_manifest_file};
 use crate::nosman::workspace::Workspace;
-
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PublishOptions {
@@ -44,6 +47,104 @@ pub struct PublishCommand {
 }
 
 impl PublishCommand {
+    fn load_module_with_search_paths(binary_path: &OsString, additional_search_paths: Vec<PathBuf>) -> Result<Library, CommandError> {
+        #[cfg(not(target_os = "windows"))]
+        {
+            // Store the original environment variable values
+            #[cfg(target_os = "linux")]
+            let original_var = env::var_os("LD_LIBRARY_PATH");
+
+            #[cfg(target_os = "macos")]
+            let original_var = env::var_os("DYLD_LIBRARY_PATH");
+
+
+            {
+                for lib_dir in additional_search_paths {
+                    // Add this directory to the appropriate environment variable
+                    #[cfg(target_os = "linux")]
+                    {
+                        let mut paths = env::var_os("LD_LIBRARY_PATH").unwrap_or_else(|| "".into());
+                        let mut lib_dir = lib_dir.clone();
+                        lib_dir.push(":");
+                        lib_dir.push(paths);
+                        env::set_var("LD_LIBRARY_PATH", lib_dir);
+                    }
+
+                    #[cfg(target_os = "macos")]
+                    {
+                        let mut paths = env::var_os("DYLD_LIBRARY_PATH").unwrap_or_else(|| "".into());
+                        let mut lib_dir = lib_dir.clone();
+                        lib_dir.push(":");
+                        lib_dir.push(paths);
+                        env::set_var("DYLD_LIBRARY_PATH", lib_dir);
+                    }
+                }
+            }
+
+
+
+            let res;
+            // Now load the library
+            unsafe {
+                res = Library::new(&binary_path)
+            }
+
+            {
+                // Restore the original environment variable values
+                #[cfg(target_os = "linux")]
+                if let Some(original) = original_var {
+                    env::set_var("LD_LIBRARY_PATH", original);
+                } else {
+                    env::remove_var("LD_LIBRARY_PATH");
+                }
+
+                #[cfg(target_os = "macos")]
+                if let Some(original) = original_var {
+                    env::set_var("DYLD_LIBRARY_PATH", original);
+                } else {
+                    env::remove_var("DYLD_LIBRARY_PATH");
+                }
+            }
+
+            res
+        }
+
+        #[cfg(target_os = "windows")]
+        unsafe {
+            // Set default DLL directories
+            use winapi::um::libloaderapi::{SetDefaultDllDirectories, AddDllDirectory, RemoveDllDirectory};
+            use winapi::um::libloaderapi::LOAD_LIBRARY_SEARCH_DEFAULT_DIRS;
+            if 0 == SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS) {
+                // Get last error
+                let err = std::io::Error::last_os_error();
+                return Err(GenericError { message: format!("Failed to set default DLL directories: {}", err) });
+            }
+            let mut dll_cookies = vec![];
+            for lib_dir in additional_search_paths {
+                if !lib_dir.exists() {
+                    println!("Warning: DLL search path {} does not exist", lib_dir.display());
+                    continue;
+                }
+                let lib_dir_canonical = dunce::canonicalize(&lib_dir).expect(format!("Failed to canonicalize path: {}", lib_dir.display()).as_str());
+                println!("Adding DLL search path: {}", lib_dir_canonical.display());
+                let wdir: Vec<u16> = lib_dir_canonical.as_os_str().encode_wide().chain(Some(0)).collect();
+                let cookie = AddDllDirectory(wdir.as_ptr());
+                if cookie.is_null() {
+                    let err = std::io::Error::last_os_error();
+                    return Err(GenericError { message: format!("Failed to add DLL search path {}: {}", lib_dir_canonical.display(), err) });
+                }
+                dll_cookies.push(cookie);
+            }
+            let res = Library::new(&binary_path);
+            for cookie in dll_cookies {
+                RemoveDllDirectory(cookie);
+            }
+            if res.is_err() {
+                return Err(GenericError { message: format!("Failed to load dynamic library: {}", res.err().unwrap()) });
+            }
+            Ok(res.unwrap())
+        }
+    }
     pub fn run_publish(&self, dry_run: bool, verbose: bool, path: &PathBuf, mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
                    mut package_type: Option<PackageType>, remote_name: &String, vendor: Option<&String>,
                    publisher_name: Option<&String>, publisher_email: Option<&String>) -> CommandResult {
@@ -107,13 +208,42 @@ impl PublishCommand {
                 let binary_path = manifest["binary_path"].as_str();
                 if binary_path.is_some() {
                     // Binary path is relative to the manifest file
-                    let binary_path = manifest_file.parent().unwrap().join(binary_path.unwrap());
+                    let module_dir = manifest_file.parent().unwrap();
+                    let binary_path = module_dir.join(binary_path.unwrap());
+                    if verbose {
+                        println!("Loading dynamic library: {}", binary_path.display());
+                    }
                     let binary_path = library_filename(&binary_path);
+                    let mut additional_search_paths: Vec<PathBuf> = Vec::new();
+                    for path_str in manifest["additional_search_paths"].as_array().unwrap_or(&vec![]).iter() {
+                        let path = module_dir.join(path_str.as_str().unwrap());
+                        additional_search_paths.push(path);
+                    }
+                    // Add search paths of dependencies
+                    for dep in manifest["info"]["dependencies"].as_array().unwrap_or(&vec![]) {
+                        let dep_name = dep["name"].as_str().unwrap();
+                        let dep_version = dep["version"].as_str().unwrap();
+                        let ws = Workspace::get()?;
+                        let dep_res = ws.get_latest_installed_module_for_version(dep_name, dep_version);
+                        if let Ok(installed_module) = dep_res {
+                            let dep_manifest_file_path = ws.root.join(&installed_module.config_path);
+                            let dep_manifest_file_contents = std::fs::read_to_string(&dep_manifest_file_path).expect("Failed to read dependency manifest file");
+                            let dep_manifest: serde_json::Value = serde_json::from_str(&dep_manifest_file_contents).expect("Failed to parse dependency manifest file");
+                            for path_str in dep_manifest["additional_search_paths"].as_array().unwrap_or(&vec![]) {
+                                let module_dir = dep_manifest_file_path.parent().unwrap();
+                                let path = module_dir.join(path_str.as_str().unwrap());
+                                additional_search_paths.push(path);
+                            }
+                        }
+                    }
                     // Load the dynamic library
                     unsafe {
-                        let lib = Library::new(&binary_path);
+                        let lib = Self::load_module_with_search_paths(&binary_path, additional_search_paths);
                         if lib.is_err() {
                             return Err(InvalidArgumentError { message: format!("Could not load dynamic library {}: {}", &binary_path.to_str().unwrap(), lib.err().unwrap()) });
+                        }
+                        if verbose {
+                            println!("Module {} loaded successfully", name.as_ref().unwrap());
                         }
                         let lib = lib.unwrap();
                         let func_name = match package_type {

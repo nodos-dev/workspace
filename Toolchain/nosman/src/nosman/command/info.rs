@@ -1,7 +1,6 @@
 use clap::{ArgMatches};
 
 use crate::nosman::command::{Command, CommandError, CommandResult};
-use crate::nosman::index::SemVer;
 
 use crate::nosman::workspace::{Workspace};
 
@@ -12,18 +11,9 @@ impl InfoCommand {
     fn run_get_info(&self, module_name: &str, version: &str, relaxed: bool) -> CommandResult {
         let workspace = Workspace::get()?;
         let module =  if relaxed {
-            let semver_res = SemVer::parse_from_string(version);
-            if semver_res.is_none() {
-                return Err(CommandError::InvalidArgumentError { message: format!("Invalid semantic version: {}. Unable to use with --relaxed option.", version) });
-            }
-            let version_start = SemVer::parse_from_string(version).unwrap();
-            if version_start.minor.is_none() {
-                return Err(CommandError::InvalidArgumentError { message: "Please provide a minor version too!".to_string() });
-            }
-            let version_end = version_start.get_one_up();
-            let res = workspace.get_latest_installed_module_within_range(module_name, &version_start, &version_end);
-            if res.is_none() {
-                return Err(CommandError::InvalidArgumentError { message: format!("No installed version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), module_name) });
+            let res = workspace.get_latest_installed_module_for_version(module_name, version);
+            if let Err(msg) = res {
+                return Err(CommandError::InvalidArgumentError { message: msg });
             }
             res.unwrap()
         } else {

@@ -106,6 +106,22 @@ impl Workspace {
         }
         None
     }
+    pub fn get_latest_installed_module_for_version(&self, module_name: &str, requested_version: &str) -> Result<&InstalledModule, String> {
+        let semver_res = SemVer::parse_from_string(requested_version);
+        if semver_res.is_none() {
+            return Err(format!("Invalid semantic version: {}.", requested_version));
+        }
+        let version_start = semver_res.unwrap();
+        if version_start.minor.is_none() {
+            return Err("Please provide a minor version too!".to_string());
+        }
+        let version_end = version_start.get_one_up();
+        let res = self.get_latest_installed_module_within_range(module_name, &version_start, &version_end);
+        if res.is_none() {
+            return Err(format!("No installed version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), module_name));
+        }
+        Ok(res.unwrap())
+    }
     pub fn add(&mut self, module: InstalledModule) {
         let versions = self.installed_modules.entry(module.info.id.name.clone()).or_insert(HashMap::new());
         versions.insert(module.info.id.version.clone(), module);
