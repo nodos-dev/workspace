@@ -52,6 +52,7 @@ impl PublishBatchCommand {
         // Find all modules in the repo
         let mut to_be_published: Vec<PathBuf> = vec![];
         let module_manifests = get_module_manifests(&repo_path);
+        println!("Found {} modules in {}", module_manifests.len(), repo_path.display());
         for (_module_type, manifest_file_path) in module_manifests {
             let parent = manifest_file_path.parent().unwrap();
             let relative_path = parent.strip_prefix(&repo_path).unwrap();
@@ -64,7 +65,12 @@ impl PublishBatchCommand {
             if changed_files_opt.is_some() {
                 let changed_files = changed_files_opt.as_ref().unwrap();
                 let mut found = false;
-                for glob in &nospub.globs {
+                let mut watch_globs = Vec::new();
+                watch_globs.extend(nospub.release_globs.iter());
+                if let Some(triggers) = &nospub.trigger_publish_globs {
+                    watch_globs.extend(triggers.iter());
+                }
+                for glob in &watch_globs {
                     // Prepend the parent path to the glob
                     let local = relative_path.join(glob);
                     let glob_str = local.to_slash_lossy().to_string();

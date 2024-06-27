@@ -86,7 +86,7 @@ pub fn get_module_manifests(folder: &PathBuf) -> Vec<(ModuleType, PathBuf)> {
     let pb = ProgressBar::new_spinner();
     pb.enable_steady_tick(Duration::from_millis(100));
 
-    pb.println(format!("Looking for Nodos modules in {:?}", folder).to_string());
+    pb.set_message(format!("Looking for Nodos modules in {:?}", folder).to_string());
     let res = get_module_manifest_file_in_folder(&folder);
     if res.is_ok() {
         if let Some((ty, mpath)) = res.unwrap() {
@@ -130,5 +130,6 @@ pub fn get_module_manifests(folder: &PathBuf) -> Vec<(ModuleType, PathBuf)> {
             }
         }
     }
+    pb.finish_and_clear();
     module_manifest_files
 }

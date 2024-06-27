@@ -24,22 +24,26 @@ use crate::nosman::workspace::Workspace;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PublishOptions {
-    #[serde(alias = "additional_globs")]
-    pub(crate) globs: Vec<String>
+    #[serde(alias = "globs")]
+    pub(crate) release_globs: Vec<String>,
+    pub(crate) trigger_publish_globs: Option<Vec<String>>
 }
 
 impl PublishOptions {
     pub fn from_file(nospub_file: &PathBuf) -> (PublishOptions, bool) {
-        let mut nospub = PublishOptions { globs: vec![] };
+        let mut nospub = PublishOptions { release_globs: vec![], trigger_publish_globs: None };
         let found = nospub_file.exists();
         if found {
             let contents = std::fs::read_to_string(&nospub_file).unwrap();
             nospub = serde_json::from_str(&contents).unwrap();
         }
         else {
-            nospub.globs.push("**".to_string());
+            nospub.release_globs.push("**".to_string());
         }
         return (nospub, found);
+    }
+    pub fn empty() -> PublishOptions {
+        PublishOptions { release_globs: vec![], trigger_publish_globs: None }
     }
 }
 
@@ -47,7 +51,10 @@ pub struct PublishCommand {
 }
 
 impl PublishCommand {
-    fn load_module_with_search_paths(binary_path: &OsString, additional_search_paths: Vec<PathBuf>) -> Result<Library, CommandError> {
+    fn load_module_with_search_paths(verbose: bool, binary_path: &OsString, additional_search_paths: Vec<PathBuf>) -> Result<Library, CommandError> {
+        if verbose {
+            println!("Loading dynamic library: {}", binary_path.to_str().unwrap());
+        }
         #[cfg(not(target_os = "windows"))]
         {
             // Store the original environment variable values
@@ -122,11 +129,13 @@ impl PublishCommand {
             let mut dll_cookies = vec![];
             for lib_dir in additional_search_paths {
                 if !lib_dir.exists() {
-                    println!("Warning: DLL search path {} does not exist", lib_dir.display());
+                    println!("{}", format!("Warning: DLL search path {} does not exist", lib_dir.display()).yellow().to_string());
                     continue;
                 }
                 let lib_dir_canonical = dunce::canonicalize(&lib_dir).expect(format!("Failed to canonicalize path: {}", lib_dir.display()).as_str());
-                println!("Adding DLL search path: {}", lib_dir_canonical.display());
+                if verbose {
+                    println!("\tAdding DLL search path: {}", lib_dir_canonical.display());
+                }
                 let wdir: Vec<u16> = lib_dir_canonical.as_os_str().encode_wide().chain(Some(0)).collect();
                 let cookie = AddDllDirectory(wdir.as_ptr());
                 if cookie.is_null() {
@@ -170,7 +179,7 @@ impl PublishCommand {
 
         let path = dunce::canonicalize(path).expect(format!("Failed to canonicalize path: {}", path.display()).as_str());
 
-        let mut nospub = PublishOptions { globs: vec![] };
+        let mut nospub = PublishOptions::empty();
 
         let mut api_version: Option<SemVer> = None;
 
@@ -210,9 +219,6 @@ impl PublishCommand {
                     // Binary path is relative to the manifest file
                     let module_dir = manifest_file.parent().unwrap();
                     let binary_path = module_dir.join(binary_path.unwrap());
-                    if verbose {
-                        println!("Loading dynamic library: {}", binary_path.display());
-                    }
                     let binary_path = library_filename(&binary_path);
                     let mut additional_search_paths: Vec<PathBuf> = Vec::new();
                     for path_str in manifest["additional_search_paths"].as_array().unwrap_or(&vec![]).iter() {
@@ -238,12 +244,12 @@ impl PublishCommand {
                     }
                     // Load the dynamic library
                     unsafe {
-                        let lib = Self::load_module_with_search_paths(&binary_path, additional_search_paths);
+                        let lib = Self::load_module_with_search_paths(verbose, &binary_path, additional_search_paths);
                         if lib.is_err() {
                             return Err(InvalidArgumentError { message: format!("Could not load dynamic library {}: {}", &binary_path.to_str().unwrap(), lib.err().unwrap()) });
                         }
                         if verbose {
-                            println!("Module {} loaded successfully", name.as_ref().unwrap());
+                            println!("Module {} loaded successfully. Checking Nodos {:?} API version...", name.as_ref().unwrap(), &package_type);
                         }
                         let lib = lib.unwrap();
                         let func_name = match package_type {
@@ -292,7 +298,7 @@ impl PublishCommand {
             pb.println("Following files will be included in the release:".yellow().to_string().as_str());
             pb.set_message("Scanning files".to_string());
             let mut files_to_release = vec![];
-            for glob in nospub.globs.iter() {
+            for glob in nospub.release_globs.iter() {
                 let walker = globwalk::GlobWalkerBuilder::from_patterns(&path, &[glob])
                     .build()
                     .unwrap();
