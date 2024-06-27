@@ -340,7 +340,8 @@ fn main() {
         .subcommand(Command::new("publish-batch")
             .about("Publish all/changed modules under the git repository.")
             .after_help(format!("This command will publish all/changed modules under the git repository to the specified remote.\n\
-            It will use the {} files to compare file changes.", constants::PUBLISH_OPTIONS_FILE_NAME))
+            It will use the {} files to compare file changes & adding files to the release. In the {} file, 'trigger_publish_globs' field will be used check file changes. \
+            The 'release_globs' field however, will both be used for including files to the release as well as checking file changes.", constants::PUBLISH_OPTIONS_FILE_NAME, constants::PUBLISH_OPTIONS_FILE_NAME))
             .arg(Arg::new("remote")
                 .help("Name of the remote to publish to.")
                 .default_value("default")
