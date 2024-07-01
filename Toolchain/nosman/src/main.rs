@@ -91,11 +91,13 @@ fn launch_nodos() {
     let engine_path = opt_engine_path.unwrap();
     let editor_thread = std::thread::spawn(move || {
         std::process::Command::new(&editor_path)
+            .arg("--no-duplicate-instance")
             .current_dir(editor_path.parent().unwrap())
             .spawn().unwrap().wait().expect("Failed to launch nosEditor");
     });
     let engine_thread = std::thread::spawn(move || {
         std::process::Command::new(&engine_path)
+            .arg("--exit-silently-if-duplicate")
             .current_dir(engine_path.parent().unwrap())
             .spawn().unwrap().wait().expect("Failed to launch nosLauncher");
     });
