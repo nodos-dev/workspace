@@ -39,7 +39,14 @@ pub fn check_file_contents_same(path1: &PathBuf, path2: &PathBuf) -> bool {
     let mut file2 = File::open(path2).expect(format!("Failed to open {:?}", path2).as_str());
     let mut buf1 = [0; 1024];
     let mut buf2 = [0; 1024];
-    if file1.metadata().unwrap().len() != file2.metadata().unwrap().len() {
+    let opt_f1_md = file1.metadata();
+    let opt_f2_md = file2.metadata();
+    if opt_f1_md.is_err() || opt_f2_md.is_err() {
+        return false;
+    }
+    let f1_md = opt_f1_md.unwrap();
+    let f2_md = opt_f2_md.unwrap();
+    if f1_md.len() != f2_md.len() {
         return false;
     }
     loop {

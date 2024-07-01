@@ -43,20 +43,20 @@ fn launched_from_file_explorer() -> bool {
 
 fn launch_nodos() {
     // Assume workspace is cwd.
-    let workspace_dir = std::env::current_dir().unwrap();
+    let workspace_dir = std::env::current_dir().expect("Unable to access current working directory.");
     let engines_dir = nosman::path::get_default_engines_dir(&workspace_dir);
     if !engines_dir.exists() {
         MessageDialog::new()
             .set_title("Nodos")
             .set_text("No installed Nodos engine found in workspace.")
-            .show_alert().unwrap();
+            .show_alert().expect("Failed to show message dialog");
         std::process::exit(1);
     }
 
     let mut opt_editor_path = None;
     let mut opt_engine_path = None;
     // For each folder in engines_dir, check if it has SDK/version.json
-    for entry in std::fs::read_dir(engines_dir).unwrap() {
+    for entry in std::fs::read_dir(engines_dir).expect("Unable to read Engine directory") {
         let entry = entry.unwrap();
         let path = entry.path();
         if !path.is_dir() {
@@ -92,13 +92,13 @@ fn launch_nodos() {
     let editor_thread = std::thread::spawn(move || {
         std::process::Command::new(&editor_path)
             .arg("--no-duplicate-instance")
-            .current_dir(editor_path.parent().unwrap())
+            .current_dir(editor_path.parent().expect("Unable to get parent directory of nosEditor"))
             .spawn().unwrap().wait().expect("Failed to launch nosEditor");
     });
     let engine_thread = std::thread::spawn(move || {
         std::process::Command::new(&engine_path)
             .arg("--exit-silently-if-duplicate")
-            .current_dir(engine_path.parent().unwrap())
+            .current_dir(engine_path.parent().expect("Unable to get parent directory of nosLauncher"))
             .spawn().unwrap().wait().expect("Failed to launch nosLauncher");
     });
     engine_thread.join().unwrap();

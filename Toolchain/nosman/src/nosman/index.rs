@@ -56,24 +56,24 @@ impl SemVer {
         // Parse 1.2 -> (1, 2, 0, None)
         // Parse 1 -> (1, 0, 0, None)
         let parts: Vec<&str> = s.split('.').collect();
-        let major = parts.get(0).and_then(|s| s.parse::<u32>().ok());
-        let minor = parts.get(1).and_then(|s| s.parse::<u32>().ok());
-        let patch = parts.get(2).and_then(|s| s.parse::<u32>().ok());
-        let build_number = parts.get(3).and_then(|s|
+        let opt_major = parts.get(0).and_then(|s| s.parse::<u32>().ok());
+        let opt_minor = parts.get(1).and_then(|s| s.parse::<u32>().ok());
+        let opt_patch = parts.get(2).and_then(|s| s.parse::<u32>().ok());
+        let opt_build_number = parts.get(3).and_then(|s|
             if s.starts_with("b") {
                 s.get(1..).and_then(|s| s.parse::<u32>().ok())
             } else {
                 s.parse::<u32>().ok()
             });
-        if major.is_none() {
+        if opt_major.is_none() {
             return None;
         }
-        let major = major.unwrap();
+        let major = opt_major.unwrap();
         Some(SemVer {
             major,
-            minor,
-            patch,
-            build_number,
+            minor: opt_minor,
+            patch: opt_patch,
+            build_number: opt_build_number,
         })
     }
     pub fn to_string(&self) -> String {
@@ -205,8 +205,8 @@ impl Remote {
                 .arg(&self.url)
                 .arg(&repo_dir)
                 .output();
-            if output.is_err() {
-                return Err(format!("Failed to clone the remote repository: {}", output.err().unwrap().to_string()));
+            if let Err(e) = output {
+                return Err(format!("Failed to clone the remote repository: {}", e));
             }
         } else {
             let output = std::process::Command::new("git")
@@ -214,24 +214,24 @@ impl Remote {
                 .arg("clean")
                 .arg("-ffdx")
                 .output();
-            if output.is_err() {
-                return Err(format!("Failed to clean the remote repository: {}", output.err().unwrap().to_string()));
+            if let Err(e) = output {
+                return Err(format!("Failed to clean the remote repository: {}", e));
             }
             let output = std::process::Command::new("git")
                 .current_dir(&repo_dir)
                 .arg("reset")
                 .arg("--hard")
                 .output();
-            if output.is_err() {
-                return Err(format!("Failed to clean the remote repository: {}", output.err().unwrap().to_string()));
+            if let Err(e) = output {
+                return Err(format!("Failed to clean the remote repository: {}", e));
             }
             let output = std::process::Command::new("git")
                 .current_dir(&repo_dir)
                 .arg("pull")
                 .arg("--force")
                 .output();
-            if output.is_err() {
-                return Err(format!("Failed to pull the remote repository: {}", output.err().unwrap().to_string()));
+            if let Err(e) = output {
+                return Err(format!("Failed to pull the remote repository: {}", e));
             }
         }
         let package_index_root_fp = repo_dir.join(constants::PACKAGE_INDEX_ROOT_FILE);
