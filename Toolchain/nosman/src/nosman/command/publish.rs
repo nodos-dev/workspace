@@ -1,10 +1,11 @@
 use std::fs::File;
 use std::io::{Read, Write};
 #[cfg(not(target_os = "windows"))]
-use std::{env};
+use std::env;
+#[cfg(target_os = "windows")]
+use std::os::windows::ffi::OsStrExt;
 use std::path;
 use std::ffi::OsString;
-use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::time::Duration;
 use clap::{ArgMatches};
@@ -113,7 +114,10 @@ impl PublishCommand {
                 }
             }
 
-            res
+            if res.is_err() {
+                return Err(GenericError { message: format!("Failed to load dynamic library: {}", res.err().unwrap()) });
+            }
+            Ok(res.unwrap())
         }
 
         #[cfg(target_os = "windows")]

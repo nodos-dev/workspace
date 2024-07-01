@@ -299,7 +299,7 @@ impl Remote {
 
             let package = PackageIndexEntry {
                 name: name.clone(),
-                releases_url: format!("https://raw.githubusercontent.net/{}/{}/{}/releases/{}.json", org_name, repo_name, branch_name, name),
+                releases_url: format!("https://raw.githubusercontent.com/{}/{}/{}/releases/{}.json", org_name, repo_name, branch_name, name),
                 vendor: vendor.unwrap().clone(),
                 package_type: package_type.clone(),
             };
