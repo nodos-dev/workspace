@@ -280,6 +280,10 @@ def build_nosman(nosman_src_dir, is_release) -> str:
     if result.returncode != 0:
         logger.error("Failed to build nosman")
         exit(result.returncode)
+    # Compress with upx (optional)
+    result = run(["upx", "--best", f"target/{'release' if is_release else 'debug'}/nosman{platform.system() == 'Windows' and '.exe' or ''}"], stdout=stdout, stderr=stderr, universal_newlines=True)
+    if result.returncode != 0:
+        logger.warning("Failed to compress nosman with upx, skipping")
     os.chdir(cwd)
     return f"{nosman_src_dir}/target/{'release' if is_release else 'debug'}/nosman{platform.system() == 'Windows' and '.exe' or ''}"
 
