@@ -222,9 +222,11 @@ impl Workspace {
     }
     pub fn rescan(&mut self, flags: RescanFlags) -> CommandResult {
         if flags.contains(RescanFlags::FetchPackageIndex) {
+            self.index_cache.packages.clear();
             self.fetch_remotes(flags.contains(RescanFlags::AddDefaultPackageIndexIfNoRemoteExists))?;
         }
         if flags.contains(RescanFlags::ScanModules) {
+            self.installed_modules.clear();
             self.scan_modules(true);
         }
         self.save()?;
