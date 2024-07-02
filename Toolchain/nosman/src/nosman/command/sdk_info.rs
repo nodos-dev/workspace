@@ -37,16 +37,20 @@ impl SdkInfoCommand {
             if !info_file.exists() {
                 continue;
             }
-            let info_str = std::fs::read_to_string(info_file).unwrap();
-            let info_json: serde_json::Value = serde_json::from_str(&info_str).unwrap();
-            let version = info_json.get("version").unwrap().as_str().unwrap();
+            let info_str = std::fs::read_to_string(info_file).expect("Failed to read SDK info file");
+            let info_json: serde_json::Value = serde_json::from_str(&info_str).expect("Failed to parse SDK info file");
+            let version = info_json.get("version").expect("SDK info file does not have version field").as_str().expect("Version field is not a string");
             if version == requested_version {
                 let bin_dir = sdk_dir.join("bin");
                 let include_dir = sdk_dir.join("include");
                 if bin_dir.exists() && include_dir.exists() {
+                    let path_str = dunce::canonicalize(workspace_dir.join(sdk_dir).canonicalize()
+                        .expect("Failed to canonicalize SDK directory"))
+                        .expect("Failed to canonicalize SDK directory").to_str()
+                        .expect("Failed to convert path to string").to_string();
                     let sdk_info = SdkInfo {
                         version: version.to_string(),
-                        path: dunce::canonicalize(workspace_dir.join(sdk_dir).canonicalize().unwrap()).unwrap().to_str().unwrap().to_string(),
+                        path: path_str,
                     };
                     let json_str = serde_json::to_string_pretty(&sdk_info).unwrap();
                     println!("{}", json_str);
