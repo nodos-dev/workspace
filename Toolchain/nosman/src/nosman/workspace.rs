@@ -241,7 +241,7 @@ impl Workspace {
         self.index_cache = Index::fetch(self);
         self.save()
     }
-    pub fn fetch_package_releases(&mut self, package_name: &String) {
+    pub fn fetch_package_releases(&mut self, package_name: &str) {
         let pb = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
         pb.set_message(format!("Fetching package index for {}", package_name));

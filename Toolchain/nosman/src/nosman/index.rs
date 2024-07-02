@@ -22,6 +22,15 @@ pub enum PackageType {
     Generic,
 }
 
+impl PackageType {
+    pub fn is_module(&self) -> bool {
+        match self {
+            PackageType::Plugin | PackageType::Subsystem => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PackageIndexEntry {
     pub(crate) name: String,
@@ -491,14 +500,17 @@ impl Index {
         let type_versions = self.packages.entry(name.clone()).or_insert((package_type, HashMap::new()));
         type_versions.1.insert(package.version.clone(), package);
     }
-    pub fn get_module(&self, name: &str, version: &str) -> Option<&PackageReleaseEntry> {
-        self.packages.get(name).and_then(|m| {
-            if m.0 == PackageType::Plugin || m.0 == PackageType::Subsystem {
-                m.1.get(version)
-            } else {
-                None
-            }
-        })
+    pub fn get_package(&self, name: &str, version: &str) -> Option<(&PackageType, &PackageReleaseEntry)> {
+        let res = self.packages.get(name);
+        if res.is_none() {
+            return None;
+        }
+        let (package_type, version_list) = res.unwrap();
+        let res = version_list.get(version);
+        if res.is_none() {
+            return None;
+        }
+        Some((package_type, res.unwrap()))
     }
     pub fn get_latest_release(&self, name: &str) -> Option<(&PackageType, &PackageReleaseEntry)> {
         let res = self.packages.get(name);
