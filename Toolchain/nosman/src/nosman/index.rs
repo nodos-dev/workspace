@@ -18,6 +18,8 @@ pub enum PackageType {
     Nodos,
     #[serde(alias = "engine", alias = "ENGINE")]
     Engine,
+    #[serde(alias = "generic", alias = "GENERIC")]
+    Generic,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

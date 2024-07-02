@@ -181,7 +181,7 @@ impl PublishCommand {
             return Err(InvalidArgumentError { message: format!("Path {} does not exist", path.display()) });
         }
 
-        let path = dunce::canonicalize(path).expect(format!("Failed to canonicalize path: {}", path.display()).as_str());
+        let abs_path = dunce::canonicalize(path).expect(format!("Failed to canonicalize path: {}", path.display()).as_str());
 
         let mut nospub = PublishOptions::empty();
 
@@ -189,19 +189,19 @@ impl PublishCommand {
 
         // If path is a directory, search for a manifest file
         let mut manifest_file = None;
-        if path.is_dir() {
-            let res = get_plugin_manifest_file(&path);
+        if abs_path.is_dir() {
+            let res = get_plugin_manifest_file(&abs_path);
             if res.is_err() {
                 return Err(InvalidArgumentError { message: res.err().unwrap() });
             }
             let plugin_manifest_file = res.unwrap();
-            let res = get_subsystem_manifest_file(&path);
+            let res = get_subsystem_manifest_file(&abs_path);
             if res.is_err() {
                 return Err(InvalidArgumentError { message: res.err().unwrap() });
             }
             let subsystem_manifest_file = res.unwrap();
             if plugin_manifest_file.is_some() && subsystem_manifest_file.is_some() {
-                return Err(InvalidArgumentError { message: format!("Multiple module manifest files found in {}", path.display()) });
+                return Err(InvalidArgumentError { message: format!("Multiple module manifest files found in {}", abs_path.display()) });
             }
 
             if plugin_manifest_file.is_some() {
@@ -250,7 +250,8 @@ impl PublishCommand {
                     unsafe {
                         let lib = Self::load_module_with_search_paths(verbose, &binary_path, additional_search_paths);
                         if lib.is_err() {
-                            return Err(InvalidArgumentError { message: format!("Could not load dynamic library {}: {}", &binary_path.to_str().unwrap(), lib.err().unwrap()) });
+                            return Err(InvalidArgumentError { message: format!("Could not load dynamic library {}: {}. \
+                                Make sure all the dependencies are present in the system and the search paths.", &binary_path.to_str().unwrap(), lib.err().unwrap()) });
                         }
                         if verbose {
                             println!("Module {} loaded successfully. Checking Nodos {:?} API version...", name.as_ref().unwrap(), &package_type);
@@ -272,10 +273,10 @@ impl PublishCommand {
                 }
             }
 
-            let (options, found) = PublishOptions::from_file(&path.join(constants::PUBLISH_OPTIONS_FILE_NAME));
+            let (options, found) = PublishOptions::from_file(&abs_path.join(constants::PUBLISH_OPTIONS_FILE_NAME));
             nospub = options;
             if !found {
-                println!("{}", format!("No {} file found in {}. All files will be included in the release.", constants::PUBLISH_OPTIONS_FILE_NAME, path.display()).as_str().yellow());
+                println!("{}", format!("No {} file found in {}. All files will be included in the release.", constants::PUBLISH_OPTIONS_FILE_NAME, abs_path.display()).as_str().yellow());
             }
         }
         let package_type = package_type.unwrap();
@@ -298,23 +299,22 @@ impl PublishCommand {
 
         let artifact_file_path;
         let temp_dir = tempdir().unwrap();
-        if path.is_dir() {
+        if abs_path.is_dir() {
             pb.println("Following files will be included in the release:".yellow().to_string().as_str());
             pb.set_message("Scanning files".to_string());
             let mut files_to_release = vec![];
-            for glob in nospub.release_globs.iter() {
-                let walker = globwalk::GlobWalkerBuilder::from_patterns(&path, &[glob])
-                    .build()
-                    .unwrap();
-                for entry in walker {
-                    let entry = entry.unwrap();
-                    if entry.file_type().is_dir() {
-                        continue;
-                    }
-                    let path = entry.path().to_path_buf();
-                    pb.println(format!("\t{}", path.display()).as_str());
-                    files_to_release.push(path);
+
+            let walker = globwalk::GlobWalkerBuilder::from_patterns(&abs_path, &nospub.release_globs)
+                .build()
+                .expect(format!("Failed to glob dirs: {:?}", nospub.release_globs).as_str());
+            for entry in walker {
+                let entry = entry.unwrap();
+                if entry.file_type().is_dir() {
+                    continue;
                 }
+                let path = entry.path().to_path_buf();
+                pb.println(format!("\t{}", path.display()).as_str());
+                files_to_release.push(path);
             }
             let zip_file_name = format!("{}.zip", tag);
             let zip_file_path = temp_dir.path().join(&zip_file_name);
@@ -338,16 +338,19 @@ impl PublishCommand {
                         buffer = serde_json::to_vec_pretty(&manifest).unwrap();
                     }
                 }
-                zip.start_file(file_path.strip_prefix(&path).unwrap().to_str().unwrap(), options).unwrap();
-                zip.write_all(&buffer).unwrap();
+                zip.start_file(file_path.strip_prefix(&abs_path)
+                                   .expect(format!("Failed to strip prefix {} from {}", abs_path.display(), file_path.display()).as_str()).to_str()
+                                   .expect("Failed to convert path to string"), options)
+                    .expect(format!("Failed to start file in zip: {}", file_path.display()).as_str());
+                zip.write_all(&buffer).expect(format!("Failed to write to zip: {}", file_path.display()).as_str());
                 buffer.clear();
             }
 
             zip.finish().unwrap();
             artifact_file_path = zip_file_path;
         } else {
-            pb.set_message(format!("Creating a release: {}", path.display()).as_str().to_string());
-            artifact_file_path = path.clone();
+            pb.set_message(format!("Creating a release: {}", abs_path.display()).as_str().to_string());
+            artifact_file_path = abs_path.clone();
         }
 
         // Create index entry for the release

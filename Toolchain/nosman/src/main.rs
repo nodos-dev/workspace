@@ -305,7 +305,7 @@ fn main() {
             .arg(Arg::new("type")
                 .long("type")
                 .short('t')
-                .value_parser(clap::builder::PossibleValuesParser::new(["plugin", "subsystem", "nodos", "engine"]))
+                .value_parser(clap::builder::PossibleValuesParser::new(["plugin", "subsystem", "nodos", "engine", "generic"]))
                 .help("Type of the package. It will be overridden by the module manifest files under <path> if present.\n\
                 If the <path> does not contain a module manifest file, this parameter is required.")
             )
