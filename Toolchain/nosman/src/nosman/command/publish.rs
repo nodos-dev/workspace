@@ -27,12 +27,13 @@ use crate::nosman::workspace::Workspace;
 pub struct PublishOptions {
     #[serde(alias = "globs")]
     pub(crate) release_globs: Vec<String>,
-    pub(crate) trigger_publish_globs: Option<Vec<String>>
+    #[serde(alias = "trigger_publish_globs")]
+    pub(crate) additional_publish_triggering_globs: Option<Vec<String>>
 }
 
 impl PublishOptions {
     pub fn from_file(nospub_file: &PathBuf) -> (PublishOptions, bool) {
-        let mut nospub = PublishOptions { release_globs: vec![], trigger_publish_globs: None };
+        let mut nospub = PublishOptions { release_globs: vec![], additional_publish_triggering_globs: None };
         let found = nospub_file.exists();
         if found {
             let contents = std::fs::read_to_string(&nospub_file).unwrap();
@@ -44,7 +45,7 @@ impl PublishOptions {
         return (nospub, found);
     }
     pub fn empty() -> PublishOptions {
-        PublishOptions { release_globs: vec![], trigger_publish_globs: None }
+        PublishOptions { release_globs: vec![], additional_publish_triggering_globs: None }
     }
 }
 

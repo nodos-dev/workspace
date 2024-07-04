@@ -67,7 +67,7 @@ impl PublishBatchCommand {
                 let mut found = false;
                 let mut watch_globs = Vec::new();
                 watch_globs.extend(nospub.release_globs.iter());
-                if let Some(triggers) = &nospub.trigger_publish_globs {
+                if let Some(triggers) = &nospub.additional_publish_triggering_globs {
                     watch_globs.extend(triggers.iter());
                 }
                 for glob in &watch_globs {
