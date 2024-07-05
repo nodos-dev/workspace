@@ -372,7 +372,7 @@ fn main() {
                 .long("compare-with")
                 .short('c')
                 .help("Compare current with the given branch, tag or ref.\n\
-                If not provided, it will publish all modules found under the provided repo.")
+                If not provided or empty, it will publish all modules found under the provided repo.")
             )
             .arg(Arg::new("version_suffix")
                 .long("version-suffix")

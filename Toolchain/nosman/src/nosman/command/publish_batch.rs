@@ -121,11 +121,16 @@ impl Command for PublishBatchCommand {
         let verbose = args.get_one::<bool>("verbose").unwrap();
         let remote_name = args.get_one::<String>("remote").unwrap();
         let repo_path = PathBuf::from(args.get_one::<String>("repo_path").unwrap());
-        let compare_with = args.get_one::<String>("compare_with");
+        let mut opt_compare_with = args.get_one::<String>("compare_with");
         let version_suffix = args.get_one::<String>("version_suffix").unwrap();
         let vendor = args.get_one::<String>("vendor");
         let publisher_name = args.get_one::<String>("publisher_name");
         let publisher_email = args.get_one::<String>("publisher_email");
-        self.run_publish_batch(*dry_run, *verbose, &remote_name, &repo_path, compare_with, &version_suffix, vendor, publisher_name, publisher_email)
+        if let Some(compare_with) = opt_compare_with {
+            if compare_with.is_empty() {
+                opt_compare_with = None;
+            }
+        }
+        self.run_publish_batch(*dry_run, *verbose, &remote_name, &repo_path, opt_compare_with, &version_suffix, vendor, publisher_name, publisher_email)
     }
 }
