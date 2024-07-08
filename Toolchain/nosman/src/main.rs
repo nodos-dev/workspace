@@ -89,20 +89,14 @@ fn launch_nodos() {
     }
     let editor_path = opt_editor_path.unwrap();
     let engine_path = opt_engine_path.unwrap();
-    let editor_thread = std::thread::spawn(move || {
-        std::process::Command::new(&editor_path)
-            .arg("--no-duplicate-instance")
-            .current_dir(editor_path.parent().expect("Unable to get parent directory of nosEditor"))
-            .spawn().unwrap().wait().expect("Failed to launch nosEditor");
-    });
-    let engine_thread = std::thread::spawn(move || {
-        std::process::Command::new(&engine_path)
-            .arg("--exit-silently-if-duplicate")
-            .current_dir(engine_path.parent().expect("Unable to get parent directory of nosLauncher"))
-            .spawn().unwrap().wait().expect("Failed to launch nosLauncher");
-    });
-    engine_thread.join().unwrap();
-    editor_thread.join().unwrap();
+    std::process::Command::new(&editor_path)
+        .arg("--no-duplicate-instance")
+        .current_dir(editor_path.parent().expect("Unable to get parent directory of nosEditor"))
+        .spawn().expect("Failed to launch nosEditor");
+    std::process::Command::new(&engine_path)
+        .arg("--exit-silently-if-duplicate")
+        .current_dir(engine_path.parent().expect("Unable to get parent directory of nosLauncher"))
+        .spawn().expect("Failed to launch nosLauncher");
 }
 
 fn main() {
