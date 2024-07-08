@@ -159,6 +159,10 @@ impl PublishCommand {
             Ok(res.unwrap())
         }
     }
+    fn is_name_valid(name: &String) -> bool {
+        // Should be lowercase alphanumeric, with only . and _ symbols are permitted
+        name.chars().all(|c| (c.is_ascii_alphanumeric() && c.is_ascii_lowercase()) || c == '.' || c == '_')
+    }
     pub fn run_publish(&self, dry_run: bool, verbose: bool, path: &PathBuf, mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
                    mut package_type: Option<PackageType>, remote_name: &String, vendor: Option<&String>,
                    publisher_name: Option<&String>, publisher_email: Option<&String>) -> CommandResult {
@@ -296,6 +300,12 @@ impl PublishCommand {
         pb.enable_steady_tick(Duration::from_millis(100));
         pb.println(format!("Publishing {}", tag).as_str().yellow().to_string());
         pb.set_message("Preparing release");
+        if !Self::is_name_valid(&name) {
+            return Err(InvalidArgumentError { message: format!("Name {} is not valid. It should match regex [a-z0-9._]", name) });
+        }
+        if None == SemVer::parse_from_string(version.as_str()) {
+            return Err(InvalidArgumentError { message: format!("Version should be semantic-versioning compatible: {}", version) });
+        }
         let workspace = Workspace::get()?;
 
         let artifact_file_path;
