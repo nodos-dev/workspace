@@ -1,5 +1,5 @@
 use clap::{ArgMatches};
-
+use colored::Colorize;
 use crate::nosman;
 use crate::nosman::command::{Command, CommandResult};
 
@@ -28,6 +28,12 @@ impl UnpublishCommand {
         let res = remote.remove_release(dry_run, verbose, &workspace, package_name, version);
         if let Err(msg) = res {
             return Err(GenericError { message: msg });
+        }
+        if let Some(version) = version {
+            println!("{}", format!("Package {} version {} unpublished", package_name, version).yellow());
+        }
+        else {
+            println!("{}", format!("All releases of package {} are unpublished", package_name).yellow());
         }
         Ok(true)
     }
