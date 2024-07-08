@@ -363,7 +363,64 @@ impl Remote {
         if let Err(e) = res {
             return Err(format!("Failed to write remote package releases: {}", e));
         }
-
+        self.update_remote(dry_run, verbose, format!("Add package {} version {}", name, version), &repo_dir)
+    }
+    pub fn remove_release(&self, dry_run: bool, verbose: bool, workspace: &Workspace, name: &String, version_opt: Option<&String>) -> Result<String, String> {
+        let repo_dir = workspace.get_remote_repo_dir(&self);
+        let release_list_file = repo_dir.join("releases").join(format!("{}.json", name));
+        if !release_list_file.exists() {
+            return Err(format!("No releases found for package {}", name));
+        }
+        let mut release_list: PackageReleases = serde_json::from_str(&fs::read_to_string(&release_list_file).unwrap()).unwrap();
+        let commit_msg;
+        if let Some(version) = version_opt {
+            let mut found = false;
+            for i in 0..release_list.releases.len() {
+                if release_list.releases[i].version == *version {
+                    release_list.releases.remove(i);
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                return Err(format!("No release found for package {} version {}", name, version));
+            }
+            commit_msg = format!("Remove package {} version {}", name, version);
+            let res = fs::write(release_list_file, serde_json::to_string_pretty(&release_list).unwrap());
+            if let Err(e) = res {
+                return Err(format!("Failed to write remote package releases: {}", e));
+            }
+        } else {
+            // Removing all releases
+            commit_msg = format!("Remove all releases for package {}", name);
+            if release_list.releases.len() == 0 {
+                return Err(format!("No releases found for package {}", name));
+            }
+            let res = fs::remove_file(&release_list_file);
+            if let Err(e) = res {
+                return Err(format!("Failed to remove remote package releases: {}", e));
+            }
+            let index_file = repo_dir.join(constants::PACKAGE_INDEX_ROOT_FILE);
+            let mut package_list: Vec<PackageIndexEntry> = serde_json::from_str(&fs::read_to_string(&index_file).unwrap()).unwrap();
+            let mut found = false;
+            for i in 0..package_list.len() {
+                if package_list[i].name == *name {
+                    package_list.remove(i);
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                return Err(format!("No package found for package {}", name));
+            }
+            let res = fs::write(index_file, serde_json::to_string_pretty(&package_list).unwrap());
+            if let Err(e) = res {
+                return Err(format!("Failed to write remote package index: {}", e));
+            }
+        }
+        self.update_remote(dry_run, verbose, commit_msg, &repo_dir)
+    }
+    fn update_remote(&self, dry_run: bool, verbose: bool, commit_msg: String, repo_dir: &PathBuf) -> Result<String, String> {
         // Commit and push
         let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
             .current_dir(&repo_dir)
@@ -379,7 +436,7 @@ impl Remote {
             .current_dir(&repo_dir)
             .arg("commit")
             .arg("-m")
-            .arg(format!("Add package {} version {}", name, version)));
+            .arg(commit_msg));
         if let Some(output) = res {
             if !output.status.success() {
                 return Err(format!("Failed to commit to the remote repository: {}", String::from_utf8_lossy(&output.stderr)));
@@ -425,7 +482,7 @@ impl Remote {
             commit_sha = String::from_utf8(output.stdout).unwrap().trim().to_string();
         }
 
-       Ok(commit_sha)
+        Ok(commit_sha)
     }
     pub fn create_gh_release(&self, dry_run: bool, verbose: bool, workspace: &Workspace, commit_sha: &String, name: &String, version: &String, artifacts: Vec<PathBuf>) -> Result<(), String> {
         let repo_dir = workspace.get_remote_repo_dir(&self);

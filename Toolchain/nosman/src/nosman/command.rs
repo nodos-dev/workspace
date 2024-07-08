@@ -12,6 +12,7 @@ mod publish;
 mod publish_batch;
 mod get;
 mod sample;
+mod unpublish;
 
 use std::io;
 
@@ -63,5 +64,6 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(publish_batch::PublishBatchCommand {}),
         Box::new(get::GetCommand {}),
         Box::new(sample::SampleCommand {}),
+        Box::new(unpublish::UnpublishCommand {})
     ]
 }
