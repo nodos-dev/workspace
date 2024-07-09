@@ -15,10 +15,10 @@
             "nos.sys.ai",
             "nos.sys.cuda",
             "nos.sys.tensor",
-            "nos.AI.ModelNodes",
-            "nos.Interop",
-            "nos.ML.ONNX",
-            "nos.ML.Tensors"
+            "nos.ai.model_nodes",
+            "nos.interop",
+            "nos.ml.onnx",
+            "nos.ml.tensors"
         ],
         "includes": ["nodos_standard"]
     },
@@ -34,9 +34,9 @@
             "nos.filters",
             "nos.math",
             "nos.utilities",
-            "nos.WebRTC",
+            "nos.webrtc",
 			"nos.bluefish",
-			"nos.MediaIO"
+			"nos.mediaio"
         ]
     }
 ]
