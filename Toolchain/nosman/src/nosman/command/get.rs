@@ -133,7 +133,7 @@ impl GetCommand {
         }
         Ok(())
     }
-    fn run_get(&self, path: &PathBuf, nodos_name: &String, version: Option<&String>, fetch_index: bool, do_default: bool) -> CommandResult {
+    fn run_get(&self, path: &PathBuf, nodos_name: &String, version: Option<&String>, fetch_index: bool, do_default: bool, keep_modules: bool) -> CommandResult {
         // If not under a workspace, init
         if !workspace::exists_in(path) {
             println!("No workspace found, initializing one under {:?}", path);
@@ -154,7 +154,7 @@ impl GetCommand {
             pb.finish_and_clear();
             workspace.fetch_package_releases(nodos_name);
             workspace.save()?;
-            return self.run_get(path, nodos_name, version, false, do_default)
+            return self.run_get(path, nodos_name, version, false, do_default, keep_modules)
         }
 
         let res;
@@ -329,8 +329,14 @@ impl GetCommand {
             if !file.exists() {
                 continue;
             }
+            let relative_path = file.strip_prefix(&dst_path).unwrap();
+            if keep_modules && relative_path.starts_with("Module/") {
+                // TODO: Don't simply skip removing, remove the older one.
+                pb.println(format!("Skip deleting: {}", file.display()).yellow().dimmed().to_string());
+                continue;
+            }
             {
-                let removed_path = removed_dir.path().join(file.strip_prefix(&dst_path).unwrap());
+                let removed_path = removed_dir.path().join(relative_path);
                 Self::remove_or_rollback(&pb, &file, &removed_path, &removed, &new_paths, do_default)?;
                 removed.push((removed_path, file));
             }
@@ -342,6 +348,12 @@ impl GetCommand {
             if let Err(e) = res {
                 return Err(IOError { file: current_exe.display().to_string(), message: format!("Error replacing executable: {}", e) });
             }
+        }
+
+        if keep_modules {
+            pb.println("Rescanning...");
+            drop(pb);
+            let _ = Workspace::new(&dst_path)?;
         }
 
         Ok(true)
@@ -357,7 +369,8 @@ impl Command for GetCommand {
         let nodos_name = args.get_one::<String>("name").unwrap();
         let version = args.get_one::<String>("version");
         let do_default = args.get_one::<bool>("yes_to_all").unwrap();
-        self.run_get(&workspace::current_root().unwrap(), nodos_name, version, true, *do_default)
+        let keep_modules = args.get_one::<bool>("keep_modules").unwrap();
+        self.run_get(&workspace::current_root().unwrap(), nodos_name, version, true, *do_default, *keep_modules)
     }
 
     fn needs_workspace(&self) -> bool {

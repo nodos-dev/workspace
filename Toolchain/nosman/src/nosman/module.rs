@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{fmt, fs, path};
+use std::{fmt, fs};
 use std::path::PathBuf;
 use std::time::Duration;
 use colored::Colorize;
@@ -24,14 +24,14 @@ pub struct ModuleInfo {
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub struct InstalledModule {
     pub info: ModuleInfo,
-    pub config_path: path::PathBuf,
-    pub public_include_folder: Option<path::PathBuf>,
-    pub type_schema_files: Vec<path::PathBuf>,
+    pub config_path: PathBuf,
+    pub public_include_folder: Option<PathBuf>,
+    pub type_schema_files: Vec<PathBuf>,
     pub module_type: ModuleType,
 }
 
 impl InstalledModule {
-    pub fn new(path: path::PathBuf) -> InstalledModule {
+    pub fn new(path: PathBuf) -> InstalledModule {
         InstalledModule {
             info: ModuleInfo {
                 id: ModuleIdentifier {
@@ -59,7 +59,7 @@ impl fmt::Display for ModuleIdentifier {
     }
 }
 
-pub fn get_module_manifest_file_in_folder(folder: &path::PathBuf) -> Result<Option<(ModuleType, PathBuf)>, String> {
+pub fn get_module_manifest_file_in_folder(folder: &PathBuf) -> Result<Option<(ModuleType, PathBuf)>, String> {
     let res = get_plugin_manifest_file(folder);
     if res.is_err() {
         return Err(res.err().unwrap());
