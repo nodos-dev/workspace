@@ -161,7 +161,7 @@ impl PublishCommand {
     }
     fn is_name_valid(name: &String) -> bool {
         // Should be lowercase alphanumeric, with only . and _ symbols are permitted
-        name.chars().all(|c| (c.is_ascii_alphanumeric() && c.is_ascii_lowercase()) || c == '.' || c == '_')
+        name.chars().all(|c| c == '.' || c == '_' || c.is_numeric() || c.is_ascii_lowercase())
     }
     pub fn run_publish(&self, dry_run: bool, verbose: bool, path: &PathBuf, mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
                    mut package_type: Option<PackageType>, remote_name: &String, vendor: Option<&String>,
