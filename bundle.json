@@ -36,7 +36,8 @@
             "nos.utilities",
             "nos.webrtc",
 			"nos.bluefish",
-			"nos.mediaio"
+			"nos.mediaio",
+			"nos.webcam"
         ]
     }
 ]
