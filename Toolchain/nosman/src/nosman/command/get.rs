@@ -133,7 +133,7 @@ impl GetCommand {
         }
         Ok(())
     }
-    fn run_get(&self, path: &PathBuf, nodos_name: &String, version: Option<&String>, fetch_index: bool, do_default: bool, keep_modules: bool) -> CommandResult {
+    fn run_get(&self, path: &PathBuf, nodos_name: &String, version: Option<&String>, fetch_index: bool, do_default: bool, clean_modules: bool) -> CommandResult {
         // If not under a workspace, init
         if !workspace::exists_in(path) {
             println!("No workspace found, initializing one under {:?}", path);
@@ -154,7 +154,7 @@ impl GetCommand {
             pb.finish_and_clear();
             workspace.fetch_package_releases(nodos_name);
             workspace.save()?;
-            return self.run_get(path, nodos_name, version, false, do_default, keep_modules)
+            return self.run_get(path, nodos_name, version, false, do_default, clean_modules)
         }
 
         let res;
@@ -330,7 +330,7 @@ impl GetCommand {
                 continue;
             }
             let relative_path = file.strip_prefix(&dst_path).unwrap();
-            if keep_modules && relative_path.starts_with("Module/") {
+            if !clean_modules && relative_path.starts_with("Module/") {
                 // TODO: Don't simply skip removing, remove the older one.
                 pb.println(format!("Skip deleting: {}", file.display()).yellow().dimmed().to_string());
                 continue;
@@ -350,7 +350,7 @@ impl GetCommand {
             }
         }
 
-        if keep_modules {
+        if !clean_modules {
             pb.println("Rescanning...");
             drop(pb);
             let _ = Workspace::new(&dst_path)?;
@@ -369,8 +369,8 @@ impl Command for GetCommand {
         let nodos_name = args.get_one::<String>("name").unwrap();
         let version = args.get_one::<String>("version");
         let do_default = args.get_one::<bool>("yes_to_all").unwrap();
-        let keep_modules = args.get_one::<bool>("keep_modules").unwrap();
-        self.run_get(&workspace::current_root().unwrap(), nodos_name, version, true, *do_default, *keep_modules)
+        let clean_modules = args.get_one::<bool>("clean_modules").unwrap();
+        self.run_get(&workspace::current_root().unwrap(), nodos_name, version, true, *do_default, *clean_modules)
     }
 
     fn needs_workspace(&self) -> bool {
