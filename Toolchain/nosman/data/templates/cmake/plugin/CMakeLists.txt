@@ -18,3 +18,6 @@ endforeach()
 
 set(INCLUDE_FOLDERS "")
 nos_add_plugin("<CMAKE_PROJECT_NAME>" "${MODULE_DEPENDENCIES_TARGETS}" "${INCLUDE_FOLDERS}")
+
+#Helpers need C++20
+set_target_properties("<CMAKE_PROJECT_NAME>" PROPERTIES CXX_STANDARD 20)
