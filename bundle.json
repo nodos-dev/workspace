@@ -7,7 +7,7 @@
         "bundled_modules": []
     },
     {
-        "key": "nodos_full",
+        "key": "full",
         "module_index_url": "https://raw.githubusercontent.com/mediaz/nodos-index/main/index",
         "engine_index_url": "https://raw.githubusercontent.com/mediaz/engine-releases/main/index.json",
         "local_modules_folder": "D:/Builds/Nodos-Modules",
@@ -20,10 +20,10 @@
             "nos.ml.onnx",
             "nos.ml.tensors"
         ],
-        "includes": ["nodos_standard"]
+        "includes": ["standard"]
     },
     {
-        "key": "nodos_standard",
+        "key": "standard",
         "module_index_url": "https://raw.githubusercontent.com/mediaz/nodos-index/main/presets/nodos_standard.json",
         "engine_index_url": "https://raw.githubusercontent.com/mediaz/engine-releases/main/index.json",
         "local_modules_folder": "D:/Builds/Nodos-Modules",
