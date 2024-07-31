@@ -6,7 +6,7 @@ use crate::nosman::command::CommandError::InvalidArgumentError;
 use crate::nosman::index::ModuleType;
 use include_dir::{include_dir, Dir};
 use crate::nosman::constants;
-use crate::nosman::module::ModuleIdentifier;
+use crate::nosman::module::PackageIdentifier;
 use crate::nosman::workspace::Workspace;
 
 pub struct CreateCommand {}
@@ -73,7 +73,7 @@ impl CreateCommand {
         }
     }
 
-    fn replace_tool_placeholders(content: &mut String, module_name: &str, deps: &Vec<ModuleIdentifier>, tool: &str) {
+    fn replace_tool_placeholders(content: &mut String, module_name: &str, deps: &Vec<PackageIdentifier>, tool: &str) {
         if tool == "cmake" {
             *content = content
                 .replace("<CMAKE_PROJECT_NAME>", module_name)
@@ -85,7 +85,7 @@ impl CreateCommand {
     }
 
     fn run_create(&self, module_name: &str, module_type: ModuleType, lang_tool: LangTool,
-                  output_dir: &PathBuf, deps: Vec<ModuleIdentifier>, description: &str) -> CommandResult {
+                  output_dir: &PathBuf, deps: Vec<PackageIdentifier>, description: &str) -> CommandResult {
         println!("Creating a new Nodos module project of type {:?}", module_type);
 
         fs::create_dir_all(&output_dir)?;
@@ -167,13 +167,13 @@ impl Command for CreateCommand {
             output_dir = output_dir.join(module_name.clone());
         }
         let depss: Vec<&String> = args.get_many::<String>("dependency").unwrap_or_default().collect();
-        let mut deps: Vec<ModuleIdentifier> = Vec::new();
+        let mut deps: Vec<PackageIdentifier> = Vec::new();
         for dep in depss {
             let parts: Vec<&str> = dep.split('-').collect();
             if parts.len() != 2 {
                 return Err(InvalidArgumentError { message: format!("Invalid dependency format: {}", dep) });
             }
-            deps.push(ModuleIdentifier {
+            deps.push(PackageIdentifier {
                 name: parts[0].to_string(),
                 version: parts[1].to_string(),
             });

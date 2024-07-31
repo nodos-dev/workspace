@@ -8,17 +8,19 @@ use crate::nosman::index::{ModuleType};
 use crate::nosman::path::{get_plugin_manifest_file, get_subsystem_manifest_file};
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
-pub struct ModuleIdentifier {
+pub struct PackageIdentifier {
     pub name: String,
     pub version: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub struct ModuleInfo {
-    pub id: ModuleIdentifier,
+    pub id: PackageIdentifier,
     pub display_name: Option<String>,
     pub description: Option<String>,
-    pub dependencies: Option<Vec<ModuleIdentifier>>,
+    pub dependencies: Option<Vec<PackageIdentifier>>,
+    pub category: Option<String>,
+    pub tags: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
@@ -34,13 +36,15 @@ impl InstalledModule {
     pub fn new(path: PathBuf) -> InstalledModule {
         InstalledModule {
             info: ModuleInfo {
-                id: ModuleIdentifier {
+                id: PackageIdentifier {
                     name: String::new(),
                     version: String::new(),
                 },
                 display_name: None,
                 description: None,
                 dependencies: None,
+                category: None,
+                tags: None,
             },
             config_path: path,
             public_include_folder: None,
@@ -53,7 +57,7 @@ impl InstalledModule {
     }
 }
 
-impl fmt::Display for ModuleIdentifier {
+impl fmt::Display for PackageIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}-{}", self.name, self.version)
     }

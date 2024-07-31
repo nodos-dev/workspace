@@ -39,6 +39,7 @@ fs-more = "0.6.0"
 filetime = "0.2.23"
 linked_hash_set = "0.1.4"
 phf = { version = "0.11", features = ["macros"] }
+chrono = "0.4.38"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["libloaderapi"] }

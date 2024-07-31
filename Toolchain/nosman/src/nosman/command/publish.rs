@@ -15,11 +15,13 @@ use libloading::{Library, library_filename, Symbol};
 use serde::{Deserialize, Serialize};
 use tempfile::{tempdir};
 use zip::write::{SimpleFileOptions};
+use chrono::{Utc};
 
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::command::CommandError::{GenericError, InvalidArgumentError};
 use crate::nosman::constants;
 use crate::nosman::index::{PackageReleaseEntry, PackageType, SemVer};
+use crate::nosman::module::PackageIdentifier;
 use crate::nosman::path::{get_plugin_manifest_file, get_subsystem_manifest_file};
 use crate::nosman::workspace::Workspace;
 
@@ -192,6 +194,10 @@ impl PublishCommand {
 
         let mut api_version: Option<SemVer> = None;
 
+        let mut dependencies: Option<Vec<PackageIdentifier>> = None;
+        let mut category: Option<String> = None;
+        let mut tags: Option<Vec<String>> = None;
+
         // If path is a directory, search for a manifest file
         let mut manifest_file = None;
         if abs_path.is_dir() {
@@ -223,6 +229,18 @@ impl PublishCommand {
                 let manifest: serde_json::Value = serde_json::from_str(&contents).unwrap();
                 name = Some(manifest["info"]["id"]["name"].as_str().expect(format!("Module manifest file {:?} must contain info.id.name field!", manifest_file).as_str()).to_string());
                 version = Some(manifest["info"]["id"]["version"].as_str().expect(format!("Module manifest file {:?} must contain info.id.version field!", manifest_file).as_str()).to_string());
+                let dependencies_json = manifest["info"]["dependencies"].as_array();
+                if dependencies_json.is_some() {
+                    let mut deps = vec![];
+                    for dep in dependencies_json.unwrap() {
+                        let dep_name = dep["name"].as_str().unwrap();
+                        let dep_version = dep["version"].as_str().unwrap();
+                        deps.push(PackageIdentifier { name: dep_name.to_string(), version: dep_version.to_string() });
+                    }
+                    dependencies = Some(deps);
+                }
+                category = manifest["info"]["category"].as_str().map(|s| s.to_string());
+                tags = manifest["info"]["tags"].as_array().map(|a| a.iter().map(|v| v.as_str().unwrap().to_string()).collect());
                 let binary_path = manifest["binary_path"].as_str();
                 if binary_path.is_some() {
                     // Binary path is relative to the manifest file
@@ -371,6 +389,7 @@ impl PublishCommand {
         }
         let remote = remote.unwrap();
 
+        let now_iso = Utc::now().to_rfc3339();
         let release = PackageReleaseEntry {
             version: version.clone(),
             url: format!("{}/releases/download/{}/{}", remote.url, tag, artifact_file_path.file_name().unwrap().to_str().unwrap()),
@@ -382,7 +401,10 @@ impl PublishCommand {
                 PackageType::Subsystem => api_version,
                 _ => None
             },
-            release_date: None,
+            release_date: Some(now_iso),
+            dependencies,
+            category,
+            tags
         };
         pb.finish_and_clear();
 

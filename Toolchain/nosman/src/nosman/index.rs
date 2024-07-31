@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::nosman::constants;
 use crate::nosman::workspace::Workspace;
 use crate::nosman::common::{run_if_not};
+use crate::nosman::module::{PackageIdentifier};
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub enum PackageType {
@@ -181,6 +182,12 @@ pub struct PackageReleaseEntry {
     pub(crate) subsystem_api_version: Option<SemVer>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) release_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dependencies: Option<Vec<PackageIdentifier>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
     // TODO: Replace with these
     // module_type: String,
     // api_version: SemVer,
