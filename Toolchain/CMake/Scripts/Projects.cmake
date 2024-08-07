@@ -24,6 +24,7 @@ function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_fo
 		endforeach()
 
 		set(generated_file ${dst_folder}/${fbs_out_header})
+		message(STATUS "${out_target_name} build task: ${fbs_file} -> ${generated_file}")
 		list(APPEND out_list ${generated_file})
 		add_custom_command(OUTPUT ${generated_file}
 			COMMAND ${flatc}
@@ -80,6 +81,31 @@ function(nos_get_files_recursive folder file_suffixes out_files_var)
 	set(${out_files_var} ${${out_files_var}} ${local_files} PARENT_SCOPE)
 endfunction()
 
+function(nos_get_module_info name version query out_var)
+	execute_process(
+		COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" info ${name} ${version} --relaxed
+		RESULT_VARIABLE nosman_result
+		OUTPUT_VARIABLE nosman_output
+	)
+
+	if(nosman_result EQUAL 0)
+		string(STRIP ${nosman_output} nosman_output)
+		string(JSON nos_module_info_query_result GET "${nosman_output}" "${query}")
+		set(${out_var} ${nos_module_info_query_result} PARENT_SCOPE)
+	else()
+		message(FATAL_ERROR "Failed to find Nodos module ${name}-${version} in workspace")
+	endif()
+endfunction()
+
+function(nos_find_module_path name version out_var)
+	nos_get_module_info(${name} ${version} "config_path" config_path)
+	string(STRIP ${config_path} config_path)
+	get_filename_component(module_path ${config_path} DIRECTORY)
+	cmake_path(SET module_path "${module_path}")
+	message(STATUS "Found ${name} ${version}: ${module_path}")
+	set(${out_var} ${module_path} PARENT_SCOPE)
+endfunction()
+
 function(nos_get_module name version out_target_name)
 	if(NOT DEFINED NOSMAN_WORKSPACE_DIR)
 		message(FATAL_ERROR "NOSMAN_WORKSPACE_DIR is not defined. Set it to the path of the workspace where modules will be installed.")
@@ -129,11 +155,11 @@ function(nos_get_module name version out_target_name)
 			string(REPLACE "." "_" target_name ${name})
 			string(REPLACE "." "_" version_str ${version})
 			string(APPEND target_name "-v${version_str}")
-			string(PREPEND target_name "__nos_generated__")
+			string(PREPEND target_name "__nos_gen__")
 
 			string(STRIP ${nosman_output} nosman_output)
 
-			# Get "public_include_folder" from JSON output
+			# Optional: Get "public_include_folder" from JSON output
 			string(JSON nos_module_include_folder GET "${nosman_output}" "public_include_folder")
 			cmake_path(SET ${target_name}_INCLUDE_DIR "${nos_module_include_folder}")
 			message(STATUS "Found ${name} ${version} include folder: ${${target_name}_INCLUDE_DIR}")
@@ -146,9 +172,25 @@ function(nos_get_module name version out_target_name)
 			endif()
 
 			add_library(${target_name} INTERFACE)
-			nos_get_files_recursive(${${target_name}_INCLUDE_DIR} ".h;.hpp;.hxx;.hh;.inl" include_files)
-			target_sources(${target_name} PUBLIC ${include_files})
-			target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
+
+			# Get module path
+			string(JSON module_path GET "${nosman_output}" "config_path")
+			get_filename_component(module_path ${module_path} DIRECTORY)
+			cmake_path(SET module_path "${module_path}")
+
+			# Add fbs files to target
+			nos_get_files_recursive(${module_path} ".fbs" fbs_files)
+			foreach(fbs_file ${fbs_files})
+				message(STATUS "${name}-${version} schema file: ${fbs_file}")
+			endforeach()
+			target_sources(${target_name} INTERFACE ${fbs_files})
+			source_group("Schemas" FILES ${fbs_files})
+
+			if (${${target_name}_INCLUDE_DIR})
+				nos_get_files_recursive(${${target_name}_INCLUDE_DIR} ".h;.hpp;.hxx;.hh;.inl" include_files)
+				target_sources(${target_name} PUBLIC ${include_files})
+				target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
+			endif()
 			set_target_properties(${target_name} PROPERTIES FOLDER "nosman")
 		else()
 			message(FATAL_ERROR "Failed to find ${name} ${version} include folder")
