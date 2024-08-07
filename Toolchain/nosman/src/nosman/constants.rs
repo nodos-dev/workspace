@@ -1,5 +1,5 @@
 
-pub(crate) static DEFAULT_PACKAGE_INDEX_REPO: &str = "https://github.com/mediaz/nodos-index";
+pub(crate) static DEFAULT_PACKAGE_INDEX_REPO: &str = "https://github.com/nodos-dev/index";
 
 pub(crate) static PACKAGE_INDEX_ROOT_FILE: &str = "index";
 
