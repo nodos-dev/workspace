@@ -24,7 +24,7 @@ function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_fo
 		endforeach()
 
 		set(generated_file ${dst_folder}/${fbs_out_header})
-		message(STATUS "${out_target_name} build task: ${fbs_file} -> ${generated_file}")
+		message(STATUS "Build Task (${out_target_name}): ${fbs_file} -> ${generated_file}")
 		list(APPEND out_list ${generated_file})
 		add_custom_command(OUTPUT ${generated_file}
 			COMMAND ${flatc}
@@ -159,42 +159,49 @@ function(nos_get_module name version out_target_name)
 
 			string(STRIP ${nosman_output} nosman_output)
 
-			# Optional: Get "public_include_folder" from JSON output
-			string(JSON nos_module_include_folder GET "${nosman_output}" "public_include_folder")
-			cmake_path(SET ${target_name}_INCLUDE_DIR "${nos_module_include_folder}")
-			message(STATUS "Found ${name} ${version} include folder: ${${target_name}_INCLUDE_DIR}")
-
-			set(${out_target_name} ${target_name} PARENT_SCOPE)
-
 			if(TARGET ${target_name})
 				message(STATUS "Module ${name}-${version} found in project. Using existing target.")
 				return()
 			endif()
 
-			add_library(${target_name} INTERFACE)
+			if (NOT TARGET ${target_name})
+				message(STATUS "Creating target ${target_name} for module ${name}-${version}")
+				add_library(${target_name} INTERFACE)
+	
+				# Get module path
+				string(JSON module_path GET "${nosman_output}" "config_path")
+				get_filename_component(module_path ${module_path} DIRECTORY)
+				cmake_path(SET module_path "${module_path}")
 
-			# Get module path
-			string(JSON module_path GET "${nosman_output}" "config_path")
-			get_filename_component(module_path ${module_path} DIRECTORY)
-			cmake_path(SET module_path "${module_path}")
+				# Add fbs files to target
+				nos_get_files_recursive(${module_path} ".fbs" fbs_files)
+				list(LENGTH fbs_files fbs_count)
+				message(STATUS "Found ${fbs_count} schema files in module ${name}-${version}")
+				foreach(fbs_file ${fbs_files})
+					message(STATUS "${name}-${version} schema file: ${fbs_file}")
+				endforeach()
+				target_sources(${target_name} INTERFACE ${fbs_files})
+				source_group("Schemas" FILES ${fbs_files})
+				
+				# Optional: Get "public_include_folder" from JSON output
+				string(JSON nos_module_include_folder GET "${nosman_output}" "public_include_folder")
+				cmake_path(SET ${target_name}_INCLUDE_DIR "${nos_module_include_folder}")
+				message(STATUS "Found ${name} ${version} include folder: ${${target_name}_INCLUDE_DIR}")
 
-			# Add fbs files to target
-			nos_get_files_recursive(${module_path} ".fbs" fbs_files)
-			list(LENGTH fbs_files fbs_count)
-			message(STATUS "Found ${fbs_count} schema files in module ${name}-${version}")
-			foreach(fbs_file ${fbs_files})
-				message(STATUS "${name}-${version} schema file: ${fbs_file}")
-			endforeach()
-			target_sources(${target_name} INTERFACE ${fbs_files})
-			source_group("Schemas" FILES ${fbs_files})
-
-			if (${${target_name}_INCLUDE_DIR})
-				message(STATUS "Found public header files in module ${name}-${version}. Adding to target.")
-				nos_get_files_recursive(${${target_name}_INCLUDE_DIR} ".h;.hpp;.hxx;.hh;.inl" include_files)
-				target_sources(${target_name} PUBLIC ${include_files})
-				target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
+				if (${target_name}_INCLUDE_DIR STREQUAL "")
+					message(STATUS "No public header files found in module ${name}-${version}.")
+				else() 
+					message(STATUS "Found public header files in module ${name}-${version}. Adding to target.")
+					nos_get_files_recursive(${${target_name}_INCLUDE_DIR} ".h;.hpp;.hxx;.hh;.inl" include_files)
+					target_sources(${target_name} PUBLIC ${include_files})
+					target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
+				endif()
+				set_target_properties(${target_name} PROPERTIES FOLDER "nosman")
+			else()
+				message(STATUS "Module ${name}-${version} found in project. Using existing target.")
 			endif()
-			set_target_properties(${target_name} PROPERTIES FOLDER "nosman")
+
+			set(${out_target_name} ${target_name} PARENT_SCOPE)
 		else()
 			message(FATAL_ERROR "Failed to find ${name} ${version} include folder")
 		endif()
