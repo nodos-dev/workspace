@@ -77,8 +77,8 @@ function(nos_get_files_recursive folder file_suffixes out_files_var)
 		endif()
 	endforeach()
 
-	# Set the collected files to the output variable, making sure to retain previous values
-	set(${out_files_var} ${${out_files_var}} ${local_files} PARENT_SCOPE)
+	# Set the output variable
+	set(${out_files_var} ${local_files} PARENT_SCOPE)
 endfunction()
 
 function(nos_get_module_info name version query out_var)
@@ -111,7 +111,7 @@ function(nos_get_module name version out_target_name)
 		message(FATAL_ERROR "NOSMAN_WORKSPACE_DIR is not defined. Set it to the path of the workspace where modules will be installed.")
 	endif()
 
-	message(STATUS "Searching for Nodos module ${name} ${version} in workspace")
+	message(STATUS "Searching/installing Nodos module ${name} ${version} in workspace")
 
 	# TODO: Download if not exists.
 	if(NOSMAN_EXECUTABLE)
@@ -180,6 +180,8 @@ function(nos_get_module name version out_target_name)
 
 			# Add fbs files to target
 			nos_get_files_recursive(${module_path} ".fbs" fbs_files)
+			list(LENGTH fbs_files fbs_count)
+			message(STATUS "Found ${fbs_count} schema files in module ${name}-${version}")
 			foreach(fbs_file ${fbs_files})
 				message(STATUS "${name}-${version} schema file: ${fbs_file}")
 			endforeach()
@@ -187,6 +189,7 @@ function(nos_get_module name version out_target_name)
 			source_group("Schemas" FILES ${fbs_files})
 
 			if (${${target_name}_INCLUDE_DIR})
+				message(STATUS "Found public header files in module ${name}-${version}. Adding to target.")
 				nos_get_files_recursive(${${target_name}_INCLUDE_DIR} ".h;.hpp;.hxx;.hh;.inl" include_files)
 				target_sources(${target_name} PUBLIC ${include_files})
 				target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
@@ -202,7 +205,7 @@ endfunction()
 
 function(nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS)
 	project(${NAME})
-	message("Processing plugin ${NAME}")
+	message(STATUS "Processing plugin ${NAME}")
 
 	set(source_folder "${CMAKE_CURRENT_SOURCE_DIR}/Source")
 	set(public_include_folder "${CMAKE_CURRENT_SOURCE_DIR}/Include")
@@ -279,7 +282,7 @@ endfunction()
 
 function(nos_add_subsystem NAME DEPENDENCIES INCLUDE_FOLDERS)
 	project(${NAME})
-	message("Processing subsystem ${NAME}")
+	message(STATUS "Processing subsystem ${NAME}")
 
 	set(source_folder "${CMAKE_CURRENT_SOURCE_DIR}/Source")
 	set(public_include_folder "${CMAKE_CURRENT_SOURCE_DIR}/Include")
