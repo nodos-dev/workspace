@@ -24,10 +24,10 @@ target_sources(MyPlugin PUBLIC ${MY_PLUGIN_GENERATED_FILES})
 4. Run `cmake` to generate the project files: `cmake -S ./Toolchain/CMake -B Project -DPROJECT_NAME=<your project name>`
 
 Nodos uses flatbuffers as data serialization/schema language.
-Use flatc in [mediaz/Tools](https://github.com/mediaz/Tools) to generate code.
+Use flatc in the SDK `/bin` folder to generate code.
 Builtin flatbuffers are also available in the SDK under `/types` folder.
 
-You can still use Nodos SDK without this repository, by including SDK/cmake folder in your project:
+You can still use Nodos SDK without this repository, by including `SDK/cmake` folder in your project:
 ```cmake
 list(APPEND CMAKE_MODULE_PATH "${NODOS_SDK_DIR}/cmake")
 find_package(nosPluginSDK REQUIRED)
