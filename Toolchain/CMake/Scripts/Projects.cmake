@@ -159,6 +159,8 @@ function(nos_get_module name version out_target_name)
 
 			string(STRIP ${nosman_output} nosman_output)
 
+			set(${out_target_name} ${target_name} PARENT_SCOPE)
+
 			if(TARGET ${target_name})
 				message(STATUS "Module ${name}-${version} found in project. Using existing target.")
 				return()
@@ -200,8 +202,6 @@ function(nos_get_module name version out_target_name)
 			else()
 				message(STATUS "Module ${name}-${version} found in project. Using existing target.")
 			endif()
-
-			set(${out_target_name} ${target_name} PARENT_SCOPE)
 		else()
 			message(FATAL_ERROR "Failed to find ${name} ${version} include folder")
 		endif()
