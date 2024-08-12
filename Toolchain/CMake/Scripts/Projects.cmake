@@ -1,10 +1,6 @@
 # Copyright MediaZ Teknoloji A.S. All Rights Reserved.
 function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_folders out_target_name)
-	# Check if flatbuffers compiler is available
-	find_program(flatc "${FLATC_EXECUTABLE}")
-
-	# Check if flatbuffers compiler is available (cross platform
-	if(NOT flatc)
+	if(NOT DEFINED FLATC_EXECUTABLE)
 		message(FATAL_ERROR "Flatbuffers compiler not found. Please set FLATC_EXECUTABLE variable.")
 	endif()
 
@@ -27,7 +23,7 @@ function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_fo
 		message(STATUS "Build Task (${out_target_name}): ${fbs_file} -> ${generated_file}")
 		list(APPEND out_list ${generated_file})
 		add_custom_command(OUTPUT ${generated_file}
-			COMMAND ${flatc}
+			COMMAND ${FLATC_EXECUTABLE}
 			-o ${dst_folder}
 			${include_params}
 			${fbs_file}
