@@ -124,6 +124,7 @@ if (EXISTS "${NODOS_WORKSPACE_DIR}/Toolchain/nosman/src")
 	if (NOSMAN_RESULT EQUAL 0)
 		# Copy the executable to the root
 		file(COPY "${NOSMAN_BUILD_DIR}/release/nosman${CMAKE_EXECUTABLE_SUFFIX}" DESTINATION "${NODOS_WORKSPACE_DIR}")
+		file(RENAME "${NODOS_WORKSPACE_DIR}/nosman${CMAKE_EXECUTABLE_SUFFIX}" "${NODOS_WORKSPACE_DIR}/nodos${CMAKE_EXECUTABLE_SUFFIX}")
 	else()
 		message(FATAL_ERROR "Failed to build nosman")
 		return()

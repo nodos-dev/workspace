@@ -6,7 +6,7 @@
         "/Engine/*/EULA_UNCONFIRMED.json",
         "/Module/README.md",
         "/Toolchain/CMake/**",
-        "/nosman.exe",
+        "/nodos.exe",
         "/.nosman/index"
     ]
 }
