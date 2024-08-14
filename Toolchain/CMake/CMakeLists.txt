@@ -7,7 +7,9 @@ if (NOT DEFINED PROJECT_NAME)
 endif()
 
 project(${PROJECT_NAME})
-
+if(UNIX)
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++23 -Wno-changes-meaning -fpermissive -fPIC")
+endif()
 set(WITH_NODOS_WORKSPACE ON)
 if (NOT DEFINED NODOS_WORKSPACE_DIR)
 	cmake_path(SET NODOS_WORKSPACE_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../..")
