@@ -91,6 +91,7 @@ fn launch_nodos() {
     let engine_path = opt_engine_path.unwrap();
     std::process::Command::new(&editor_path)
         .arg("--no-duplicate-instance")
+        .arg("--dont-wait-engine")
         .current_dir(editor_path.parent().expect("Unable to get parent directory of nosEditor"))
         .spawn().expect("Failed to launch nosEditor");
     std::process::Command::new(&engine_path)
