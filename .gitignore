@@ -5,6 +5,6 @@
 /Build/
 /Project/
 .nosman
-nosman.exe
-nodos.exe
+/nosman
+/nodos
 /Artifacts/

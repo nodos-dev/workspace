@@ -16,7 +16,10 @@ pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandEr
     fs::create_dir_all(target.clone())?;
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let outpath = Path::new(&target.clone()).join(file.name());
+        let filename = file.name();
+        // It might contain \, so convert this to POSIX compatible path
+        let filename = filename.replace("\\", "/");
+        let outpath = Path::new(&target).join(filename);
 
         if file.is_dir() {
             fs::create_dir_all(&outpath)?;
