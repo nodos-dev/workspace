@@ -1,8 +1,11 @@
 extern crate clap;
 
+use std::collections::HashMap;
 use clap::{Arg, ArgAction, Command};
 
 use std::error::Error;
+use std::mem;
+use clap::builder::StyledStr;
 use colored::Colorize;
 use native_dialog::MessageDialog;
 use sysinfo::System;
@@ -101,11 +104,21 @@ fn launch_nodos() {
 }
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() == 1 {
+        // Get parent process name. If it is a file explorer, open Nodos
+        if launched_from_file_explorer() {
+            launch_nodos();
+            return;
+        }
+    }
+
     let exe_path = std::env::current_exe().expect("Unable to get current executable path");
     let stem = exe_path.file_stem().expect("Unable to get executable name").to_str().expect("Unable to convert executable name to string");
     let boxed_name = Box::new(stem.to_string());
     let name: &'static str = Box::leak(boxed_name); // Will live throughout the program lifetime. Command::new wants 'static str.
     let mut cmd = Command::new(name)
+        .disable_help_flag(true)
         .version(env!("VERGEN_BUILD_SEMVER"))
         .about("Nodos Package Manager")
         .arg(Arg::new("workspace")
@@ -113,6 +126,11 @@ fn main() {
             .short('w')
             .long("workspace")
             .default_value(".")
+        )
+        .arg(Arg::new("help")
+            .short('h')
+            .long("help")
+            .help("Prints help information about a command")
         )
         .subcommand(Command::new("init")
             .about("Initialize a directory as a Nodos workspace.")
@@ -443,14 +461,29 @@ fn main() {
         );
 
     let help_str = cmd.render_help();
+    let mut subcommand_helps: HashMap<String, StyledStr> = HashMap::new();
+    for subcommand in cmd.get_subcommands_mut() {
+        let moved = mem::take(subcommand);
+        // Re-enable help flag for subcommands
+        *subcommand = moved.disable_help_flag(false);
+        subcommand_helps.insert(subcommand.get_name().to_string(), subcommand.render_help());
+    }
+
     let matches = cmd.get_matches();
 
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() == 1 {
-        // Get parent process name. If it is a file explorer, open Nodos
-        if launched_from_file_explorer() {
-            launch_nodos();
-            return;
+    // If -h comes first, print help and exit
+    if matches.contains_id("help") {
+        // If help is called without a subcommand, print the help string
+        let subcommand_name = matches.get_one::<String>("help");
+        if subcommand_name.is_none() {
+            println!("{}", help_str.ansi());
+            std::process::exit(0);
+        }
+        // If help is called with a subcommand, print the help string for that subcommand
+        let subcommand_name = subcommand_name.unwrap();
+        if let Some(help) = subcommand_helps.get(subcommand_name) {
+            println!("{}", help.ansi());
+            std::process::exit(0);
         }
     }
 
@@ -485,7 +518,5 @@ fn main() {
         println!("{}", help_str.ansi());
         std::process::exit(1);
     }
-
-    std::process::exit(0);
 }
 
