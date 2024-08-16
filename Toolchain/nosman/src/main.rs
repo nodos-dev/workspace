@@ -101,7 +101,11 @@ fn launch_nodos() {
 }
 
 fn main() {
-    let mut cmd = Command::new("nosman")
+    let exe_path = std::env::current_exe().expect("Unable to get current executable path");
+    let stem = exe_path.file_stem().expect("Unable to get executable name").to_str().expect("Unable to convert executable name to string");
+    let boxed_name = Box::new(stem.to_string());
+    let name: &'static str = Box::leak(boxed_name); // Will live throughout the program lifetime. Command::new wants 'static str.
+    let mut cmd = Command::new(name)
         .version(env!("VERGEN_BUILD_SEMVER"))
         .about("Nodos Package Manager")
         .arg(Arg::new("workspace")
