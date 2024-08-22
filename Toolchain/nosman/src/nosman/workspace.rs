@@ -159,12 +159,15 @@ impl Workspace {
 
         let pb = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
+
+        pb.println(format!("Found {} modules in {}", module_manifests.len(), folder.display()).as_str().green().to_string());
+
         for (ty, path) in module_manifests {
             pb.set_message(format!("Scanning module: {}", path.display()));
             let file = match fs::File::open(&path) {
                 Ok(file) => file,
                 Err(ref e) => {
-                    pb.set_message(format!("Error reading file {:?}: {}", path, e).as_str().red().to_string());
+                    pb.println(format!("Error reading file {}: {}", path.display(), e).as_str().red().to_string());
                     continue;
                 }
             };
@@ -172,7 +175,7 @@ impl Workspace {
             let mut installed_module: InstalledModule = InstalledModule::new(get_rel_path_based_on(&path, &self.root));
             let res: Result<serde_json::Value, serde_json::Error> = serde_json::from_reader(file);
             if let Err(ref e) = res {
-                pb.println(format!("Error parsing file {:?}: {}", path, e).as_str().red().to_string());
+                pb.println(format!("Error parsing file {}: {}", path.display(), e).as_str().red().to_string());
                 continue;
             }
             let module = res.unwrap();
