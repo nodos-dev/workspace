@@ -167,7 +167,7 @@ impl PublishCommand {
     }
     pub fn run_publish(&self, dry_run: bool, verbose: bool, path: &PathBuf, mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
                    mut package_type: Option<PackageType>, remote_name: &String, vendor: Option<&String>,
-                   publisher_name: Option<&String>, publisher_email: Option<&String>) -> CommandResult {
+                   publisher_name: Option<&String>, publisher_email: Option<&String>, release_tags: &Vec<String>) -> CommandResult {
         // Check if git and gh is installed.
         let git_installed = std::process::Command::new("git")
             .arg("--version")
@@ -196,7 +196,7 @@ impl PublishCommand {
 
         let mut dependencies: Option<Vec<PackageIdentifier>> = None;
         let mut category: Option<String> = None;
-        let mut tags: Option<Vec<String>> = None;
+        let mut module_tags: Option<Vec<String>> = None;
 
         // If path is a directory, search for a manifest file
         let mut manifest_file = None;
@@ -240,7 +240,7 @@ impl PublishCommand {
                     dependencies = Some(deps);
                 }
                 category = manifest["info"]["category"].as_str().map(|s| s.to_string());
-                tags = manifest["info"]["tags"].as_array().map(|a| a.iter().map(|v| v.as_str().unwrap().to_string()).collect());
+                module_tags = manifest["info"]["tags"].as_array().map(|a| a.iter().map(|v| v.as_str().unwrap().to_string()).collect());
                 let binary_path = manifest["binary_path"].as_str();
                 if binary_path.is_some() {
                     // Binary path is relative to the manifest file
@@ -404,8 +404,12 @@ impl PublishCommand {
             release_date: Some(now_iso),
             dependencies,
             category,
-            tags
+            module_tags,
+            release_tags: if release_tags.is_empty() { None } else { Some(release_tags.clone()) }
         };
+        if verbose {
+            println!("Release entry: {:?}", release);
+        }
         pb.finish_and_clear();
 
         println!("Adding package {} version {} release entry to remote {}", name, version, remote.name);
@@ -448,6 +452,8 @@ impl Command for PublishCommand {
         let verbose = args.get_one::<bool>("verbose").unwrap();
         let publisher_name = args.get_one::<String>("publisher_name");
         let publisher_email = args.get_one::<String>("publisher_email");
-        self.run_publish(*dry_run, *verbose, &path, name, version, version_suffix, package_type, &remote_name, vendor, publisher_name, publisher_email)
+        let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
+        let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
+        self.run_publish(*dry_run, *verbose, &path, name, version, version_suffix, package_type, &remote_name, vendor, publisher_name, publisher_email, &release_tags)
     }
 }

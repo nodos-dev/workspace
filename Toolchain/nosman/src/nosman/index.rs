@@ -187,7 +187,9 @@ pub struct PackageReleaseEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tags: Option<Vec<String>>,
+    pub module_tags: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub release_tags: Option<Vec<String>>
     // TODO: Replace with these
     // module_type: String,
     // api_version: SemVer,
