@@ -155,6 +155,7 @@ impl Workspace {
     }
     pub fn scan_modules_in_folder(&mut self, folder: PathBuf, force_replace_in_registry: bool) {
         // Scan folders with .noscfg and .nossys files
+        let folder = dunce::canonicalize(folder).expect("Failed to canonicalize path");
         let module_manifests = get_module_manifests(&folder);
 
         let pb = ProgressBar::new_spinner();
