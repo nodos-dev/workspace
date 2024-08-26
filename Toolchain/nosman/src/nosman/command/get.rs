@@ -159,7 +159,7 @@ impl GetCommand {
 
         let res;
         if let Some(version) = version {
-            let version_start = SemVer::parse_from_string(version).unwrap();
+            let version_start = SemVer::parse_from_string(version).expect(format!("Invalid semantic version: {}", version).as_str());
             if version_start.minor.is_none() {
                 return Err(InvalidArgumentError { message: "Please provide a minor version too!".to_string() });
             }
