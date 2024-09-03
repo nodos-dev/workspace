@@ -141,7 +141,7 @@ fn main() {
         .subcommand(Command::new("install")
             .about("Install a module")
             .arg(Arg::new("module").required(true))
-            .arg(Arg::new("version").required(false).default_value("latest"))
+            .arg(Arg::new("version").required(false))
             .arg(Arg::new("exact")
                 .action(ArgAction::SetTrue)
                 .help("If not set, version parameter will be interpreted as minimum required version within that minor/patch version.\n\
