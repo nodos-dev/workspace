@@ -135,6 +135,12 @@ impl SemVer {
             version_start.upper_build()
         }
     }
+	pub fn satisfies_requested_version(&self, requested: &SemVer) -> bool {
+		if self.major != requested.major {
+			return false;
+		}
+		return self.minor >= requested.minor;
+	}
 }
 
 // Implement ordering for SemVer

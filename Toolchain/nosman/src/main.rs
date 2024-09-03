@@ -141,7 +141,7 @@ fn main() {
         .subcommand(Command::new("install")
             .about("Install a module")
             .arg(Arg::new("module").required(true))
-            .arg(Arg::new("version").required(false))
+            .arg(Arg::new("version").required(false).default_value("latest"))
             .arg(Arg::new("exact")
                 .action(ArgAction::SetTrue)
                 .help("If not set, version parameter will be interpreted as minimum required version within that minor/patch version.\n\
@@ -199,6 +199,10 @@ fn main() {
             .about("Returns information about an installed Nodos SDK under workspace.\n\
             If no such version is found, it will return an error.")
             .arg(Arg::new("version").required(true))
+			.arg(Arg::new("sdk-type").required(false)
+				.help("Type of the SDK to get information about.")
+				.default_value("engine")
+				.value_parser(clap::builder::PossibleValuesParser::new(["engine", "plugin", "subsystem", "process"])))
         )
         .subcommand(Command::new("remote")
             .about("Manage remotes.")
