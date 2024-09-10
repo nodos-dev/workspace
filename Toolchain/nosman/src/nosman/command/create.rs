@@ -5,6 +5,7 @@ use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::CommandError::InvalidArgumentError;
 use crate::nosman::index::ModuleType;
 use include_dir::{include_dir, Dir};
+use crate::nosman::command::sdk_info::get_engine_sdk_infos;
 use crate::nosman::constants;
 use crate::nosman::module::PackageIdentifier;
 use crate::nosman::workspace::Workspace;
@@ -74,10 +75,16 @@ impl CreateCommand {
     }
 
     fn replace_tool_placeholders(content: &mut String, module_name: &str, deps: &Vec<PackageIdentifier>, tool: &str) {
+        let mut nos_version = "1.3.0".to_string();
+        if let Ok(engines) = get_engine_sdk_infos() {
+            if let Some(engine) = engines.first() {
+                nos_version = engine.version.to_string();
+            }
+        }
         if tool == "cmake" {
             *content = content
                 .replace("<CMAKE_PROJECT_NAME>", module_name)
-                .replace("<CMAKE_LATEST_NOS_VERSION>", "1.2.0")
+                .replace("<CMAKE_LATEST_NOS_VERSION>", nos_version.as_str())
                 .replace("<CMAKE_MODULE_DEPENDENCIES>", &deps.iter().map(|dep| {
                     format!("\"{}-{}\"", dep.name, dep.version)
                 }).collect::<Vec<_>>().join(" "));

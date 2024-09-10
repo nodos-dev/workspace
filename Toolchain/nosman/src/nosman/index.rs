@@ -60,6 +60,47 @@ pub struct SemVer {
     pub build_number: Option<u32>,
 }
 
+// Implement ordering for SemVer
+impl PartialOrd for SemVer {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self.major < other.major {
+            return Some(std::cmp::Ordering::Less);
+        }
+        if self.major > other.major {
+            return Some(std::cmp::Ordering::Greater);
+        }
+        if self.minor < other.minor {
+            return Some(std::cmp::Ordering::Less);
+        }
+        if self.minor > other.minor {
+            return Some(std::cmp::Ordering::Greater);
+        }
+        if self.patch < other.patch {
+            return Some(std::cmp::Ordering::Less);
+        }
+        if self.patch > other.patch {
+            return Some(std::cmp::Ordering::Greater);
+        }
+        if let Some(build_number) = self.build_number {
+            if let Some(other_build_number) = other.build_number {
+                if build_number < other_build_number {
+                    return Some(std::cmp::Ordering::Less);
+                }
+                if build_number > other_build_number {
+                    return Some(std::cmp::Ordering::Greater);
+                }
+            }
+        }
+        Some(std::cmp::Ordering::Equal)
+    }
+}
+
+impl std::cmp::Ord for SemVer {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
 impl SemVer {
     pub fn parse_from_string(s: &str) -> Option<SemVer> {
         // Parse 1.2.3.b4 -> (1, 2, 3, Some(4))
@@ -141,41 +182,6 @@ impl SemVer {
 		}
 		return self.minor >= requested.minor;
 	}
-}
-
-// Implement ordering for SemVer
-impl PartialOrd for SemVer {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        if self.major < other.major {
-            return Some(std::cmp::Ordering::Less);
-        }
-        if self.major > other.major {
-            return Some(std::cmp::Ordering::Greater);
-        }
-        if self.minor < other.minor {
-            return Some(std::cmp::Ordering::Less);
-        }
-        if self.minor > other.minor {
-            return Some(std::cmp::Ordering::Greater);
-        }
-        if self.patch < other.patch {
-            return Some(std::cmp::Ordering::Less);
-        }
-        if self.patch > other.patch {
-            return Some(std::cmp::Ordering::Greater);
-        }
-        if let Some(build_number) = self.build_number {
-            if let Some(other_build_number) = other.build_number {
-                if build_number < other_build_number {
-                    return Some(std::cmp::Ordering::Less);
-                }
-                if build_number > other_build_number {
-                    return Some(std::cmp::Ordering::Greater);
-                }
-            }
-        }
-        Some(std::cmp::Ordering::Equal)
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
