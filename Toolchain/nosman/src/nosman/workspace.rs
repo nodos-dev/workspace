@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::constants;
 use crate::nosman::index::{Index, PackageIndexEntry, PackageReleases, Remote, SemVer};
-use crate::nosman::module::{InstalledModule, get_module_manifests};
+use crate::nosman::module::{InstalledModule, get_module_manifests, NodeDefinition};
 use crate::nosman::path::get_rel_path_based_on;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -283,6 +283,56 @@ impl Workspace {
                 }
             }
         }
+    }
+    pub fn get_node_definitions(&self, node_class_name: &String) -> Vec<NodeDefinition> {
+        let mut res = Vec::new();
+        for (_name, versions) in &self.installed_modules {
+            for (_version, module) in versions {
+                // Read config file as JSON, and read node definition files
+                let config_file = fs::File::open(&module.config_path);
+                if config_file.is_err() {
+                    continue;
+                }
+                let config_file = config_file.unwrap();
+                let config: serde_json::Value = serde_json::from_reader(config_file).expect("Failed to parse config file");
+                let node_defs_rel_paths = config["node_definitions"].as_array();
+                if node_defs_rel_paths.is_none() {
+                    continue;
+                }
+                for node_defs_rel_path in node_defs_rel_paths.unwrap() {
+                    let node_defs_path = module.get_module_dir().join(node_defs_rel_path.as_str().unwrap());
+                    let node_defs_file_content = fs::read_to_string(&node_defs_path);
+                    if let Err(e) = node_defs_file_content {
+                        eprintln!("{}", format!("Failed to read node definitions file ({}): {}", node_defs_path.display(), e).red());
+                        continue;
+                    }
+                    let node_defs_file_content = node_defs_file_content.unwrap();
+                    // Remove BOM
+                    let node_defs_file_content = node_defs_file_content.trim_start_matches('\u{FEFF}');
+                    let node_defs: serde_json::Value = serde_json::from_str(&node_defs_file_content).expect(format!("Failed to parse node definitions file: {}", node_defs_path.display()).as_str());
+                    let nodes_json_array = node_defs.get("nodes").expect("Missing 'nodes' field in node definitions file").as_array().expect("'nodes' field is not an array");
+                    let mut index = 0;
+                    for node_json in nodes_json_array {
+                        let mut curr_class_name = node_json["class_name"].as_str().expect(format!("Missing 'class_name' field in node definition in {}", node_defs_path.display()).as_str()).to_string();
+                        // If class name is not prefixed with module name, prefix it
+                        if !curr_class_name.starts_with(module.info.id.name.as_str()) {
+                            curr_class_name = format!("{}.{}", module.info.id.name, curr_class_name);
+                        }
+                        if curr_class_name == *node_class_name {
+                            res.push(NodeDefinition {
+                                class_name: curr_class_name.to_string(),
+                                defined_in: node_defs_path.clone(),
+                                index,
+                                node_defs_json: node_defs.clone(),
+                                owner: module.clone(),
+                            });
+                        }
+                        index += 1;
+                    }
+                }
+            }
+        }
+        res
     }
 }
 

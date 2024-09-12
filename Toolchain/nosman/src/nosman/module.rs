@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{fmt};
+use std::fmt::Display;
 use std::path::PathBuf;
 use std::time::Duration;
 use indicatif::{ProgressBar};
@@ -30,6 +31,29 @@ pub struct InstalledModule {
     pub public_include_folder: Option<PathBuf>,
     pub type_schema_files: Vec<PathBuf>,
     pub module_type: ModuleType,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+pub struct PinDefinition {
+    pub name: String,
+    pub show_as: String,
+    pub can_show_as: String,
+    pub type_name: String,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct NodeDefinition {
+    pub class_name: String,
+    pub defined_in: PathBuf,
+    pub index: usize,
+    pub node_defs_json: serde_json::Value,
+    pub owner: InstalledModule,
+}
+
+impl Display for NodeDefinition {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} ({})", self.owner.info.id, self.defined_in.display())
+    }
 }
 
 impl InstalledModule {
