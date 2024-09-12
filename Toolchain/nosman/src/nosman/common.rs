@@ -1,8 +1,9 @@
 use std::fs;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Read};
 use std::path::{Path, PathBuf};
 use std::process::Output;
+use inquire::Confirm;
 use zip::ZipArchive;
 use crate::nosman::command::CommandError;
 
@@ -65,22 +66,18 @@ pub fn check_file_contents_same(path1: &PathBuf, path2: &PathBuf) -> bool {
     true
 }
 
-pub fn ask(question: &str, default: bool, do_default: bool) -> bool {
-    let mut answer = String::new();
+pub fn ask(question: &str, default: bool, dont_ask: bool) -> bool {
+    if dont_ask {
+        return default;
+    }
     loop {
-        let default_str = if default { "Y/n" } else { "y/N" };
-        print!("{} [{}]: ", question, default_str);
-        std::io::stdout().flush().unwrap();
-        std::io::stdin().read_line(&mut answer).unwrap();
-        answer = answer.trim().to_lowercase();
-        if answer == "y" {
-            return true;
-        } else if answer == "n" {
-            return false;
-        } else if answer.is_empty() {
-            return do_default;
+        let res = Confirm::new(question)
+            .with_default(default)
+            .prompt();
+        if res.is_err() {
+            eprintln!("{}", res.err().unwrap());
         } else {
-            println!("Invalid input, please enter 'y' or 'n'");
+            return res.unwrap();
         }
     }
 }

@@ -142,9 +142,9 @@ impl Workspace {
         Ok(true)
     }
     pub fn remove_all(&mut self) -> CommandResult {
-        for (name, versions) in self.installed_modules.iter() {
-            for (version, module) in versions.iter() {
-                println!("Removing module {} version {}", name, version);
+        for (_name, versions) in self.installed_modules.iter() {
+            for (_version, module) in versions.iter() {
+                println!("Removing module {}", module.info.id);
                 fs::remove_dir_all(module.get_module_dir())?;
             }
         }

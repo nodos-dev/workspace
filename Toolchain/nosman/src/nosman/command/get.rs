@@ -67,7 +67,7 @@ impl GetCommand {
         }
         Ok(())
     }
-    fn temp_remove(pb: &ProgressBar, src: &PathBuf, dst: &PathBuf, do_default: bool) -> bool {
+    fn temp_remove(pb: &ProgressBar, src: &PathBuf, dst: &PathBuf, dont_ask: bool) -> bool {
         if let Some(parent) = dst.parent() {
             if !parent.exists() {
                 fs::create_dir_all(parent).expect(format!("Failed to create directory {:?}", parent).as_str());
@@ -77,7 +77,7 @@ impl GetCommand {
         if let Err(e) = res.as_ref() {
             pb.println(format!("Unable to remove {}: {}", src.display(), e).red().to_string());
             pb.suspend(|| {
-                while common::ask("Retry removing", false, do_default) {
+                while common::ask("Retry removing", false, dont_ask) {
                     res = Self::move_file_or_dir(src, dst);
                     if let Err(e) = res.as_ref() {
                         println!("{}", format!("Unable to remove {}: {}", src.display(), e).red().to_string());
@@ -125,15 +125,15 @@ impl GetCommand {
             paths.insert(path);
         }
     }
-    fn remove_or_rollback(pb: &ProgressBar, cur_dst_path: &PathBuf, removed_path: &PathBuf, removed: &Vec<(PathBuf, PathBuf)>, new_paths: &LinkedHashSet<PathBuf>, do_default: bool) -> Result<(), CommandError> {
-        if !Self::temp_remove(&pb, &cur_dst_path, &removed_path, do_default) {
+    fn remove_or_rollback(pb: &ProgressBar, cur_dst_path: &PathBuf, removed_path: &PathBuf, removed: &Vec<(PathBuf, PathBuf)>, new_paths: &LinkedHashSet<PathBuf>, dont_ask: bool) -> Result<(), CommandError> {
+        if !Self::temp_remove(&pb, &cur_dst_path, &removed_path, dont_ask) {
             pb.println(format!("Failed to remove file: {}", cur_dst_path.display()).red().to_string());
             Self::rollback(&pb, removed, new_paths);
             return Err(IOError { file: cur_dst_path.display().to_string(), message: "Failed to remove file".to_string() });
         }
         Ok(())
     }
-    fn run_get(&self, path: &PathBuf, nodos_name: &String, version: Option<&String>, fetch_index: bool, do_default: bool, clean_modules: bool) -> CommandResult {
+    fn run_get(&self, path: &PathBuf, nodos_name: &String, version: Option<&String>, fetch_index: bool, dont_ask: bool, clean_modules: bool) -> CommandResult {
         // If not under a workspace, init
         if !workspace::exists_in(path) {
             println!("No workspace found, initializing one under {:?}", path);
@@ -154,7 +154,7 @@ impl GetCommand {
             pb.finish_and_clear();
             workspace.fetch_package_releases(nodos_name);
             workspace.save()?;
-            return self.run_get(path, nodos_name, version, false, do_default, clean_modules)
+            return self.run_get(path, nodos_name, version, false, dont_ask, clean_modules)
         }
 
         let res;
@@ -287,7 +287,7 @@ impl GetCommand {
                 }
                 let removed_path = removed_dir.path().join(&relative_path);
                 pb.set_message(format!("Removing: {}", cur_dst_path.display()));
-                Self::remove_or_rollback(&pb, &cur_dst_path, &removed_path, &removed, &new_paths, do_default)?;
+                Self::remove_or_rollback(&pb, &cur_dst_path, &removed_path, &removed, &new_paths, dont_ask)?;
                 removed.push((removed_path, cur_dst_path.clone()));
             }
             pb.set_message(format!("Copying: {}", cur_dst_path.display()));
@@ -296,7 +296,7 @@ impl GetCommand {
                 if let Err(e) = res.as_ref() {
                     pb.println(format!("Error copying {}: {}", cur_dst_path.display(), e).red().to_string());
                     pb.suspend(|| {
-                        while common::ask("Retry copying", false, do_default) {
+                        while common::ask("Retry copying", false, dont_ask) {
                             res = fs::copy(curr_file_path, &cur_dst_path);
                             if let Err(e) = res.as_ref() {
                                 println!("{}", format!("Error copying {}: {}",  cur_dst_path.display(), e).red().to_string());
@@ -337,7 +337,7 @@ impl GetCommand {
             }
             {
                 let removed_path = removed_dir.path().join(relative_path);
-                Self::remove_or_rollback(&pb, &file, &removed_path, &removed, &new_paths, do_default)?;
+                Self::remove_or_rollback(&pb, &file, &removed_path, &removed, &new_paths, dont_ask)?;
                 removed.push((removed_path, file));
             }
         }
@@ -368,9 +368,9 @@ impl Command for GetCommand {
     fn run(&self, args: &ArgMatches) -> CommandResult {
         let nodos_name = args.get_one::<String>("name").unwrap();
         let version = args.get_one::<String>("version");
-        let do_default = args.get_one::<bool>("yes_to_all").unwrap();
+        let dont_ask = args.get_one::<bool>("yes_to_all").unwrap();
         let clean_modules = args.get_one::<bool>("clean_modules").unwrap();
-        self.run_get(&workspace::current_root().unwrap(), nodos_name, version, true, *do_default, *clean_modules)
+        self.run_get(&workspace::current_root().unwrap(), nodos_name, version, true, *dont_ask, *clean_modules)
     }
 
     fn needs_workspace(&self) -> bool {
