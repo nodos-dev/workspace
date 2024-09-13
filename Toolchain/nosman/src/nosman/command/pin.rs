@@ -57,6 +57,12 @@ impl PinCommand {
                 return Err(InvalidArgumentError { message: format!("Pin '{}' not found in node class '{}'", pin_name, node_class_name) });
             }
         } else {
+            // Check if a pin with the same name already exists
+            for pin in pins_json.iter() {
+                if pin.get("name").expect("Failed to get 'name' field in pin").as_str().expect("Failed to parse 'name' field in pin") == pin_name {
+                    return Err(InvalidArgumentError { message: format!("Pin '{}' already exists in node class '{}'", pin_name, node_class_name) });
+                }
+            }
             let mut pin_json = serde_json::Map::new();
             pin_json.insert("name".to_string(), serde_json::Value::String(pin_name.clone()));
             let show_as_out;
