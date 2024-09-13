@@ -11,7 +11,7 @@ impl ListCommand {
         let workspace = Workspace::get()?;
         for (name, ver_map) in &workspace.installed_modules {
             for (version, module) in ver_map {
-                println!("{} ({})", format!("{}-{}", name, version).green().to_string(), module.get_module_dir().strip_prefix(&workspace.root).expect("Strip prefix failed").display());
+                println!("{} ({})", format!("{}-{}", name, version).green().to_string(), module.get_module_dir().display());
             }
         }
         Ok(true)
