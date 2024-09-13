@@ -33,14 +33,14 @@ impl DeinitCommand {
 
 impl Command for DeinitCommand {
     fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
-        return args.subcommand_matches("deinit");
-    }
-
-    fn needs_workspace(&self) -> bool {
-        true
+        args.subcommand_matches("deinit")
     }
 
     fn run(&self, _args: &ArgMatches) -> CommandResult {
         self.run_deinit()
+    }
+
+    fn needs_workspace(&self) -> bool {
+        true
     }
 }

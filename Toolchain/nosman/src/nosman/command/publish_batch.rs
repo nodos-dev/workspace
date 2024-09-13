@@ -109,11 +109,7 @@ impl PublishBatchCommand {
 
 impl Command for PublishBatchCommand {
     fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
-        return args.subcommand_matches("publish-batch");
-    }
-
-    fn needs_workspace(&self) -> bool {
-        true
+        args.subcommand_matches("publish-batch")
     }
 
     fn run(&self, args: &ArgMatches) -> CommandResult {
@@ -134,5 +130,9 @@ impl Command for PublishBatchCommand {
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
         self.run_publish_batch(*dry_run, *verbose, &remote_name, &repo_path, opt_compare_with, &version_suffix, vendor, publisher_name, publisher_email, &release_tags)
+    }
+
+    fn needs_workspace(&self) -> bool {
+        true
     }
 }

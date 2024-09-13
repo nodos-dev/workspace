@@ -25,7 +25,7 @@ impl InfoCommand {
         };
         // Convert paths to full paths:
         let mut m = module.clone();
-        m.config_path = workspace.root.join(&module.config_path);
+        m.manifest_path = workspace.root.join(&module.manifest_path);
         for file in &mut m.type_schema_files {
             *file = workspace.root.join(file.clone());
         }
@@ -40,11 +40,7 @@ impl InfoCommand {
 
 impl Command for InfoCommand {
     fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
-        return args.subcommand_matches("info");
-    }
-
-    fn needs_workspace(&self) -> bool {
-        true
+        args.subcommand_matches("info")
     }
 
     fn run(&self, args: &ArgMatches) -> CommandResult {
@@ -52,5 +48,9 @@ impl Command for InfoCommand {
         let version = args.get_one::<String>("version").unwrap();
         let relaxed = args.get_one::<bool>("relaxed").unwrap();
         self.run_get_info(module_name, version, relaxed.clone())
+    }
+
+    fn needs_workspace(&self) -> bool {
+        true
     }
 }

@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::{fmt};
+use std::{fmt, fs};
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::time::Duration;
+use colored::Colorize;
 use indicatif::{ProgressBar};
 use crate::nosman::constants;
 use crate::nosman::index::{ModuleType};
@@ -27,18 +28,17 @@ pub struct ModuleInfo {
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub struct InstalledModule {
     pub info: ModuleInfo,
-    pub config_path: PathBuf,
+    #[serde(alias = "config_path")]
+    pub manifest_path: PathBuf,
     pub public_include_folder: Option<PathBuf>,
     pub type_schema_files: Vec<PathBuf>,
     pub module_type: ModuleType,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Clone)]
-pub struct PinDefinition {
-    pub name: String,
-    pub show_as: String,
-    pub can_show_as: String,
-    pub type_name: String,
+impl Display for InstalledModule {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} ({})", self.info.id, self.manifest_path.display())
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -70,14 +70,60 @@ impl InstalledModule {
                 category: None,
                 tags: None,
             },
-            config_path: path,
+            manifest_path: path,
             public_include_folder: None,
             type_schema_files: Vec::new(),
             module_type: ModuleType::Plugin,
         }
     }
     pub fn get_module_dir(&self) -> PathBuf {
-        self.config_path.parent().unwrap().to_path_buf()
+        self.manifest_path.parent().unwrap().to_path_buf()
+    }
+    pub fn get_node_definition(&self, class_name: &str) -> Option<NodeDefinition> {
+        // Read module manifest file as JSON, and read node definition files
+        let manifest_file = fs::File::open(&self.manifest_path);
+        if let Err(e) = manifest_file {
+            eprintln!("{}", format!("Failed to open module manifest file ({}): {}", self.manifest_path.display(), e).red());
+            return None;
+        }
+        let manifest_file = manifest_file.unwrap();
+        let config: serde_json::Value = serde_json::from_reader(manifest_file).expect("Failed to parse config file");
+        let node_defs_rel_paths = config["node_definitions"].as_array();
+        if node_defs_rel_paths.is_none() {
+            return None;
+        }
+        for node_defs_rel_path in node_defs_rel_paths.unwrap() {
+            let node_defs_path = self.get_module_dir().join(node_defs_rel_path.as_str().unwrap());
+            let node_defs_file_content = fs::read_to_string(&node_defs_path);
+            if let Err(e) = node_defs_file_content {
+                eprintln!("{}", format!("Failed to read node definitions file ({}): {}", node_defs_path.display(), e).red());
+                continue;
+            }
+            let node_defs_file_content = node_defs_file_content.unwrap();
+            // Remove BOM
+            let node_defs_file_content = node_defs_file_content.trim_start_matches('\u{FEFF}');
+            let node_defs: serde_json::Value = serde_json::from_str(&node_defs_file_content).expect(format!("Failed to parse node definitions file: {}", node_defs_path.display()).as_str());
+            let nodes_json_array = node_defs.get("nodes").expect("Missing 'nodes' field in node definitions file").as_array().expect("'nodes' field is not an array");
+            let mut index = 0;
+            for node_json in nodes_json_array {
+                let mut curr_class_name = node_json["class_name"].as_str().expect(format!("Missing 'class_name' field in node definition in {}", node_defs_path.display()).as_str()).to_string();
+                // If class name is not prefixed with module name, prefix it
+                if !curr_class_name.starts_with(self.info.id.name.as_str()) {
+                    curr_class_name = format!("{}.{}", self.info.id.name, curr_class_name);
+                }
+                if curr_class_name == *class_name {
+                    return Some (NodeDefinition {
+                        class_name: curr_class_name.to_string(),
+                        defined_in: node_defs_path.clone(),
+                        index,
+                        node_defs_json: node_defs.clone(),
+                        owner: self.clone(),
+                    });
+                }
+                index += 1;
+            }
+        }
+        None
     }
 }
 

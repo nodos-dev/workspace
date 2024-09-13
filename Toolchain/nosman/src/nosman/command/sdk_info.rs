@@ -121,7 +121,7 @@ impl SdkInfoCommand {
 
 impl Command for SdkInfoCommand {
     fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
-        return args.subcommand_matches("sdk-info");
+        args.subcommand_matches("sdk-info")
     }
 
     fn run(&self, args: &ArgMatches) -> CommandResult {

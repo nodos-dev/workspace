@@ -259,7 +259,7 @@ impl PublishCommand {
                         let ws = Workspace::get()?;
                         let dep_res = ws.get_latest_installed_module_for_version(dep_name, dep_version);
                         if let Ok(installed_module) = dep_res {
-                            let dep_manifest_file_path = ws.root.join(&installed_module.config_path);
+                            let dep_manifest_file_path = ws.root.join(&installed_module.manifest_path);
                             let dep_manifest_file_contents = std::fs::read_to_string(&dep_manifest_file_path).expect("Failed to read dependency manifest file");
                             let dep_manifest: serde_json::Value = serde_json::from_str(&dep_manifest_file_contents).expect("Failed to parse dependency manifest file");
                             for path_str in dep_manifest["additional_search_paths"].as_array().unwrap_or(&vec![]) {
@@ -431,11 +431,7 @@ impl PublishCommand {
 
 impl Command for PublishCommand {
     fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
-        return args.subcommand_matches("publish");
-    }
-
-    fn needs_workspace(&self) -> bool {
-        true
+        args.subcommand_matches("publish")
     }
 
     fn run(&self, args: &ArgMatches) -> CommandResult {
@@ -455,5 +451,9 @@ impl Command for PublishCommand {
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
         self.run_publish(*dry_run, *verbose, &path, name, version, version_suffix, package_type, &remote_name, vendor, publisher_name, publisher_email, &release_tags)
+    }
+
+    fn needs_workspace(&self) -> bool {
+        true
     }
 }

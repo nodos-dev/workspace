@@ -143,10 +143,6 @@ impl Command for PinCommand {
         args.subcommand_matches("pin")
     }
 
-    fn needs_workspace(&self) -> bool {
-        true
-    }
-
     fn run(&self, args: &ArgMatches) -> CommandResult {
         let node_class_name = args.get_one::<String>("node_class_name").unwrap();
         let pin_name = args.get_one::<String>("pin_name").unwrap();
@@ -155,5 +151,9 @@ impl Command for PinCommand {
         let can_show_as = args.get_one::<String>("can_show_as");
         let type_name = args.get_one::<String>("type_name");
         self.run_pin(node_class_name, pin_name, *remove, show_as, can_show_as, type_name)
+    }
+
+    fn needs_workspace(&self) -> bool {
+        true
     }
 }

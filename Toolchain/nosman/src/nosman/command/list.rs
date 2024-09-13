@@ -20,7 +20,7 @@ impl ListCommand {
 
 impl Command for ListCommand {
     fn matched_args<'a>(&self, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
-        return args.subcommand_matches("list");
+        args.subcommand_matches("list")
     }
 
     fn needs_workspace(&self) -> bool {

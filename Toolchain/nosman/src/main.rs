@@ -478,7 +478,7 @@ fn main() {
             )
         )
         .subcommand(Command::new("pin")
-            .about("Add a pin to a node definition")
+            .about("Add/remove a pin to/from a node definition")
             .arg(Arg::new("node_class_name")
                 .required(true)
                 .help("Node class name to add/remove pin.")

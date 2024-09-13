@@ -362,7 +362,7 @@ impl GetCommand {
 
 impl Command for GetCommand {
     fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
-        return args.subcommand_matches("get");
+        args.subcommand_matches("get")
     }
 
     fn run(&self, args: &ArgMatches) -> CommandResult {

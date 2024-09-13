@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use clap::{ArgMatches};
+use colored::Colorize;
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::CommandError::InvalidArgumentError;
 use crate::nosman::index::ModuleType;
@@ -93,7 +94,12 @@ impl CreateCommand {
 
     fn run_create(&self, module_name: &str, module_type: ModuleType, lang_tool: LangTool,
                   output_dir: &PathBuf, deps: Vec<PackageIdentifier>, description: &str) -> CommandResult {
-        println!("Creating a new Nodos module project of type {:?}", module_type);
+        println!("{}", format!("Creating a new Nodos module project of type '{:?}'", module_type).green());
+
+        // Check module name contains at least one namespace
+        if module_name.split('.').count() < 2 {
+            return Err(InvalidArgumentError { message: "Module name must contain a company/organization prefix".to_string() });
+        }
 
         fs::create_dir_all(&output_dir)?;
 
@@ -101,12 +107,12 @@ impl CreateCommand {
         let lang_template_dir = get_template_dir_for(lang_tool.lang(), &module_type);
 
         // Copy .noscfg if plugin or .nossys
-        let cfg_template_file = if module_type == ModuleType::Plugin {
+        let manifest_template_file = if module_type == ModuleType::Plugin {
             DATA_DIR.get_file(format!("templates/Plugin.{}", constants::PLUGIN_MANIFEST_FILE_EXT)).unwrap()
         } else {
             DATA_DIR.get_file(format!("templates/Subsystem.{}", constants::SUBSYSTEM_MANIFEST_FILE_EXT)).unwrap()
         };
-        let output_cfg_path = output_dir.join(format!("{}.{}", module_name, if module_type == ModuleType::Plugin { constants::PLUGIN_MANIFEST_FILE_EXT } else { constants::SUBSYSTEM_MANIFEST_FILE_EXT }));
+        let output_manifest_path = output_dir.join(format!("{}.{}", module_name, if module_type == ModuleType::Plugin { constants::PLUGIN_MANIFEST_FILE_EXT } else { constants::SUBSYSTEM_MANIFEST_FILE_EXT }));
 
         // Read file and replace placeholders
         // <NAME>
@@ -114,15 +120,15 @@ impl CreateCommand {
         // <VERSION>
         // <DEPENDENCY_LIST_JSON>
         // <BINARY_NAME>
-        let cfg_content = cfg_template_file.contents_utf8().unwrap();
-        let cfg_content = cfg_content
+        let manifest_content = manifest_template_file.contents_utf8().unwrap();
+        let manifest_content = manifest_content
             .replace("<NAME>", module_name)
             .replace("<DESCRIPTION>", description)
             .replace("<DISPLAY_NAME>", module_name)
             .replace("<VERSION>", "0.1.0")
             .replace("<DEPENDENCY_LIST_JSON>", serde_json::to_string(&deps).unwrap().as_str())
             .replace("<BINARY_NAME>", module_name);
-        fs::write(&output_cfg_path, cfg_content)?;
+        fs::write(&output_manifest_path, manifest_content)?;
 
         // Recursively copy the tool directory
         copy_dir_recursive(tool_template_dir, output_dir, &mut |content| {
@@ -149,10 +155,6 @@ impl CreateCommand {
 impl Command for CreateCommand {
     fn matched_args<'a>(&self, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("create")
-    }
-
-    fn needs_workspace(&self) -> bool {
-        false
     }
 
     fn run(&self, args: &ArgMatches) -> CommandResult {
@@ -187,5 +189,9 @@ impl Command for CreateCommand {
         }
         let description = args.get_one::<String>("description").unwrap();
         self.run_create(module_name, module_type, lang_tool, &output_dir, deps, description)
+    }
+
+    fn needs_workspace(&self) -> bool {
+        false
     }
 }
