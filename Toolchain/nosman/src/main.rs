@@ -550,6 +550,18 @@ fn main() {
                 .required(false)
                 .num_args(0)
             )
+        )
+        .subcommand(Command::new("dev")
+            .about("Helper commands for Nodos module development")
+            .subcommand(Command::new("pull")
+                .about("Scans module folder for git repositories and pulls their current branches")
+                .arg(Arg::new("modules_dir")
+                    .long("modules-dir")
+                    .short('m')
+                    .help("Path to the modules directory to scan for git repositories")
+                    .default_value("Module")
+                )
+            )
         );
 
     let help_str = cmd.render_help();

@@ -15,6 +15,7 @@ mod sample;
 mod unpublish;
 mod pin;
 mod node;
+mod dev;
 
 use std::io;
 
@@ -69,5 +70,6 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(unpublish::UnpublishCommand {}),
         Box::new(pin::PinCommand {}),
         Box::new(node::NodeCommand {}),
+        Box::new(dev::DevPullCommand {}),
     ]
 }
