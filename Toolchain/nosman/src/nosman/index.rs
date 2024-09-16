@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::{fs};
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::Duration;
 use indicatif::{ProgressBar};
 use serde::{Deserialize, Serialize};
+use rayon::prelude::*;
 use crate::nosman::constants;
 use crate::nosman::workspace::Workspace;
 use crate::nosman::common::{run_if_not};
@@ -540,38 +542,41 @@ impl Index {
         let pb = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
         pb.println("Fetching package index");
-        let mut index = Index {
+        let index = Mutex::new(Index {
             packages: HashMap::new(),
-        };
-        for remote in &workspace.remotes {
+        });
+        workspace.remotes.par_iter().for_each(|remote| {
             pb.set_message(format!("Fetching remote {}", remote.name));
             let res = remote.fetch(&workspace);
             if let Err(e) = res {
                 pb.println(format!("Failed to fetch remote: {}", e));
-                continue;
+                return;
             }
             let package_list: Vec<PackageIndexEntry> = res.unwrap();
             pb.println(format!("Fetched {} packages from remote {}", package_list.len(), remote.name));
-            // For each module in list
-            for package in package_list {
+
+            package_list.par_iter().for_each(|package| {
                 let res = reqwest::blocking::get(&package.releases_url);
                 if let Err(e) = res {
                     pb.println(format!("Failed to fetch package releases for {}: {}", package.name, e));
-                    continue;
+                    return;
                 }
                 let res = res.unwrap().json();
                 if let Err(e) = res {
                     pb.println(format!("Failed to parse package releases for {}: {}", package.name, e));
-                    continue;
+                    return;
                 }
                 let versions: PackageReleases = res.unwrap();
                 pb.set_message(format!("Remote {}: Found {} releases for package {}", remote.name, versions.releases.len(), versions.name));
-                // For each version in list
+
                 for release in versions.releases {
+                    let mut index = index.lock().unwrap();
                     index.add_package(&versions.name, package.package_type.clone(), release);
                 }
-            }
-        }
+            });
+        });
+        let index = index.into_inner().unwrap();
+        pb.finish_and_clear();
         index
     }
     pub fn add_package(&mut self, name: &String, package_type: PackageType, package: PackageReleaseEntry) {

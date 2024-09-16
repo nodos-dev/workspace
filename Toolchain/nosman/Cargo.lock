@@ -1447,6 +1447,7 @@ dependencies = [
  "path-slash",
  "pathdiff",
  "phf",
+ "rayon",
  "reqwest",
  "rm_rf",
  "self-replace",
