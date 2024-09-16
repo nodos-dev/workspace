@@ -167,7 +167,7 @@ function(nos_get_module name version out_target_name)
 				add_library(${target_name} INTERFACE)
 	
 				# Get module path
-				string(JSON module_path GET "${nosman_output}" "config_path")
+				string(JSON module_path GET "${nosman_output}" "manifest_path")
 				get_filename_component(module_path ${module_path} DIRECTORY)
 				cmake_path(SET module_path "${module_path}")
 
