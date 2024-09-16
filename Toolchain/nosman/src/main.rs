@@ -7,7 +7,6 @@ use std::error::Error;
 use std::mem;
 use clap::builder::StyledStr;
 use colored::Colorize;
-use native_dialog::MessageDialog;
 use sysinfo::System;
 use crate::nosman::{constants, workspace};
 
@@ -44,71 +43,13 @@ fn launched_from_file_explorer() -> bool {
     false
 }
 
-fn launch_nodos() {
-    // Assume workspace is cwd.
-    let workspace_dir = std::env::current_dir().expect("Unable to access current working directory.");
-    let engines_dir = nosman::path::get_default_engines_dir(&workspace_dir);
-    if !engines_dir.exists() {
-        MessageDialog::new()
-            .set_title("Nodos")
-            .set_text("No installed Nodos engine found in workspace.")
-            .show_alert().expect("Failed to show message dialog");
-        std::process::exit(1);
-    }
-
-    let mut opt_editor_path = None;
-    let mut opt_engine_path = None;
-    // For each folder in engines_dir, check if it has SDK/version.json
-    for entry in std::fs::read_dir(engines_dir).expect("Unable to read Engine directory") {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let binaries_dir = path.join("Binaries");
-        if !binaries_dir.exists() {
-            continue;
-        }
-        // Launch nosEditor and nosEngine
-        let mut editor_path = binaries_dir.join("nosEditor");
-        let mut engine_path = binaries_dir.join("nosLauncher");
-        if cfg!(target_os = "windows") {
-            editor_path = editor_path.with_extension("exe");
-            engine_path = engine_path.with_extension("exe");
-        }
-        if !editor_path.exists() || !engine_path.exists() {
-            continue;
-        }
-        opt_editor_path = Some(editor_path);
-        opt_engine_path = Some(engine_path);
-        break;
-    }
-    if opt_editor_path.is_none() || opt_engine_path.is_none() {
-        MessageDialog::new()
-            .set_title("Nodos")
-            .set_text("No installed Nodos engine found in workspace. Check Engine folder.")
-            .show_alert().unwrap();
-        std::process::exit(1);
-    }
-    let editor_path = opt_editor_path.unwrap();
-    let engine_path = opt_engine_path.unwrap();
-    std::process::Command::new(&editor_path)
-        .arg("--no-duplicate-instance")
-        .arg("--dont-wait-engine")
-        .current_dir(editor_path.parent().expect("Unable to get parent directory of nosEditor"))
-        .spawn().expect("Failed to launch nosEditor");
-    std::process::Command::new(&engine_path)
-        .arg("--exit-silently-if-duplicate")
-        .current_dir(engine_path.parent().expect("Unable to get parent directory of nosLauncher"))
-        .spawn().expect("Failed to launch nosLauncher");
-}
-
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() == 1 {
         // Get parent process name. If it is a file explorer, open Nodos
         if launched_from_file_explorer() {
-            launch_nodos();
+            let workspace_dir = std::env::current_dir().expect("Unable to access current working directory.");
+            nosman::command::launch::launch_nodos(&workspace_dir, false);
             return;
         }
     }
@@ -550,6 +491,9 @@ fn main() {
                 .required(false)
                 .num_args(0)
             )
+        )
+        .subcommand(Command::new("launch")
+            .about("Launch Nodos")
         )
         .subcommand(Command::new("dev")
             .about("Helper commands for Nodos module development")
