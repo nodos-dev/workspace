@@ -43,7 +43,6 @@ impl DevPullCommand {
                 if !output.status.success() {
                     pb.println(format!("{}{}{}", "Failed to pull: ".red(), path.display(), String::from_utf8_lossy(&output.stderr)));
                 }
-                pb.println(format!("{}: {}", path.display().to_string().green(), String::from_utf8_lossy(&output.stdout)));
                 // Submodule update recursive
                 let status = std::process::Command::new("git")
                     .arg("submodule")
