@@ -45,7 +45,8 @@ impl DevPullCommand {
                 .output()
                 .expect("Failed to run git pull");
             if !output.status.success() {
-                pb.println(format!("{}{}{}", "Failed to pull: ".red(), path.display(), String::from_utf8_lossy(&output.stderr)));
+                pb.println(format!("{}{}\n  {}", "Failed to pull: ".red(), path.display(), String::from_utf8_lossy(&output.stderr)));
+                return;
             }
             // Submodule update recursive
             let status = std::process::Command::new("git")
@@ -57,7 +58,8 @@ impl DevPullCommand {
                 .status()
                 .expect("Failed to run git submodule update");
             if !status.success() {
-                pb.println(format!("{}{}{}", "Failed to update submodules: ".red(), path.display(), String::from_utf8_lossy(&output.stderr)));
+                pb.println(format!("{}{}\n  {}", "Failed to update submodules: ".red(), path.display(), String::from_utf8_lossy(&output.stderr)));
+                return;
             }
             pb.println(format!("{}: {}", path.display().to_string().green(), String::from_utf8_lossy(&output.stdout)));
         });
