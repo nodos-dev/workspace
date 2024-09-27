@@ -11,7 +11,7 @@ mod list;
 mod publish;
 mod publish_batch;
 mod get;
-mod sample;
+pub mod sample;
 mod unpublish;
 mod pin;
 mod node;

@@ -9,6 +9,7 @@ use clap::builder::StyledStr;
 use colored::Colorize;
 use sysinfo::System;
 use crate::nosman::{constants, workspace};
+use crate::nosman::command::sample;
 
 mod nosman;
 
@@ -214,7 +215,7 @@ fn main() {
             .alias("sample")
             .about("Get a sample plugin, subsystem or a process implementation for Nodos")
             .arg(Arg::new("name")
-                .value_parser(clap::builder::PossibleValuesParser::new(["dx12_app"]))
+                .value_parser(clap::builder::PossibleValuesParser::new(sample::SAMPLES.keys().copied().collect::<Vec<&str>>().as_slice()))
                 .required(true)
             )
             .arg(Arg::new("output_dir")

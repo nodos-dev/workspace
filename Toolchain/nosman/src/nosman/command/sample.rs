@@ -5,7 +5,7 @@ use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::install::InstallCommand;
 
 // Hashmap of sample names to package names
-static SAMPLES: phf::Map<&'static str, &'static str> = phf::phf_map! {
+pub (crate) static SAMPLES: phf::Map<&'static str, &'static str> = phf::phf_map! {
     "dx12_app" => "nos.sample.dxapp",
     "vk_app" => "nos.sample.vkapp",
 };
