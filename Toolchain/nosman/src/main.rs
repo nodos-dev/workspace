@@ -55,6 +55,13 @@ fn main() {
         }
     }
 
+    let lang_tool_arg = Arg::new("language/tool")
+             .long("language-tool")
+             .short('l')
+             .help("Language and tool to use")
+             .value_parser(clap::builder::PossibleValuesParser::new(["cpp/cmake"]))
+             .default_value("cpp/cmake");
+
     let exe_path = std::env::current_exe().expect("Unable to get current executable path");
     let stem = exe_path.file_stem().expect("Unable to get executable name").to_str().expect("Unable to convert executable name to string");
     let boxed_name = Box::new(stem.to_string());
@@ -169,13 +176,7 @@ fn main() {
             .arg(Arg::new("name")
                 .required(true)
             )
-            .arg(Arg::new("language/tool")
-                .long("language-tool")
-                .short('l')
-                .help("Language and tool to use")
-                .value_parser(clap::builder::PossibleValuesParser::new(["cpp/cmake"]))
-                .default_value("cpp/cmake")
-            )
+            .arg(lang_tool_arg.clone())
             .arg(Arg::new("output_dir")
                 .help("Path to create the module folder in")
                 .long("output-dir")
@@ -507,6 +508,14 @@ fn main() {
                     .action(ArgAction::Append)
                     .num_args(1)
                     .default_values(&[".", "Engine", "Module"])
+                )
+            )
+            .subcommand(Command::new("gen")
+                .about("Generates project files for Nodos module development")
+                .arg(lang_tool_arg.clone())
+                .arg(Arg::new("extra_args")
+                    .last(true)
+                    .help("Arguments to pass to the underlying tool when generating project files")
                 )
             )
         );
