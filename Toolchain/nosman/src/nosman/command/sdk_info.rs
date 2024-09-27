@@ -50,7 +50,7 @@ pub fn get_engine_sdk_infos() -> Result<Vec<SdkInfo>, CommandError> {
         let bin_dir = sdk_dir.join("bin");
         let include_dir = sdk_dir.join("include");
         if bin_dir.exists() && include_dir.exists() {
-            let path_str = dunce::canonicalize(workspace_dir.join(sdk_dir).canonicalize()
+            let path_str = dunce::canonicalize(dunce::canonicalize(sdk_dir)
                 .expect("Failed to canonicalize SDK directory"))
                 .expect("Failed to canonicalize SDK directory").to_str()
                 .expect("Failed to convert path to string").to_string();
