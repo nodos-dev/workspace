@@ -1,4 +1,10 @@
-# Nodos Workspace
+# Nodos
+
+Highly extensible node-graph based computing platform. 
+
+## Building from source
+Run `GenerateProjectFiles` script to build Nodos Package Manager.
+You'll be able to install the latest Nodos engine version using `nodos` CLI tool.
 
 ## Developing a plugin/subsystem for Nodos
 
