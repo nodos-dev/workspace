@@ -54,8 +54,8 @@ pub fn get_engine_sdk_infos() -> Result<Vec<SdkInfo>, CommandError> {
                 .expect("Failed to canonicalize SDK directory"))
                 .expect("Failed to canonicalize SDK directory").to_str()
                 .expect("Failed to convert path to string").to_string();
-            let sdk_info = SdkInfo {
-                version: version.to_string(),
+			let sdk_info = SdkInfo {
+				version: version.to_string(),
                 process_sdk_version: process_sdk_version.to_string(),
                 plugin_sdk_version: plugin_sdk_version.to_string(),
                 subsystem_sdk_version: subsystem_sdk_version.to_string(),
@@ -76,10 +76,21 @@ struct SdkInfoOutput {
 impl SdkInfoCommand {
     fn run_get_sdk_info(&self,  requested_version: &str, sdk_type: &str) -> CommandResult {
         // Search ./Engine directory under workspace dir and find the version.json with bin/ include/ folders in it
-        let mut engines = get_engine_sdk_infos()?;
+        let engines = get_engine_sdk_infos()?;
+
+		let mut selected_versions = engines.iter().map(|x| {
+			match sdk_type {
+				"engine" => SdkInfoOutput { version: x.version.to_string(), path: x.path.to_string() },
+				"plugin" => SdkInfoOutput { version: x.plugin_sdk_version.to_string(), path: x.path.to_string() },
+				"subsystem" => SdkInfoOutput { version: x.subsystem_sdk_version.to_string(), path: x.path.to_string() },
+				"process" => SdkInfoOutput { version: x.process_sdk_version.to_string(), path: x.path.to_string() },
+				_ => return SdkInfoOutput{version: "".to_string(), path: "".to_string()},
+			}
+		}).collect::<Vec<SdkInfoOutput>>();
+
 
         // Sort the engines by version, latest first
-        engines.sort_by(|a, b| {
+        selected_versions.sort_by(|a, b| {
             let a_sem_ver = SemVer::parse_from_string(&a.version).expect("Failed to parse SDK version");
             let b_sem_ver = SemVer::parse_from_string(&b.version).expect("Failed to parse SDK version");
             b_sem_ver.cmp(&a_sem_ver)
@@ -90,9 +101,9 @@ impl SdkInfoCommand {
             None => return Err(CommandError::InvalidArgumentError { message: format!("Invalid version: {}", requested_version) }),
         };
 
-        let mut found_sdk_info: Option<SdkInfo> = None;
+        let mut found_sdk_info: Option<SdkInfoOutput> = None;
         // Determine the correct version key based on sdk_type
-        for sdk_info in engines {
+        for sdk_info in selected_versions {
             let sdk_sem_ver = SemVer::parse_from_string(&sdk_info.version).expect("Failed to parse SDK version");
             if sdk_sem_ver.satisfies_requested_version(&requested_sem_ver) {
                 found_sdk_info = Some(sdk_info);
@@ -100,18 +111,7 @@ impl SdkInfoCommand {
             }
         }
         if let Some(info) = found_sdk_info {
-            let version = match sdk_type {
-                "engine" => &info.version,
-                "plugin" => &info.plugin_sdk_version,
-                "subsystem" => &info.subsystem_sdk_version,
-                "process" => &info.process_sdk_version,
-                _ => return Err(CommandError::InvalidArgumentError { message: format!("Invalid SDK type: {}", sdk_type) }),
-            };
-            let output = SdkInfoOutput {
-                version: version.to_string(),
-                path: info.path,
-            };
-            println!("{}", serde_json::to_string_pretty(&output).expect("Failed to serialize SDK info"));
+            println!("{}", serde_json::to_string_pretty(&info).expect("Failed to serialize SDK info"));
             return Ok(true);
         }
 
