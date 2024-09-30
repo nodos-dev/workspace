@@ -39,7 +39,33 @@ impl DevPullCommand {
         }
         pb.set_message("Pulling...");
         git_dirs.par_iter().for_each(|path| {
-            pb.println(format!("{}{}", "Pulling: ".yellow(), path.display()));
+            // Get remote url
+            let remote = std::process::Command::new("git")
+                .arg("remote")
+                .arg("get-url")
+                .arg("origin")
+                .current_dir(&path)
+                .output()
+                .expect("Failed to run git remote get-url origin");
+            if !remote.status.success() {
+                pb.println(format!("{}{}\n  {}", "Failed to get remote URL: ".red(), path.display(), String::from_utf8_lossy(&remote.stderr)));
+                return;
+            }
+            let remote_url = String::from_utf8_lossy(&remote.stdout).trim().to_string();
+            // Get current branch
+            let branch = std::process::Command::new("git")
+                .arg("rev-parse")
+                .arg("--abbrev-ref")
+                .arg("HEAD")
+                .current_dir(&path)
+                .output()
+                .expect("Failed to run git rev-parse --abbrev-ref HEAD");
+            if !branch.status.success() {
+                pb.println(format!("{}{}\n  {}", "Failed to get current branch: ".red(), path.display(), String::from_utf8_lossy(&branch.stderr)));
+                return;
+            }
+            let branch = String::from_utf8_lossy(&branch.stdout).trim().to_string();
+            pb.println(format!("{}{} ({})", "Pulling: ".yellow(), path.display(), branch.cyan()));
             let output = std::process::Command::new("git")
                 .arg("pull")
                 .arg("--autostash")
@@ -47,7 +73,7 @@ impl DevPullCommand {
                 .output()
                 .expect("Failed to run git pull");
             if !output.status.success() {
-                pb.println(format!("{}{}\n  {}", "Failed to pull: ".red(), path.display(), String::from_utf8_lossy(&output.stderr)));
+                pb.println(format!("{}{} ({}) ({}):\n  {}", "Failed to pull: ".red(), path.display(), branch.cyan(), remote_url, String::from_utf8_lossy(&output.stderr)));
                 return;
             }
             // Submodule update recursive
@@ -60,10 +86,10 @@ impl DevPullCommand {
                 .status()
                 .expect("Failed to run git submodule update");
             if !status.success() {
-                pb.println(format!("{}{}\n  {}", "Failed to update submodules: ".red(), path.display(), String::from_utf8_lossy(&output.stderr)));
+                pb.println(format!("{}{} ({}) ({}):\n  {}", "Failed to update submodules: ".red(), path.display(), branch.cyan(), remote_url, String::from_utf8_lossy(&output.stderr)));
                 return;
             }
-            pb.println(format!("{}: {}", path.display().to_string().green(), String::from_utf8_lossy(&output.stdout)));
+            pb.println(format!("{} ({}) ({}): {}", path.display().to_string().green(), branch.cyan(), remote_url, String::from_utf8_lossy(&output.stdout)));
         });
         pb.finish_and_clear();
         Ok(true)
