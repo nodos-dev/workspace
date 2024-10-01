@@ -125,7 +125,7 @@ impl DevGenCommand {
         if lang_tool != "cpp/cmake" {
             return Err(InvalidArgumentError { message: format!("Unsupported language/tool: {}", lang_tool) });
         }
-        let mut cmake_args = vec!["cmake", "-S", "Toolchain/CMake", "-B", "Project"];
+        let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", "Project"];
         for arg in extra_args.iter() {
             cmake_args.push(arg);
         }
