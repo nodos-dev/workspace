@@ -541,10 +541,12 @@ fn main() {
     let workspace_dir = std::path::PathBuf::from(matches.get_one::<String>("workspace").unwrap());
 
     // If contains --silently-agree-eula, agree to EULAs
-    if matches.contains_id("silently_agree_eula") {
-        workspace::set_workspace_root(workspace_dir, true);
-        nosman::eula::silently_agree_eulas();
-        return;
+    if let Some(agree_eula) = matches.get_one::<bool>("silently_agree_eula") {
+        if *agree_eula {
+            workspace::set_workspace_root(workspace_dir, true);
+            nosman::eula::silently_agree_eulas();
+            return;
+        }
     }
 
     // If -h comes first, print help and exit
