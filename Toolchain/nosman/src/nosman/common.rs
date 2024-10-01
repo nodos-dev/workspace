@@ -101,3 +101,8 @@ pub fn run_if_not(dry_run: bool, verbose: bool, cmd: &mut std::process::Command)
         Some(res.expect(format!("Failed to run command {:?}", cmd).as_str()))
     }
 }
+
+pub fn get_hostname() -> String {
+    let hostname = hostname::get().expect("Failed to get hostname");
+    hostname.into_string().expect("Failed to convert hostname to string")
+}

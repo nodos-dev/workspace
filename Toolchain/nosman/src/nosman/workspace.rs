@@ -9,7 +9,7 @@ use colored::Colorize;
 use indicatif::{ProgressBar};
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
-use crate::nosman::constants;
+use crate::nosman::{constants};
 use crate::nosman::index::{Index, PackageIndexEntry, PackageReleases, Remote, SemVer};
 use crate::nosman::module::{InstalledModule, get_module_manifests, NodeDefinition};
 use crate::nosman::path::get_rel_path_based_on;
@@ -321,8 +321,12 @@ pub fn find_root_from(path: &PathBuf) -> Option<PathBuf> {
 
 static WORKSPACE_ROOT: OnceLock<PathBuf> = OnceLock::new();
 
-pub fn set_current_root(path: PathBuf) {
-    WORKSPACE_ROOT.set(path).unwrap();
+pub fn set_workspace_root(workspace_dir: PathBuf, required: bool) {
+    WORKSPACE_ROOT.set(workspace_dir.clone()).unwrap();
+    if required && !exists() {
+        eprintln!("No workspace found in {}", workspace_dir.display());
+        std::process::exit(1);
+    }
 }
 
 pub fn current_root<'a>() -> Option<&'a PathBuf> {

@@ -76,6 +76,13 @@ fn main() {
             .long("workspace")
             .default_value(".")
         )
+        .arg(Arg::new("silently_agree_eula")
+            .help("Agrees to Nodos EULA. If multiple engines are installed, it will agree to all of their EULAs.")
+            .long("silently-agree-eula")
+            .action(ArgAction::SetTrue)
+            .num_args(0)
+            .required(false)
+        )
         .arg(Arg::new("help")
             .short('h')
             .long("help")
@@ -531,6 +538,15 @@ fn main() {
 
     let matches = cmd.get_matches();
 
+    let workspace_dir = std::path::PathBuf::from(matches.get_one::<String>("workspace").unwrap());
+
+    // If contains --silently-agree-eula, agree to EULAs
+    if matches.contains_id("silently_agree_eula") {
+        workspace::set_workspace_root(workspace_dir, true);
+        nosman::eula::silently_agree_eulas();
+        return;
+    }
+
     // If -h comes first, print help and exit
     if matches.contains_id("help") {
         // If help is called without a subcommand, print the help string
@@ -551,13 +567,7 @@ fn main() {
     for command in nosman::command::commands().iter() {
         match command.matched_args(&matches) {
             Some(command_args) => {
-                workspace::set_current_root(std::path::PathBuf::from(matches.get_one::<String>("workspace").unwrap()));
-                if (*command).needs_workspace() {
-                    if !workspace::exists() {
-                        eprintln!("No workspace found in {:?}", matches.get_one::<String>("workspace").unwrap());
-                        std::process::exit(1);
-                    }
-                }
+                workspace::set_workspace_root(workspace_dir, (*command).needs_workspace());
                 match (*command).run(command_args) {
                     Ok(_) => {
                         // nothing
@@ -575,6 +585,7 @@ fn main() {
     }
 
     if !matched {
+
         println!("{}", help_str.ansi());
         std::process::exit(1);
     }
