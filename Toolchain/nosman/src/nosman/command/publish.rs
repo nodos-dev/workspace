@@ -74,7 +74,7 @@ impl PublishCommand {
                     // Add this directory to the appropriate environment variable
                     #[cfg(target_os = "linux")]
                     {
-                        let mut paths = env::var_os("LD_LIBRARY_PATH").unwrap_or_else(|| "".into());
+                        let paths = env::var_os("LD_LIBRARY_PATH").unwrap_or_else(|| "".into());
                         let mut lib_dir = lib_dir.clone();
                         lib_dir.push(":");
                         lib_dir.push(paths);
@@ -83,7 +83,7 @@ impl PublishCommand {
 
                     #[cfg(target_os = "macos")]
                     {
-                        let mut paths = env::var_os("DYLD_LIBRARY_PATH").unwrap_or_else(|| "".into());
+                        let paths = env::var_os("DYLD_LIBRARY_PATH").unwrap_or_else(|| "".into());
                         let mut lib_dir = lib_dir.clone();
                         lib_dir.push(":");
                         lib_dir.push(paths);
