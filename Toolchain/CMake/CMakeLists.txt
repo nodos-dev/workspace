@@ -120,7 +120,7 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/FindNodosSDK.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Projects.cmake)
 
 # If Toolchain/nosman/src exists, setup cargo build command that depends on .rs files to build and copy the executable to the root
-if (EXISTS "${NODOS_WORKSPACE_DIR}/Toolchain/nosman/src")
+if ((NOT NOS_INVOKED_FROM_NOSMAN) AND (EXISTS "${NODOS_WORKSPACE_DIR}/Toolchain/nosman/src"))
 	set(NOSMAN_BUILD_DIR "${NODOS_WORKSPACE_DIR}/Toolchain/nosman/target")
 
 	message(STATUS "Found nosman sources. Checking/building nosman...")

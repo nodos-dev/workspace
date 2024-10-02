@@ -125,13 +125,13 @@ impl DevGenCommand {
         if lang_tool != "cpp/cmake" {
             return Err(InvalidArgumentError { message: format!("Unsupported language/tool: {}", lang_tool) });
         }
-        let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", "Project"];
+        let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", "Project", "-DNOS_INVOKED_FROM_NOSMAN=ON"];
         for arg in extra_args.iter() {
             cmake_args.push(arg);
         }
         let mut cmd = std::process::Command::new("cmake");
         let cmd_args_str = cmake_args.iter().map(|s| s.as_ref()).collect::<Vec<&OsStr>>().join(OsStr::new(" "));
-        println!("{}: {:?}", "Running".green(), cmd_args_str);
+        println!("{}: {:?}", "Running cmake with".green(), cmd_args_str);
         let status = cmd
             .args(&cmake_args)
             .status();
