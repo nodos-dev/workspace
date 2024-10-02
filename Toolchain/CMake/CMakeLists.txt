@@ -7,6 +7,9 @@ if (NOT DEFINED PROJECT_NAME)
 endif()
 
 project(${PROJECT_NAME})
+
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++23 -Wno-changes-meaning -fpermissive -fPIC")
 endif()
