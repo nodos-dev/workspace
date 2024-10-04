@@ -52,8 +52,17 @@ impl Workspace {
     pub fn from_root(path: &PathBuf) -> Result<Workspace, io::Error> {
         let index_filepath = get_nosman_index_filepath_for(&path);
         let file = std::fs::File::open(&index_filepath)?;
-        let mut workspace: Workspace = serde_json::from_reader(file).unwrap();
-        workspace.root = dunce::canonicalize(path).unwrap();
+        let mut workspace: Workspace = match serde_json::from_reader(file) {
+            Ok(workspace) => workspace,
+            Err(e) => {
+                println!("{}", format!("Failed to parse workspace file: {}. Rescanning...", e).red());
+                let mut workspace = Workspace::new_empty(path.clone());
+                workspace.rescan(RescanFlags::all()).expect("Failed to rescan workspace");
+                workspace.save().expect("Failed to save workspace");
+                workspace
+            }
+        };
+        workspace.root = dunce::canonicalize(path).expect(format!("Failed to canonicalize path: {}", path.display()).as_str());
         Ok(workspace)
     }
     pub fn get_remote_repo_dir(&self, remote: &Remote) -> PathBuf {
