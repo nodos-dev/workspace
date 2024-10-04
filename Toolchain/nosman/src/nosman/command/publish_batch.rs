@@ -17,7 +17,7 @@ pub struct PublishBatchCommand {
 impl PublishBatchCommand {
     fn run_publish_batch(&self, dry_run: bool, verbose: bool, remote_name: &String, repo_path: &PathBuf, compare_with: Option<&String>,
                         version_suffix: &String, vendor: Option<&String>, publisher_name: Option<&String>,
-                        publisher_email: Option<&String>, release_tags: &Vec<String>) -> CommandResult {
+                        publisher_email: Option<&String>, release_tags: &Vec<String>, target_platform: Option<&String>) -> CommandResult {
         if !repo_path.exists() {
             return Err(InvalidArgumentError { message: format!("Repo {} does not exist", repo_path.display()) });
         }
@@ -100,7 +100,7 @@ impl PublishBatchCommand {
             return Ok(true);
         }
         for module_root in to_be_published {
-            PublishCommand {}.run_publish(dry_run, verbose, &module_root, None, None, version_suffix, None, remote_name, vendor, publisher_name, publisher_email, release_tags)?;
+            PublishCommand {}.run_publish(dry_run, verbose, &module_root, None, None, version_suffix, None, remote_name, vendor, publisher_name, publisher_email, release_tags, target_platform)?;
         }
 
         return Ok(true);
@@ -129,7 +129,8 @@ impl Command for PublishBatchCommand {
         }
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
-        self.run_publish_batch(*dry_run, *verbose, &remote_name, &repo_path, opt_compare_with, &version_suffix, vendor, publisher_name, publisher_email, &release_tags)
+        let target_platform = args.get_one::<String>("target_platform");
+        self.run_publish_batch(*dry_run, *verbose, &remote_name, &repo_path, opt_compare_with, &version_suffix, vendor, publisher_name, publisher_email, &release_tags, target_platform)
     }
 
     fn needs_workspace(&self) -> bool {

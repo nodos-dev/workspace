@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{Read};
 use std::path::{Path, PathBuf};
 use std::process::Output;
+use colored::Colorize;
 use inquire::Confirm;
 use zip::ZipArchive;
 use crate::nosman::command::CommandError;
@@ -84,11 +85,11 @@ pub fn ask(question: &str, default: bool, dont_ask: bool) -> bool {
 
 pub fn run_if_not(dry_run: bool, verbose: bool, cmd: &mut std::process::Command) -> Option<Output> {
     if dry_run {
-        println!("Would run: {:?}", cmd);
+        println!("{}", format!("Would run: {:?}", cmd).cyan());
         None
     } else {
         if verbose {
-            println!("Running: {:?}", cmd);
+            println!("{}", format!("Running: {:?}", cmd).cyan());
         }
         let res = cmd.output();
         if verbose {
@@ -105,4 +106,10 @@ pub fn run_if_not(dry_run: bool, verbose: bool, cmd: &mut std::process::Command)
 pub fn get_hostname() -> String {
     let hostname = hostname::get().expect("Failed to get hostname");
     hostname.into_string().expect("Failed to convert hostname to string")
+}
+
+pub fn get_host_platform() -> String {
+    let arch = std::env::consts::ARCH;
+    let os = std::env::consts::OS;
+    format!("{}-{}", arch, os)
 }

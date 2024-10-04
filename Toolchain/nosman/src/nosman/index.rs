@@ -170,7 +170,7 @@ impl SemVer {
     }
     pub fn get_one_up(&self) -> SemVer {
         let version_start = self.clone();
-        return if version_start.patch.is_none() {
+        if version_start.patch.is_none() {
             version_start.upper_minor()
         } else if version_start.build_number.is_none() {
             version_start.upper_patch()
@@ -190,6 +190,9 @@ impl SemVer {
 pub struct PackageReleaseEntry {
     pub(crate) version: String,
     pub(crate) url: String,
+    // TODO: Replace plugin_api_version & subsystem_api_version with these
+    // module_type: String,
+    // api_version: SemVer,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) plugin_api_version: Option<SemVer>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -203,10 +206,9 @@ pub struct PackageReleaseEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub module_tags: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub release_tags: Option<Vec<String>>
-    // TODO: Replace with these
-    // module_type: String,
-    // api_version: SemVer,
+    pub release_tags: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -381,12 +383,21 @@ impl Remote {
             release_list = serde_json::from_str(&fs::read_to_string(&release_list_file).unwrap()).unwrap();
         }
         let version = release.version.clone();
+        let platform = release.platform.clone();
+        // Check if target_platform exists for the same version in release_list
+        for existing_release in &release_list.releases {
+            if existing_release.platform.is_some() && release.platform.is_some() && existing_release.version == version {
+                if existing_release.platform == release.platform {
+                    return Err(format!("Release {}-{} for platform {} already exists!", name, version, &release.platform.unwrap()));
+                }
+            }
+        }
         release_list.releases.insert(0, release);
         let res = fs::write(release_list_file, serde_json::to_string_pretty(&release_list).unwrap());
         if let Err(e) = res {
             return Err(format!("Failed to write remote package releases: {}", e));
         }
-        self.update_remote(dry_run, verbose, format!("Add package {} version {}", name, version), &repo_dir)
+        self.update_remote(dry_run, verbose, format!("Add package {}-{} targeting {}", name, version, platform.unwrap_or("unknown".to_string())), &repo_dir)
     }
     pub fn remove_release(&self, dry_run: bool, verbose: bool, workspace: &Workspace, name: &String, version_opt: Option<&String>) -> Result<String, String> {
         let repo_dir = workspace.get_remote_repo_dir(&self);
@@ -402,7 +413,6 @@ impl Remote {
                 if release_list.releases[i].version == *version {
                     release_list.releases.remove(i);
                     found = true;
-                    break;
                 }
             }
             if !found {
@@ -507,7 +517,7 @@ impl Remote {
 
         Ok(commit_sha)
     }
-    pub fn create_gh_release(&self, dry_run: bool, verbose: bool, workspace: &Workspace, commit_sha: &String, name: &String, version: &String, artifacts: Vec<PathBuf>) -> Result<(), String> {
+    pub fn create_gh_release(&self, dry_run: bool, verbose: bool, workspace: &Workspace, commit_sha: &String, name: &String, version: &String, target_platform: &String, tag: &String, artifacts: Vec<PathBuf>) -> Result<(), String> {
         let repo_dir = workspace.get_remote_repo_dir(&self);
         let (org_name, repo_name) = self.get_gh_remote_org_repo();
 
@@ -515,9 +525,9 @@ impl Remote {
             .current_dir(&repo_dir)
             .arg("release")
             .arg("create")
-            .arg(format!("{}-{}", name, version))
+            .arg(tag)
             .arg("--title")
-            .arg(format!("{} {}", name, version))
+            .arg(format!("{} {} ({})", name, version, target_platform))
             .arg("--repo")
             .arg(format!("{}/{}", org_name, repo_name))
             .arg("--target")

@@ -19,6 +19,7 @@ use chrono::{Utc};
 
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::command::CommandError::{GenericError, InvalidArgumentError};
+use crate::nosman::common::get_host_platform;
 use crate::nosman::constants;
 use crate::nosman::index::{PackageReleaseEntry, PackageType, SemVer};
 use crate::nosman::module::PackageIdentifier;
@@ -167,7 +168,7 @@ impl PublishCommand {
     }
     pub fn run_publish(&self, dry_run: bool, verbose: bool, path: &PathBuf, mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
                    mut package_type: Option<PackageType>, remote_name: &String, vendor: Option<&String>,
-                   publisher_name: Option<&String>, publisher_email: Option<&String>, release_tags: &Vec<String>) -> CommandResult {
+                   publisher_name: Option<&String>, publisher_email: Option<&String>, release_tags: &Vec<String>, opt_target_platform: Option<&String>) -> CommandResult {
         // Check if git and gh is installed.
         let git_installed = std::process::Command::new("git")
             .arg("--version")
@@ -183,6 +184,14 @@ impl PublishCommand {
         if !gh_installed {
             return Err(GenericError { message: "GitHub CLI client 'gh' is not on PATH".to_string() });
         }
+
+        let target_platform = if opt_target_platform.is_none() {
+            let current_platform = get_host_platform();
+            println!("{}", format!("Target platform is not provided. Using the current platform: {}", current_platform).yellow());
+            current_platform
+        } else {
+            opt_target_platform.unwrap().clone()
+        };
 
         if !path.exists() {
             return Err(InvalidArgumentError { message: format!("Path {} does not exist", path.display()) });
@@ -310,9 +319,12 @@ impl PublishCommand {
         if version.is_none() {
             return Err(InvalidArgumentError { message: "Version is not provided and could not be inferred".to_string() });
         }
+
+        println!("Target platform: {}", target_platform);
+
         let name = name.unwrap();
         let version = version.unwrap() + version_suffix;
-        let tag = format!("{}-{}", name, version);
+        let tag = format!("{}-{}-{}", name, version, target_platform);
 
         let pb: ProgressBar = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
@@ -405,7 +417,8 @@ impl PublishCommand {
             dependencies,
             category,
             module_tags,
-            release_tags: if release_tags.is_empty() { None } else { Some(release_tags.clone()) }
+            release_tags: if release_tags.is_empty() { None } else { Some(release_tags.clone()) },
+            platform: Some(target_platform.clone()),
         };
         if verbose {
             println!("Release entry: {:?}", release);
@@ -419,12 +432,12 @@ impl PublishCommand {
         }
         let commit_sha = res.unwrap();
 
-        println!("Uploading release {} for package {} version {} on remote {}", format!("{}-{}", name, version), name, version, remote.name);
-        let res = remote.create_gh_release(dry_run, verbose, &workspace, &commit_sha, &name, &version, vec![artifact_file_path]);
+        println!("Uploading release {} on remote {}", format!("{}-{}", name, version), remote.name);
+        let res = remote.create_gh_release(dry_run, verbose, &workspace, &commit_sha, &name, &version, &target_platform, &tag, vec![artifact_file_path]);
         if res.is_err() {
             return Err(GenericError { message: res.err().unwrap() });
         }
-        println!("{}", format!("Release {} for package {} version {} on remote {} created successfully", format!("{}-{}", name, version), name, version, remote.name).as_str().green().to_string());
+        println!("{}", format!("Release {} on remote {} created successfully", format!("{}-{}", name, version), remote.name).as_str().green().to_string());
         Ok(true)
     }
 }
@@ -450,7 +463,8 @@ impl Command for PublishCommand {
         let publisher_email = args.get_one::<String>("publisher_email");
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
-        self.run_publish(*dry_run, *verbose, &path, name, version, version_suffix, package_type, &remote_name, vendor, publisher_name, publisher_email, &release_tags)
+        let target_platform: Option<&String> = args.get_one::<String>("target_platform");
+        self.run_publish(*dry_run, *verbose, &path, name, version, version_suffix, package_type, &remote_name, vendor, publisher_name, publisher_email, &release_tags, target_platform)
     }
 
     fn needs_workspace(&self) -> bool {
