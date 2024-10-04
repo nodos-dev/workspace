@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 use crate::nosman::constants;
 use crate::nosman::workspace::Workspace;
-use crate::nosman::common::{run_if_not};
+use crate::nosman::common::{get_host_platform, run_if_not};
 use crate::nosman::module::{PackageIdentifier};
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
@@ -544,7 +544,20 @@ impl Remote {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Index {
-    pub packages: HashMap<String, (PackageType, HashMap<String, PackageReleaseEntry>)>, // name -> version -> ModuleReleaseEntry
+    pub packages: HashMap<String, (PackageType, Vec<PackageReleaseEntry>)>, // name -> version -> ModuleReleaseEntry
+}
+
+fn sort_version_list(versions: &mut Vec<&PackageReleaseEntry>) {
+    versions.sort_by(|a, b| {
+        let semver_a = SemVer::parse_from_string(&a.version);
+        let semver_b = SemVer::parse_from_string(&b.version);
+        if semver_a.is_none() || semver_b.is_none() {
+            return std::cmp::Ordering::Equal;
+        }
+        let semver_a = semver_a.unwrap();
+        let semver_b = semver_b.unwrap();
+        semver_a.cmp(&semver_b)
+    });
 }
 
 impl Index {
@@ -590,8 +603,8 @@ impl Index {
         index
     }
     pub fn add_package(&mut self, name: &String, package_type: PackageType, package: PackageReleaseEntry) {
-        let type_versions = self.packages.entry(name.clone()).or_insert((package_type, HashMap::new()));
-        type_versions.1.insert(package.version.clone(), package);
+        let type_versions = self.packages.entry(name.clone()).or_insert((package_type, Vec::new()));
+        type_versions.1.push(package);
     }
     pub fn get_package(&self, name: &str, version: &str) -> Option<(&PackageType, &PackageReleaseEntry)> {
         let res = self.packages.get(name);
@@ -599,11 +612,13 @@ impl Index {
             return None;
         }
         let (package_type, version_list) = res.unwrap();
-        let res = version_list.get(version);
-        if res.is_none() {
-            return None;
+        let platform = get_host_platform();
+        for module in version_list {
+            if module.version == version && (module.platform.is_none() || module.platform.as_ref().unwrap() == &platform) {
+                return Some((package_type, module));
+            }
         }
-        Some((package_type, res.unwrap()))
+        None
     }
     pub fn get_latest_release(&self, name: &str) -> Option<(&PackageType, &PackageReleaseEntry)> {
         let res = self.packages.get(name);
@@ -611,13 +626,19 @@ impl Index {
             return None;
         }
         let (package_type, version_list) = res.unwrap();
-        let mut versions: Vec<(&String, &PackageReleaseEntry)> = version_list.iter().collect();
-        versions.sort_by(|a, b| a.0.cmp(b.0));
+        let mut versions: Vec<&PackageReleaseEntry> = version_list.iter().collect();
+        sort_version_list(&mut versions);
         versions.reverse();
         if versions.len() == 0 {
             return None;
         }
-        Some((package_type, versions[0].1))
+        let platform = get_host_platform();
+        for module in versions {
+            if module.platform.is_none() || module.platform.as_ref().unwrap() == &platform {
+                return Some((package_type, &module));
+            }
+        }
+        None
     }
     pub fn get_latest_compatible_release_within_range(&self, name: &str, version_start: &SemVer, version_end: &SemVer) -> Option<(&PackageType, &PackageReleaseEntry)> {
         let res = self.packages.get(name);
@@ -625,11 +646,11 @@ impl Index {
             return None;
         }
         let (package_type, version_list) = res.unwrap();
-        let mut versions: Vec<(&String, &PackageReleaseEntry)> = version_list.iter().collect();
-        versions.sort_by(|a, b| a.0.cmp(b.0));
+        let mut versions: Vec<&PackageReleaseEntry> = version_list.iter().collect();
+        sort_version_list(&mut versions);
         versions.reverse();
-        for (version, module) in versions {
-            let semver = SemVer::parse_from_string(version);
+        for module in versions {
+            let semver = SemVer::parse_from_string(&module.version);
             if semver.is_none() {
                 return None;
             }
