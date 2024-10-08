@@ -36,12 +36,13 @@ pub struct PublishOptions {
     #[serde(alias = "globs")]
     pub(crate) release_globs: Vec<String>,
     #[serde(alias = "trigger_publish_globs")]
-    pub(crate) additional_publish_triggering_globs: Option<Vec<String>>
+    pub(crate) additional_publish_triggering_globs: Option<Vec<String>>,
+    pub(crate) target_platforms: Option<Vec<String>>,
 }
 
 impl PublishOptions {
     pub fn from_file(nospub_file: &PathBuf) -> (PublishOptions, bool) {
-        let mut nospub = PublishOptions { release_globs: vec![], additional_publish_triggering_globs: None };
+        let mut nospub = PublishOptions { release_globs: vec![], additional_publish_triggering_globs: None, target_platforms: None };
         let found = nospub_file.exists();
         if found {
             let contents = std::fs::read_to_string(&nospub_file).unwrap();
@@ -50,10 +51,10 @@ impl PublishOptions {
         else {
             nospub.release_globs.push("**".to_string());
         }
-        return (nospub, found);
+        (nospub, found)
     }
     pub fn empty() -> PublishOptions {
-        PublishOptions { release_globs: vec![], additional_publish_triggering_globs: None }
+        PublishOptions { release_globs: vec![], additional_publish_triggering_globs: None, target_platforms: None }
     }
 }
 
@@ -319,6 +320,11 @@ impl PublishCommand {
             nospub = options;
             if !found {
                 println!("{}", format!("No {} file found in {}. All files will be included in the release.", constants::PUBLISH_OPTIONS_FILE_NAME, abs_path.display()).as_str().yellow());
+            } else if let Some(targets) = nospub.target_platforms {
+                if !targets.contains(&target_platform.to_string()) {
+                    println!("{}", format!("Target platform {} is not in the list of target platforms in {}", target_platform.to_string(), constants::PUBLISH_OPTIONS_FILE_NAME).as_str().yellow());
+                    return Ok(false);
+                }
             }
         }
         let package_type = package_type.unwrap();
