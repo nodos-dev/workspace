@@ -6,3 +6,4 @@ pub(crate) mod path;
 pub mod constants;
 mod common;
 pub(crate) mod eula;
+mod platform;

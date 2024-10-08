@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 use crate::nosman::constants;
 use crate::nosman::workspace::Workspace;
-use crate::nosman::common::{get_host_platform, run_if_not};
+use crate::nosman::common::{run_if_not};
 use crate::nosman::module::{PackageIdentifier};
+use crate::nosman::platform::get_host_platform;
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub enum PackageType {
@@ -612,7 +613,7 @@ impl Index {
             return None;
         }
         let (package_type, version_list) = res.unwrap();
-        let platform = get_host_platform();
+        let platform = get_host_platform().to_string();
         for module in version_list {
             if module.version == version && (module.platform.is_none() || module.platform.as_ref().unwrap() == &platform) {
                 return Some((package_type, module));
@@ -632,7 +633,7 @@ impl Index {
         if versions.len() == 0 {
             return None;
         }
-        let platform = get_host_platform();
+        let platform = get_host_platform().to_string();
         for module in versions {
             if module.platform.is_none() || module.platform.as_ref().unwrap() == &platform {
                 return Some((package_type, &module));

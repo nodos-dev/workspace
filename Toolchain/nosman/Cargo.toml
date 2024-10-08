@@ -47,6 +47,10 @@ hostname = "0.4.0"
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["libloaderapi"] }
 
+[target.'cfg(unix)'.dependencies]
+flate2 = "1.0.34"
+tar = "0.4.42"
+
 [build-dependencies]
 vergen = { version = "7.5.1", default-features = false, features = ["build"]}
 anyhow = "1.0.83"

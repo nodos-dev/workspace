@@ -19,11 +19,11 @@ use chrono::{Utc};
 
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::command::CommandError::{GenericError, InvalidArgumentError};
-use crate::nosman::common::get_host_platform;
 use crate::nosman::constants;
 use crate::nosman::index::{PackageReleaseEntry, PackageType, SemVer};
 use crate::nosman::module::PackageIdentifier;
 use crate::nosman::path::{get_plugin_manifest_file, get_subsystem_manifest_file};
+use crate::nosman::platform::{get_host_platform, Platform};
 use crate::nosman::workspace::Workspace;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -185,12 +185,13 @@ impl PublishCommand {
             return Err(GenericError { message: "GitHub CLI client 'gh' is not on PATH".to_string() });
         }
 
+
         let target_platform = if opt_target_platform.is_none() {
             let current_platform = get_host_platform();
             println!("{}", format!("Target platform is not provided. Using the current platform: {}", current_platform).yellow());
             current_platform
         } else {
-            opt_target_platform.unwrap().clone()
+            Platform::from_str(opt_target_platform.unwrap()).expect("Invalid target platform")
         };
 
         if !path.exists() {
@@ -337,7 +338,6 @@ impl PublishCommand {
             return Err(InvalidArgumentError { message: format!("Version should be semantic-versioning compatible: {}", version) });
         }
         let workspace = Workspace::get()?;
-
         let artifact_file_path;
         let temp_dir = tempdir().unwrap();
         if abs_path.is_dir() {
@@ -357,38 +357,49 @@ impl PublishCommand {
                 pb.println(format!("\t{}", path.display()).as_str());
                 files_to_release.push(path);
             }
-            let zip_file_name = format!("{}.zip", tag);
-            let zip_file_path = temp_dir.path().join(&zip_file_name);
-            let file = File::create(&zip_file_path).unwrap();
-            let mut zip = zip::ZipWriter::new(file);
 
-            let options = SimpleFileOptions::default()
-                .compression_method(zip::CompressionMethod::Deflated);
-
-            let mut buffer = Vec::new();
-            for file_path in files_to_release.iter() {
-                let mut file = File::open(file_path).unwrap();
-                pb.set_message(format!("Creating a release: {}", file_path.display()).as_str().to_string());
-                file.read_to_end(&mut buffer).unwrap();
-                // If this is the manifest file, update the version
-                if let Some(m) = &manifest_file {
-                    if file_path == m {
-                        let mut manifest: serde_json::Value = serde_json::from_slice(&buffer).unwrap();
-                        manifest["info"]["id"]["version"] = serde_json::Value::String(version.clone());
-                        pb.println(format!("Updated version to {} in manifest file: {}", version.clone(), m.display()).as_str());
-                        buffer = serde_json::to_vec_pretty(&manifest).unwrap();
-                    }
-                }
-                zip.start_file(file_path.strip_prefix(&abs_path)
-                                   .expect(format!("Failed to strip prefix {} from {}", abs_path.display(), file_path.display()).as_str()).to_str()
-                                   .expect("Failed to convert path to string"), options)
-                    .expect(format!("Failed to start file in zip: {}", file_path.display()).as_str());
-                zip.write_all(&buffer).expect(format!("Failed to write to zip: {}", file_path.display()).as_str());
-                buffer.clear();
+            let host_platform = get_host_platform();
+            if target_platform.os != host_platform.os {
+                pb.println(format!("Target OS ({}) is different from host OS ({}). Using hosts archive format.", target_platform.os, host_platform.os).yellow().to_string().as_str());
             }
 
-            zip.finish().unwrap();
-            artifact_file_path = zip_file_path;
+            #[cfg(target_os = "windows")]
+            {
+                let zip_file_name = format!("{}.zip", tag);
+                let zip_file_path = temp_dir.path().join(&zip_file_name);
+                let file = File::create(&zip_file_path).expect(format!("Failed to create file: {}", zip_file_path.display()).as_str());
+                let mut zip = zip::ZipWriter::new(file);
+                let options = SimpleFileOptions::default()
+                    .compression_method(zip::CompressionMethod::Deflated);
+                let mut buffer = Vec::new();
+                for file_path in files_to_release.iter() {
+                    let mut file = File::open(file_path).expect(format!("Failed to open file: {}", file_path.display()).as_str());
+                    pb.set_message(format!("Creating a release: {}", file_path.display()).as_str().to_string());
+                    file.read_to_end(&mut buffer).expect(format!("Failed to read file: {}", file_path.display()).as_str());
+                    // If this is the manifest file, update the version
+                    if let Some(m) = &manifest_file {
+                        if file_path == m {
+                            let mut manifest: serde_json::Value = serde_json::from_slice(&buffer).unwrap();
+                            manifest["info"]["id"]["version"] = serde_json::Value::String(version.clone());
+                            pb.println(format!("Updated version to {} in manifest file: {}", version.clone(), m.display()).as_str());
+                            buffer = serde_json::to_vec_pretty(&manifest).unwrap();
+                        }
+                    }
+                    zip.start_file(file_path.strip_prefix(&abs_path)
+                                       .expect(format!("Failed to strip prefix {} from {}", abs_path.display(), file_path.display()).as_str()).to_str()
+                                       .expect("Failed to convert path to string"), options)
+                        .expect(format!("Failed to start file in zip: {}", file_path.display()).as_str());
+                    zip.write_all(&buffer).expect(format!("Failed to write to zip: {}", file_path.display()).as_str());
+                    buffer.clear();
+                }
+                zip.finish().expect("Failed to finish zip");
+                artifact_file_path = zip_file_path;
+            }
+            #[cfg(target_os = "unix")]
+            {
+                // TODO.
+                return Err (GenericError { message: "Not implemented".to_string() });
+            }
         } else {
             pb.set_message(format!("Creating a release: {}", abs_path.display()).as_str().to_string());
             artifact_file_path = abs_path.clone();
@@ -418,7 +429,7 @@ impl PublishCommand {
             category,
             module_tags,
             release_tags: if release_tags.is_empty() { None } else { Some(release_tags.clone()) },
-            platform: Some(target_platform.clone()),
+            platform: Some(target_platform.to_string()),
         };
         if verbose {
             println!("Release entry: {:?}", release);
@@ -433,7 +444,7 @@ impl PublishCommand {
         let commit_sha = res.unwrap();
 
         println!("Uploading release {} on remote {}", format!("{}-{}", name, version), remote.name);
-        let res = remote.create_gh_release(dry_run, verbose, &workspace, &commit_sha, &name, &version, &target_platform, &tag, vec![artifact_file_path]);
+        let res = remote.create_gh_release(dry_run, verbose, &workspace, &commit_sha, &name, &version, &target_platform.to_string(), &tag, vec![artifact_file_path]);
         if res.is_err() {
             return Err(GenericError { message: res.err().unwrap() });
         }

@@ -107,9 +107,3 @@ pub fn get_hostname() -> String {
     let hostname = hostname::get().expect("Failed to get hostname");
     hostname.into_string().expect("Failed to convert hostname to string")
 }
-
-pub fn get_host_platform() -> String {
-    let arch = std::env::consts::ARCH;
-    let os = std::env::consts::OS;
-    format!("{}-{}", arch, os)
-}
