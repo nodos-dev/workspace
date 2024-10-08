@@ -1,8 +1,8 @@
 use std::fs::File;
 use std::io::{Read};
-#[cfg(not(target_os = "windows"))]
+#[cfg(unix)]
 use std::env;
-#[cfg(not(target_os = "windows"))]
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 #[cfg(target_os = "windows")]
 use std::os::windows::ffi::OsStrExt;
@@ -65,7 +65,7 @@ impl PublishCommand {
         if verbose {
             println!("Loading dynamic library: {}", binary_path.to_str().unwrap());
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(unix)]
         {
             // Store the original environment variable values
             #[cfg(target_os = "linux")]
@@ -400,7 +400,7 @@ impl PublishCommand {
             let options = SimpleFileOptions::default()
                 .compression_method(zip::CompressionMethod::Deflated);
             
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(unix)]
             let mut writer = tar::Builder::new(flate2::write::GzEncoder::new(archive_file, flate2::Compression::default()));
 
             for (file_path, buffer) in file_buffer_pairs.iter() {
@@ -413,7 +413,7 @@ impl PublishCommand {
                         .expect(format!("Failed to start file in zip: {}", file_path.display()).as_str());
                     writer.write_all(&buffer).expect(format!("Failed to write to zip: {}", file_path.display()).as_str());
                 }
-                #[cfg(not(target_os = "windows"))]
+                #[cfg(unix)]
                 {
                     let mut header = tar::Header::new_gnu();
                     header.set_path(file_path.strip_prefix(&abs_path)

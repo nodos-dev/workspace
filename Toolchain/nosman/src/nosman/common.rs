@@ -14,6 +14,17 @@ pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandEr
     .expect(format!("Failed to fetch {}", url).as_str()).copy_to(&mut tmpfile)
     .expect(format!("Failed to write to {:?}", tmpfile).as_str());
 
+    // If tar.gz, use flate2 to extract
+    if url.ends_with(".tar.gz") {
+        #[cfg(unix)]
+        {
+            let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(tmpfile));
+            fs::create_dir_all(target.clone())?;
+            archive.unpack(&target)?;
+            return Ok(());
+        }
+    }
+    
     let mut archive = ZipArchive::new(tmpfile)?;
     fs::create_dir_all(target.clone())?;
     for i in 0..archive.len() {
