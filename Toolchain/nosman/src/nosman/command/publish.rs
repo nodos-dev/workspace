@@ -1,9 +1,13 @@
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Read};
 #[cfg(not(target_os = "windows"))]
 use std::env;
+#[cfg(not(target_os = "windows"))]
+use std::os::unix::fs::PermissionsExt;
 #[cfg(target_os = "windows")]
 use std::os::windows::ffi::OsStrExt;
+#[cfg(target_os = "windows")]
+use std::io::{Write};
 use std::path;
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -11,9 +15,10 @@ use std::time::Duration;
 use clap::{ArgMatches};
 use colored::Colorize;
 use indicatif::ProgressBar;
-use libloading::{Library, library_filename, Symbol};
+use libloading::{Library, Symbol};
 use serde::{Deserialize, Serialize};
 use tempfile::{tempdir};
+#[cfg(target_os = "windows")]
 use zip::write::{SimpleFileOptions};
 use chrono::{Utc};
 
@@ -256,7 +261,11 @@ impl PublishCommand {
                     // Binary path is relative to the manifest file
                     let module_dir = manifest_file.parent().unwrap();
                     let binary_path = module_dir.join(binary_path.unwrap());
-                    let binary_path = library_filename(&binary_path);
+                    let binary_path = binary_path.with_extension(
+                        if target_platform.os == "windows" { "dll" } 
+                        else if target_platform.os == "macos" { "dylib" } 
+                        else { "so" }
+                    ).into_os_string();
                     let mut additional_search_paths: Vec<PathBuf> = Vec::new();
                     for path_str in manifest["additional_search_paths"].as_array().unwrap_or(&vec![]).iter() {
                         let path = module_dir.join(path_str.as_str().unwrap());
@@ -321,7 +330,7 @@ impl PublishCommand {
             return Err(InvalidArgumentError { message: "Version is not provided and could not be inferred".to_string() });
         }
 
-        println!("Target platform: {}", target_platform);
+        println!("Target platform: {:?}", target_platform);
 
         let name = name.unwrap();
         let version = version.unwrap() + version_suffix;
@@ -363,43 +372,67 @@ impl PublishCommand {
                 pb.println(format!("Target OS ({}) is different from host OS ({}). Using hosts archive format.", target_platform.os, host_platform.os).yellow().to_string().as_str());
             }
 
-            #[cfg(target_os = "windows")]
-            {
-                let zip_file_name = format!("{}.zip", tag);
-                let zip_file_path = temp_dir.path().join(&zip_file_name);
-                let file = File::create(&zip_file_path).expect(format!("Failed to create file: {}", zip_file_path.display()).as_str());
-                let mut zip = zip::ZipWriter::new(file);
-                let options = SimpleFileOptions::default()
-                    .compression_method(zip::CompressionMethod::Deflated);
+            let mut file_buffer_pairs = vec![];
+            for file_path in files_to_release.iter() {
+                let mut file = File::open(file_path).expect(format!("Failed to open file: {}", file_path.display()).as_str());
                 let mut buffer = Vec::new();
-                for file_path in files_to_release.iter() {
-                    let mut file = File::open(file_path).expect(format!("Failed to open file: {}", file_path.display()).as_str());
-                    pb.set_message(format!("Creating a release: {}", file_path.display()).as_str().to_string());
-                    file.read_to_end(&mut buffer).expect(format!("Failed to read file: {}", file_path.display()).as_str());
-                    // If this is the manifest file, update the version
-                    if let Some(m) = &manifest_file {
-                        if file_path == m {
-                            let mut manifest: serde_json::Value = serde_json::from_slice(&buffer).unwrap();
-                            manifest["info"]["id"]["version"] = serde_json::Value::String(version.clone());
-                            pb.println(format!("Updated version to {} in manifest file: {}", version.clone(), m.display()).as_str());
-                            buffer = serde_json::to_vec_pretty(&manifest).unwrap();
-                        }
+                file.read_to_end(&mut buffer).expect(format!("Failed to read file: {}", file_path.display()).as_str());
+                // If this is the manifest file, update the version
+                if let Some(m) = &manifest_file {
+                    if file_path == m {
+                        let mut manifest: serde_json::Value = serde_json::from_slice(&buffer).unwrap();
+                        manifest["info"]["id"]["version"] = serde_json::Value::String(version.clone());
+                        pb.println(format!("Updated version to {} in manifest file: {}", version.clone(), m.display()).as_str());
+                        buffer = serde_json::to_vec_pretty(&manifest).unwrap();
                     }
-                    zip.start_file(file_path.strip_prefix(&abs_path)
-                                       .expect(format!("Failed to strip prefix {} from {}", abs_path.display(), file_path.display()).as_str()).to_str()
-                                       .expect("Failed to convert path to string"), options)
-                        .expect(format!("Failed to start file in zip: {}", file_path.display()).as_str());
-                    zip.write_all(&buffer).expect(format!("Failed to write to zip: {}", file_path.display()).as_str());
-                    buffer.clear();
                 }
-                zip.finish().expect("Failed to finish zip");
-                artifact_file_path = zip_file_path;
+                file_buffer_pairs.push((file_path.clone(), buffer));
             }
-            #[cfg(target_os = "unix")]
-            {
-                // TODO.
-                return Err (GenericError { message: "Not implemented".to_string() });
+
+            let archive_file_name = format!("{}.{}", tag, if host_platform.os == "windows" { "zip" } else { "tar.gz" });
+            let archive_file_path = temp_dir.path().join(&archive_file_name);
+            let archive_file = File::create(&archive_file_path).expect(format!("Failed to create file: {}", archive_file_path.display()).as_str());
+            
+            #[cfg(target_os = "windows")]
+            let mut writer = zip::ZipWriter::new(archive_file);
+
+            #[cfg(target_os = "windows")]
+            let options = SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            
+            #[cfg(not(target_os = "windows"))]
+            let mut writer = tar::Builder::new(flate2::write::GzEncoder::new(archive_file, flate2::Compression::default()));
+
+            for (file_path, buffer) in file_buffer_pairs.iter() {
+                pb.set_message(format!("Creating a release: {}", file_path.display()).as_str().to_string());
+                #[cfg(target_os = "windows")]
+                {
+                    writer.start_file(file_path.strip_prefix(&abs_path)
+                            .expect(format!("Failed to strip prefix {} from {}", abs_path.display(), file_path.display()).as_str()).to_str()
+                            .expect("Failed to convert path to string"), options)
+                        .expect(format!("Failed to start file in zip: {}", file_path.display()).as_str());
+                    writer.write_all(&buffer).expect(format!("Failed to write to zip: {}", file_path.display()).as_str());
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    let mut header = tar::Header::new_gnu();
+                    header.set_path(file_path.strip_prefix(&abs_path)
+                        .expect(format!("Failed to strip prefix {} from {}", abs_path.display(), file_path.display()).as_str())
+                        .to_str().expect("Failed to convert path to string").to_string()).expect("Failed to set path");
+                    header.set_size(buffer.len() as u64);
+                    let metadata = file_path.metadata().expect("Failed to get metadata");
+                    header.set_mode(metadata.permissions().mode());
+                    // Seconds since the Unix epoch
+                    if let Ok(modified) = metadata.modified() {
+                        header.set_mtime(modified.duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_secs());
+                    }
+                    header.set_cksum();
+                    writer.append(&header, &mut buffer.as_slice()).expect(format!("Failed to append file to tar: {}", file_path.display()).as_str());
+                }
             }
+
+            writer.finish().expect(format!("Failed to finish archive: {}", archive_file_path.display()).as_str());
+            artifact_file_path = archive_file_path;
         } else {
             pb.set_message(format!("Creating a release: {}", abs_path.display()).as_str().to_string());
             artifact_file_path = abs_path.clone();
