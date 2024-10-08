@@ -1,6 +1,6 @@
 use std::fs;
 use std::fs::File;
-use std::io::{Read};
+use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 use std::process::Output;
 use colored::Colorize;
@@ -13,6 +13,8 @@ pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandEr
     reqwest::blocking::get(url)
     .expect(format!("Failed to fetch {}", url).as_str()).copy_to(&mut tmpfile)
     .expect(format!("Failed to write to {:?}", tmpfile).as_str());
+
+    tmpfile.seek(std::io::SeekFrom::Start(0)).expect("Failed to seek to start of file");
 
     // If tar.gz, use flate2 to extract
     if url.ends_with(".tar.gz") {
