@@ -650,13 +650,14 @@ impl Index {
         let mut versions: Vec<&PackageReleaseEntry> = version_list.iter().collect();
         sort_version_list(&mut versions);
         versions.reverse();
+        let platform = get_host_platform().to_string();
         for module in versions {
             let semver = SemVer::parse_from_string(&module.version);
             if semver.is_none() {
                 return None;
             }
             let semver = semver.unwrap();
-            if semver >= *version_start && semver < *version_end {
+            if semver >= *version_start && semver < *version_end && (module.platform.is_none() || module.platform.as_ref().unwrap() == &platform) {
                 return Some((package_type, module));
             }
         }
