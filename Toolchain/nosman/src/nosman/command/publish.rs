@@ -217,6 +217,17 @@ impl PublishCommand {
         // If path is a directory, search for a manifest file
         let mut manifest_file = None;
         if abs_path.is_dir() {
+            let (options, found) = PublishOptions::from_file(&abs_path.join(constants::PUBLISH_OPTIONS_FILE_NAME));
+            nospub = options;
+            if !found {
+                println!("{}", format!("No {} file found in {}. All files will be included in the release.", constants::PUBLISH_OPTIONS_FILE_NAME, abs_path.display()).as_str().yellow());
+            } else if let Some(targets) = nospub.target_platforms {
+                if !targets.contains(&target_platform.to_string()) {
+                    println!("{}", format!("Target platform {} is not in the list of target platforms in {}", target_platform.to_string(), constants::PUBLISH_OPTIONS_FILE_NAME).as_str().yellow());
+                    return Ok(false);
+                }
+            }
+
             let res = get_plugin_manifest_file(&abs_path);
             if res.is_err() {
                 return Err(InvalidArgumentError { message: res.err().unwrap() });
@@ -300,30 +311,21 @@ impl PublishCommand {
                             println!("Module {} loaded successfully. Checking Nodos {:?} API version...", name.as_ref().unwrap(), &package_type);
                         }
                         let lib = lib.unwrap();
-                        let func_name = match package_type {
+                        let get_api_version_func_name = match package_type {
                             PackageType::Plugin => "nosGetPluginAPIVersion",
                             PackageType::Subsystem => "nosGetSubsystemAPIVersion",
                             _ => panic!("Invalid package type")
                         };
-                        let func: Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)> = lib.get(func_name.as_bytes()).unwrap();
-                        let mut major = 0;
-                        let mut minor = 0;
-                        let mut patch = 0;
-                        func(&mut major, &mut minor, &mut patch);
-                        api_version = Some(SemVer { major: (major as u32), minor: Some(minor as u32), patch: Some(patch as u32), build_number: None });
-                        println!("{}", format!("{} uses Nodos {:?} API version: {}.{}.{}", name.as_ref().unwrap(), &package_type, major, minor, patch).as_str().yellow());
+                        {
+                            let get_api_version_func: Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)> = lib.get(get_api_version_func_name.as_bytes()).expect(format!("Failed to get symbol {}", get_api_version_func_name).as_str());
+                            let mut major = 0;
+                            let mut minor = 0;
+                            let mut patch = 0;
+                            get_api_version_func(&mut major, &mut minor, &mut patch);
+                            api_version = Some(SemVer { major: (major as u32), minor: Some(minor as u32), patch: Some(patch as u32), build_number: None });
+                            println!("{}", format!("{} uses Nodos {:?} API version: {}.{}.{}", name.as_ref().unwrap(), &package_type, major, minor, patch).as_str().yellow());
+                        }
                     }
-                }
-            }
-
-            let (options, found) = PublishOptions::from_file(&abs_path.join(constants::PUBLISH_OPTIONS_FILE_NAME));
-            nospub = options;
-            if !found {
-                println!("{}", format!("No {} file found in {}. All files will be included in the release.", constants::PUBLISH_OPTIONS_FILE_NAME, abs_path.display()).as_str().yellow());
-            } else if let Some(targets) = nospub.target_platforms {
-                if !targets.contains(&target_platform.to_string()) {
-                    println!("{}", format!("Target platform {} is not in the list of target platforms in {}", target_platform.to_string(), constants::PUBLISH_OPTIONS_FILE_NAME).as_str().yellow());
-                    return Ok(false);
                 }
             }
         }
