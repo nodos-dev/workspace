@@ -2,7 +2,7 @@ use clap::{ArgMatches};
 use colored::Colorize;
 use inquire::{MultiSelect, Select, Text};
 use crate::nosman::command::{Command, CommandResult};
-use crate::nosman::command::CommandError::{GenericError, InvalidArgumentError};
+use crate::nosman::command::CommandError::{RuntimeError, InvalidArgumentError};
 use crate::nosman::constants;
 use crate::nosman::workspace::{Workspace};
 
@@ -24,7 +24,7 @@ impl PinCommand {
             let selection = Select::new(format!("Multiple node classes found with name {}. Please select one:", node_class_name).as_str(), node_defs)
                 .prompt();
             if let Err(e) = selection {
-                return Err(GenericError { message: format!("Failed to select node class: {}", e) });
+                return Err(RuntimeError { message: format!("Failed to select node class: {}", e) });
             }
             else {
                 node_def = selection.unwrap().clone();
@@ -71,7 +71,7 @@ impl PinCommand {
                 let selection = Select::new("Select pin show-as:", constants::POSSIBLE_SHOW_AS.to_vec())
                     .prompt();
                 if let Err(e) = selection {
-                    return Err(GenericError { message: format!("Failed to select pin show-as: {}", e) });
+                    return Err(RuntimeError { message: format!("Failed to select pin show-as: {}", e) });
                 }
                 else {
                     show_as_out = selection.unwrap().to_string();
@@ -87,7 +87,7 @@ impl PinCommand {
                 let selection = MultiSelect::new("Select pin can-show-as:", constants::POSSIBLE_SHOW_AS.to_vec())
                     .prompt();
                 if let Err(e) = selection {
-                    return Err(GenericError { message: format!("Failed to select pin can-show-as: {}", e) });
+                    return Err(RuntimeError { message: format!("Failed to select pin can-show-as: {}", e) });
                 }
                 else {
                     let mut input = false;

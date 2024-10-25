@@ -136,7 +136,7 @@ impl DevGenCommand {
             .args(&cmake_args)
             .status();
         if !status.is_ok() {
-            return Err(CommandError::GenericError { message: format!("Error during running '{:?}'. See output.", cmake_args)});
+            return Err(CommandError::RuntimeError { message: format!("Error during running '{:?}'. See output.", cmake_args)});
         }
         Ok(true)
     }

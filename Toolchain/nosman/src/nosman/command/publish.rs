@@ -24,10 +24,10 @@ use zip::write::{SimpleFileOptions};
 use chrono::{Utc};
 
 use crate::nosman::command::{Command, CommandError, CommandResult};
-use crate::nosman::command::CommandError::{GenericError, InvalidArgumentError};
+use crate::nosman::command::CommandError::{RuntimeError, InvalidArgumentError};
 use crate::nosman::constants;
 use crate::nosman::index::{PackageReleaseEntry, PackageType, SemVer};
-use crate::nosman::module::PackageIdentifier;
+use crate::nosman::module::{load_module, load_module_with_search_paths, PackageIdentifier};
 use crate::nosman::path::{get_plugin_manifest_file, get_subsystem_manifest_file};
 use crate::nosman::platform::{get_host_platform, Platform};
 use crate::nosman::workspace::Workspace;
@@ -112,112 +112,6 @@ pub struct PublishCommand {
 }
 
 impl PublishCommand {
-    fn load_module_with_search_paths(verbose: bool, binary_path: &OsString, additional_search_paths: Vec<PathBuf>) -> Result<Library, CommandError> {
-        if verbose {
-            println!("Loading dynamic library: {}", binary_path.to_str().unwrap());
-        }
-        #[cfg(unix)]
-        {
-            // Store the original environment variable values
-            #[cfg(target_os = "linux")]
-            let original_var = env::var_os("LD_LIBRARY_PATH");
-
-            #[cfg(target_os = "macos")]
-            let original_var = env::var_os("DYLD_LIBRARY_PATH");
-
-
-            {
-                for lib_dir in additional_search_paths {
-                    // Add this directory to the appropriate environment variable
-                    #[cfg(target_os = "linux")]
-                    {
-                        let paths = env::var_os("LD_LIBRARY_PATH").unwrap_or_else(|| "".into());
-                        let mut lib_dir = lib_dir.clone();
-                        lib_dir.push(":");
-                        lib_dir.push(paths);
-                        env::set_var("LD_LIBRARY_PATH", lib_dir);
-                    }
-
-                    #[cfg(target_os = "macos")]
-                    {
-                        let paths = env::var_os("DYLD_LIBRARY_PATH").unwrap_or_else(|| "".into());
-                        let mut lib_dir = lib_dir.clone();
-                        lib_dir.push(":");
-                        lib_dir.push(paths);
-                        env::set_var("DYLD_LIBRARY_PATH", lib_dir);
-                    }
-                }
-            }
-
-
-
-            let res;
-            // Now load the library
-            unsafe {
-                res = Library::new(&binary_path)
-            }
-
-            {
-                // Restore the original environment variable values
-                #[cfg(target_os = "linux")]
-                if let Some(original) = original_var {
-                    env::set_var("LD_LIBRARY_PATH", original);
-                } else {
-                    env::remove_var("LD_LIBRARY_PATH");
-                }
-
-                #[cfg(target_os = "macos")]
-                if let Some(original) = original_var {
-                    env::set_var("DYLD_LIBRARY_PATH", original);
-                } else {
-                    env::remove_var("DYLD_LIBRARY_PATH");
-                }
-            }
-
-            if res.is_err() {
-                return Err(GenericError { message: format!("Failed to load dynamic library: {}", res.err().unwrap()) });
-            }
-            Ok(res.unwrap())
-        }
-
-        #[cfg(target_os = "windows")]
-        unsafe {
-            // Set default DLL directories
-            use winapi::um::libloaderapi::{SetDefaultDllDirectories, AddDllDirectory, RemoveDllDirectory};
-            use winapi::um::libloaderapi::LOAD_LIBRARY_SEARCH_DEFAULT_DIRS;
-            if 0 == SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS) {
-                // Get last error
-                let err = std::io::Error::last_os_error();
-                return Err(GenericError { message: format!("Failed to set default DLL directories: {}", err) });
-            }
-            let mut dll_cookies = vec![];
-            for lib_dir in additional_search_paths {
-                if !lib_dir.exists() {
-                    println!("{}", format!("Warning: DLL search path {} does not exist", lib_dir.display()).yellow().to_string());
-                    continue;
-                }
-                let lib_dir_canonical = dunce::canonicalize(&lib_dir).expect(format!("Failed to canonicalize path: {}", lib_dir.display()).as_str());
-                if verbose {
-                    println!("\tAdding DLL search path: {}", lib_dir_canonical.display());
-                }
-                let wdir: Vec<u16> = lib_dir_canonical.as_os_str().encode_wide().chain(Some(0)).collect();
-                let cookie = AddDllDirectory(wdir.as_ptr());
-                if cookie.is_null() {
-                    let err = std::io::Error::last_os_error();
-                    return Err(GenericError { message: format!("Failed to add DLL search path {}: {}", lib_dir_canonical.display(), err) });
-                }
-                dll_cookies.push(cookie);
-            }
-            let res = Library::new(&binary_path);
-            for cookie in dll_cookies {
-                RemoveDllDirectory(cookie);
-            }
-            if res.is_err() {
-                return Err(GenericError { message: format!("Failed to load dynamic library: {}", res.err().unwrap()) });
-            }
-            Ok(res.unwrap())
-        }
-    }
     fn is_name_valid(name: &String) -> bool {
         // Should be lowercase alphanumeric, with only . and _ symbols are permitted
         name.chars().all(|c| c == '.' || c == '_' || c.is_numeric() || c.is_ascii_lowercase())
@@ -231,16 +125,15 @@ impl PublishCommand {
             .output()
             .is_ok();
         if !git_installed {
-            return Err(GenericError { message: "git is not on PATH".to_string() });
+            return Err(RuntimeError { message: "git is not on PATH".to_string() });
         }
         let gh_installed = std::process::Command::new("gh")
             .arg("--version")
             .output()
             .is_ok();
         if !gh_installed {
-            return Err(GenericError { message: "GitHub CLI client 'gh' is not on PATH".to_string() });
+            return Err(RuntimeError { message: "GitHub CLI client 'gh' is not on PATH".to_string() });
         }
-
 
         let target_platform = if opt_target_platform.is_none() {
             let current_platform = get_host_platform();
@@ -320,52 +213,21 @@ impl PublishCommand {
                 module_tags = manifest["info"]["tags"].as_array().map(|a| a.iter().map(|v| v.as_str().unwrap().to_string()).collect());
                 let binary_path = manifest["binary_path"].as_str();
                 if binary_path.is_some() {
-                    // Binary path is relative to the manifest file
-                    let module_dir = manifest_file.parent().unwrap();
-                    let binary_path = module_dir.join(binary_path.unwrap());
-                    let binary_path = binary_path.with_extension(
-                        if target_platform.os == "windows" { "dll" }
-                        else if target_platform.os == "macos" { "dylib" }
-                        else { "so" }
-                    ).into_os_string();
-                    let mut additional_search_paths: Vec<PathBuf> = Vec::new();
-                    for path_str in manifest["additional_search_paths"].as_array().unwrap_or(&vec![]).iter() {
-                        let path = module_dir.join(path_str.as_str().unwrap());
-                        additional_search_paths.push(path);
+                    let ws = Workspace::get()?;
+                    let lib = match load_module(verbose, manifest, manifest_file.parent().unwrap().to_path_buf(), ws) {
+                        Ok(lib) => lib,
+                        Err(error) => return Err(error),
+                    };
+                    if verbose {
+                        println!("Module {} loaded successfully. Checking Nodos {:?} API version...", name.as_ref().unwrap(), &package_type);
                     }
-                    // Add search paths of dependencies
-                    for dep in manifest["info"]["dependencies"].as_array().unwrap_or(&vec![]) {
-                        let dep_name = dep["name"].as_str().unwrap();
-                        let dep_version = dep["version"].as_str().unwrap();
-                        let ws = Workspace::get()?;
-                        let dep_res = ws.get_latest_installed_module_for_version(dep_name, dep_version);
-                        if let Ok(installed_module) = dep_res {
-                            let dep_manifest_file_path = ws.root.join(&installed_module.manifest_path);
-                            let dep_manifest_file_contents = std::fs::read_to_string(&dep_manifest_file_path).expect("Failed to read dependency manifest file");
-                            let dep_manifest: serde_json::Value = serde_json::from_str(&dep_manifest_file_contents).expect("Failed to parse dependency manifest file");
-                            for path_str in dep_manifest["additional_search_paths"].as_array().unwrap_or(&vec![]) {
-                                let module_dir = dep_manifest_file_path.parent().unwrap();
-                                let path = module_dir.join(path_str.as_str().unwrap());
-                                additional_search_paths.push(path);
-                            }
-                        }
-                    }
-                    // Load the dynamic library
-                    unsafe {
-                        let lib = Self::load_module_with_search_paths(verbose, &binary_path, additional_search_paths);
-                        if lib.is_err() {
-                            return Err(InvalidArgumentError { message: format!("Could not load dynamic library {}: {}. \
-                                Make sure all the dependencies are present in the system and the search paths.", &binary_path.to_str().unwrap(), lib.err().unwrap()) });
-                        }
-                        if verbose {
-                            println!("Module {} loaded successfully. Checking Nodos {:?} API version...", name.as_ref().unwrap(), &package_type);
-                        }
-                        let lib = lib.unwrap();
-                        let get_api_version_func_name = match package_type {
-                            PackageType::Plugin => "nosGetPluginAPIVersion",
-                            PackageType::Subsystem => "nosGetSubsystemAPIVersion",
-                            _ => panic!("Invalid package type")
-                        };
+                    let get_api_version_func_name = match package_type {
+                        PackageType::Plugin => "nosGetPluginAPIVersion",
+                        PackageType::Subsystem => "nosGetSubsystemAPIVersion",
+                        _ => panic!("Invalid package type")
+                    };
+                    unsafe
+                    {
                         let get_api_version_func = lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>(get_api_version_func_name.as_bytes()).expect(format!("Failed to get symbol {}", get_api_version_func_name).as_str());
                         let mut major = 0;
                         let mut minor = 0;
@@ -390,6 +252,7 @@ impl PublishCommand {
                             }
                         }
                     }
+
                 }
             }
         }
@@ -545,14 +408,14 @@ impl PublishCommand {
         println!("Adding package {} version {} release entry to remote {}", name, version, remote.name);
         let res = remote.fetch_add(dry_run, verbose, &workspace, &name, vendor, &package_type, release, publisher_name, publisher_email);
         if res.is_err() {
-            return Err(GenericError { message: res.err().unwrap() });
+            return Err(RuntimeError { message: res.err().unwrap() });
         }
         let commit_sha = res.unwrap();
 
         println!("Uploading release {} on remote {}", format!("{}-{}", name, version), remote.name);
         let res = remote.create_gh_release(dry_run, verbose, &workspace, &commit_sha, &name, &version, &target_platform.to_string(), &tag, vec![artifact_file_path]);
         if res.is_err() {
-            return Err(GenericError { message: res.err().unwrap() });
+            return Err(RuntimeError { message: res.err().unwrap() });
         }
         println!("{}", format!("Release {} on remote {} created successfully", format!("{}-{}", name, version), remote.name).as_str().green().to_string());
         Ok(true)

@@ -230,6 +230,7 @@ impl Workspace {
                     continue;
                 }
             }
+            installed_module.register_commands(&self);
             self.add(installed_module);
         }
     }

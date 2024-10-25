@@ -32,7 +32,7 @@ pub enum CommandError {
     #[error(display = "Zip: {}", message)]
     ZipError { message: String },
     #[error(display = "{}", message)]
-    GenericError { message: String },
+    RuntimeError { message: String },
 }
 
 impl From<io::Error> for CommandError {

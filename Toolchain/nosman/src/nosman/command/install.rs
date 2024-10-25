@@ -8,7 +8,7 @@ use crate::nosman::command::{Command, CommandError, CommandResult};
 
 use zip::result::ZipError;
 use nosman::workspace::Workspace;
-use crate::nosman::command::CommandError::{GenericError, InvalidArgumentError};
+use crate::nosman::command::CommandError::{RuntimeError, InvalidArgumentError};
 use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::common::download_and_extract;
 
@@ -94,7 +94,7 @@ impl InstallCommand {
             println!("{}", format!("{}-{} installed successfully", package_name, version).as_str().green());
             Ok(true)
         } else {
-            return Err(GenericError { message: format!("None of the remotes contain package {} version {}. You can try rescan command to update index.", package_name, version) });
+            Err(RuntimeError { message: format!("None of the remotes contain package {} version {}. You can try rescan command to update index.", package_name, version) })
         }
     }
 }
