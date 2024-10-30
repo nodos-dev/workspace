@@ -7,4 +7,4 @@ pub mod constants;
 mod common;
 pub(crate) mod eula;
 mod platform;
-mod extensions;
+pub(crate) mod extensions;

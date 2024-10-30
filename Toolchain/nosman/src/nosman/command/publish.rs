@@ -6,28 +6,25 @@ use std::env;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 #[cfg(target_os = "windows")]
-use std::os::windows::ffi::OsStrExt;
-#[cfg(target_os = "windows")]
 use std::io::{Write};
 use std::path;
-use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::Duration;
 use clap::{ArgMatches};
 use colored::Colorize;
 use indicatif::ProgressBar;
-use libloading::{Library, Symbol};
+use libloading::{Symbol};
 use serde::{Deserialize, Serialize};
 use tempfile::{tempdir};
 #[cfg(target_os = "windows")]
 use zip::write::{SimpleFileOptions};
 use chrono::{Utc};
 
-use crate::nosman::command::{Command, CommandError, CommandResult};
+use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::CommandError::{RuntimeError, InvalidArgumentError};
 use crate::nosman::constants;
 use crate::nosman::index::{PackageReleaseEntry, PackageType, SemVer};
-use crate::nosman::module::{load_module, load_module_with_search_paths, PackageIdentifier};
+use crate::nosman::module::{load_module, PackageIdentifier};
 use crate::nosman::path::{get_plugin_manifest_file, get_subsystem_manifest_file};
 use crate::nosman::platform::{get_host_platform, Platform};
 use crate::nosman::workspace::Workspace;
@@ -214,7 +211,7 @@ impl PublishCommand {
                 let binary_path = manifest["binary_path"].as_str();
                 if binary_path.is_some() {
                     let ws = Workspace::get()?;
-                    let lib = match load_module(verbose, manifest, manifest_file.parent().unwrap().to_path_buf(), ws) {
+                    let lib = match load_module(verbose, manifest, manifest_file.parent().unwrap().to_path_buf(), &ws) {
                         Ok(lib) => lib,
                         Err(error) => return Err(error),
                     };

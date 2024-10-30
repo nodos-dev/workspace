@@ -10,6 +10,7 @@ use colored::Colorize;
 use sysinfo::System;
 use crate::nosman::{constants, workspace};
 use crate::nosman::command::sample;
+use crate::nosman::workspace::{check_workspace, setup_workspace, Workspace};
 
 mod nosman;
 
@@ -101,8 +102,8 @@ fn main() {
             .arg(Arg::new("exact")
                 .action(ArgAction::SetTrue)
                 .help("If not set, version parameter will be interpreted as minimum required version within that minor/patch version.\n\
-                If no version 'x' such that 'a.b <= x < a.(b+1)' is found among installed modules, latest such version will be installed.\n\
-                If version is set to 'latest' or has no minor component, it will fail.")
+            If no version 'x' such that 'a.b <= x < a.(b+1)' is found among installed modules, latest such version will be installed.\n\
+            If version is set to 'latest' or has no minor component, it will fail.")
                 .long("exact")
                 .num_args(0)
                 .required(false)
@@ -139,13 +140,13 @@ fn main() {
         )
         .subcommand(Command::new("info")
             .about("Returns information about an installed module in JSON format.\n\
-            If no such module is installed, it will return an error.")
+        If no such module is installed, it will return an error.")
             .arg(Arg::new("module").required(true))
             .arg(Arg::new("version").required(true))
             .arg(Arg::new("relaxed")
                 .action(ArgAction::SetTrue)
                 .help("If set, version parameter will be interpreted as minimum required version within that minor/patch version.\n\
-                It will return information about a version 'x' found among installed modules such that 'a.b <= x < a.(b+1)'.")
+            It will return information about a version 'x' found among installed modules such that 'a.b <= x < a.(b+1)'.")
                 .long("relaxed")
                 .num_args(0)
                 .required(false)
@@ -153,12 +154,12 @@ fn main() {
         )
         .subcommand(Command::new("sdk-info")
             .about("Returns information about an installed Nodos SDK under workspace.\n\
-            If no such version is found, it will return an error.")
+        If no such version is found, it will return an error.")
             .arg(Arg::new("version").required(true))
-			.arg(Arg::new("sdk-type").required(false)
-				.help("Type of the SDK to get information about.")
-				.default_value("engine")
-				.value_parser(clap::builder::PossibleValuesParser::new(["engine", "plugin", "subsystem", "process"])))
+            .arg(Arg::new("sdk-type").required(false)
+                .help("Type of the SDK to get information about.")
+                .default_value("engine")
+                .value_parser(clap::builder::PossibleValuesParser::new(["engine", "plugin", "subsystem", "process"])))
         )
         .subcommand(Command::new("remote")
             .about("Manage remotes.")
@@ -235,7 +236,7 @@ fn main() {
         )
         .subcommand(Command::new("get").visible_alias("update")
             .about("Brings a Nodos release under workspace (with --workspace option).\n\
-            If there is an existing Nodos release, updates it (note that this will remove all installed Nodos engines!)")
+        If there is an existing Nodos release, updates it (note that this will remove all installed Nodos engines!)")
             .arg(Arg::new("name")
                 .help("Name of the Nodos release to bring. Can be 'nodos' or some bundled version.")
                 .long("name")
@@ -265,24 +266,24 @@ fn main() {
         .subcommand(Command::new("publish")
             .about("Publish a package")
             .after_help("This command will publish a package to the specified remote.\n\
-            Currently, only the git repositories hosted on GitHub can be used to publish.")
+        Currently, only the git repositories hosted on GitHub can be used to publish.")
             .arg(Arg::new("path")
                 .long("path")
                 .short('p')
                 .help(format!("Path to the root folder of the package (or a file) to be published.\n\
-                If not provided, the current directory will be used.\n\
-                If the path is a folder and it does not contain a {} file, it will add all files to the release.", constants::PUBLISH_OPTIONS_FILE_NAME))
+            If not provided, the current directory will be used.\n\
+            If the path is a folder and it does not contain a {} file, it will add all files to the release.", constants::PUBLISH_OPTIONS_FILE_NAME))
                 .default_value(".")
             )
             .arg(Arg::new("name")
                 .long("name")
                 .short('n')
                 .help("Name of the package. It will be overridden by the module manifest files under <path> if present.\n\
-                If the <path> does not contain a module manifest file, this parameter is required."))
+            If the <path> does not contain a module manifest file, this parameter is required."))
             .arg(Arg::new("version")
                 .long("version")
                 .help("Version of the package. It will be overridden by the module manifest files under <path> if present.\n\
-                If the <path> does not contain a module manifest file, this parameter is required.")
+            If the <path> does not contain a module manifest file, this parameter is required.")
             )
             .arg(Arg::new("version_suffix")
                 .long("version-suffix")
@@ -299,11 +300,11 @@ fn main() {
                 .short('t')
                 .value_parser(clap::builder::PossibleValuesParser::new(["plugin", "subsystem", "nodos", "engine", "generic"]))
                 .help("Type of the package. It will be overridden by the module manifest files under <path> if present.\n\
-                If the <path> does not contain a module manifest file, this parameter is required.")
+            If the <path> does not contain a module manifest file, this parameter is required.")
             )
             .arg(Arg::new("vendor")
                 .help("Who is publishing the package?\n\
-                Required if the module to be published was not added to the index before.")
+            Required if the module to be published was not added to the index before.")
                 .long("vendor")
             )
             .arg(Arg::new("publisher_name")
@@ -346,8 +347,8 @@ fn main() {
         .subcommand(Command::new("publish-batch")
             .about("Publish all/changed modules under the git repository.")
             .after_help(format!("This command will publish all/changed modules under the git repository to the specified remote.\n\
-            It will use the {} files to compare file changes & adding files to the release. In the {} file, 'trigger_publish_globs' field will be used check file changes. \
-            The 'release_globs' field however, will both be used for including files to the release as well as checking file changes.", constants::PUBLISH_OPTIONS_FILE_NAME, constants::PUBLISH_OPTIONS_FILE_NAME))
+        It will use the {} files to compare file changes & adding files to the release. In the {} file, 'trigger_publish_globs' field will be used check file changes. \
+        The 'release_globs' field however, will both be used for including files to the release as well as checking file changes.", constants::PUBLISH_OPTIONS_FILE_NAME, constants::PUBLISH_OPTIONS_FILE_NAME))
             .arg(Arg::new("remote")
                 .help("Name of the remote to publish to.")
                 .default_value("default")
@@ -362,7 +363,7 @@ fn main() {
                 .long("compare-with")
                 .short('c')
                 .help("Compare current with the given branch, tag or ref.\n\
-                If not provided or empty, it will publish all modules found under the provided repo.")
+            If not provided or empty, it will publish all modules found under the provided repo.")
             )
             .arg(Arg::new("version_suffix")
                 .long("version-suffix")
@@ -371,7 +372,7 @@ fn main() {
             )
             .arg(Arg::new("vendor")
                 .help("Who is publishing the package?\n\
-                Required if the module to be published was not added to the index before.")
+            Required if the module to be published was not added to the index before.")
                 .long("vendor")
             )
             .arg(Arg::new("publisher_name")
@@ -537,7 +538,8 @@ fn main() {
             )
         );
 
-    let help_str = cmd.render_help();
+    read_workspace_dir(&cmd);
+
     let mut subcommand_helps: HashMap<String, StyledStr> = HashMap::new();
     for subcommand in cmd.get_subcommands_mut() {
         let moved = mem::take(subcommand);
@@ -546,14 +548,18 @@ fn main() {
         subcommand_helps.insert(subcommand.get_name().to_string(), subcommand.render_help());
     }
 
-    let matches = cmd.get_matches();
+    // Add commands from extensions
+    if workspace::exists() {
+        cmd = nosman::extensions::add_extensions(cmd);
+    }
 
-    let workspace_dir = std::path::PathBuf::from(matches.get_one::<String>("workspace").unwrap());
+    let help_str = cmd.render_help();
+    let matches = cmd.get_matches();
 
     // If contains --silently-agree-eula, agree to EULAs
     if let Some(agree_eula) = matches.get_one::<bool>("silently_agree_eula") {
         if *agree_eula {
-            workspace::set_workspace_root(workspace_dir, true);
+            check_workspace(true);
             nosman::eula::silently_agree_eulas();
             return;
         }
@@ -579,7 +585,7 @@ fn main() {
     for command in nosman::command::commands().iter() {
         match command.matched_args(&matches) {
             Some(command_args) => {
-                workspace::set_workspace_root(workspace_dir, (*command).needs_workspace());
+                check_workspace((*command).needs_workspace());
                 match (*command).run(command_args) {
                     Ok(_) => {
                         // nothing
@@ -597,9 +603,18 @@ fn main() {
     }
 
     if !matched {
-
         println!("{}", help_str.ansi());
         std::process::exit(1);
     }
+}
+
+fn read_workspace_dir(cmd: &Command) {
+    let mut wcmd = cmd.clone();
+    wcmd = wcmd.subcommand(Command::new("help")) // trick because we can't get workspace dir without parsing everything.
+        .disable_help_subcommand(true)
+        .ignore_errors(true);
+    let matches = wcmd.get_matches();
+    let workspace_dir = std::path::PathBuf::from(matches.get_one::<String>("workspace").expect("Workspace was not specified"));
+    setup_workspace(workspace_dir);
 }
 

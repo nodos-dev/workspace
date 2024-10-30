@@ -2,8 +2,10 @@ use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use serde::{Deserialize, Serialize};
 use std::ptr;
+use clap::Command;
+use colored::Colorize;
 use libloading::Library;
-use crate::nosman::module::InstalledModule;
+use crate::nosman::workspace::Workspace;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -174,13 +176,13 @@ impl From<&CNosCommand> for NosCommand {
 
 pub fn get_commands(lib: Library) -> Option<Vec<NosCommandDesc>> {
     let fn_name = b"nosGetCommands\0";
-    let fn_ptr = unsafe { lib.get::<unsafe extern "C" fn(*mut usize, *mut *mut CNosCommandDesc)>(fn_name) };
-    match fn_ptr {
-        Ok(fn_ptr) => {
+    let res = unsafe { lib.get::<unsafe extern "C" fn(*mut usize, *mut *mut CNosCommandDesc)>(fn_name) };
+    match res {
+        Ok(fn_get_commands) => {
             let mut count: usize = 0;
             let mut commands: *mut CNosCommandDesc = ptr::null_mut();
             unsafe {
-                fn_ptr(&mut count, &mut commands);
+                fn_get_commands(&mut count, &mut commands);
             }
 
             if count > 0 {
@@ -194,9 +196,34 @@ pub fn get_commands(lib: Library) -> Option<Vec<NosCommandDesc>> {
             } else {
                 None
             }
-        },
+        }
         Err(_) => None,
     }
+}
+
+pub fn add_extensions(mut cmd: Command) -> Command {
+    let ws_res = Workspace::get();
+    if let Err(err) = ws_res {
+        eprintln!("{}", format!("{}", err).red());
+        std::process::exit(1);
+    }
+    let workspace = ws_res.unwrap();
+    let modules = workspace.get_latest_installed_modules();
+    for module in modules {
+        for command in &module.commands {
+            let mut new_cmd = Command::new(command.name.as_str()).about(command.description.as_str());
+            for arg in &command.args {
+                let new_arg = clap::Arg::new(arg.name.as_str()).help(arg.description.as_str());
+                if arg.required {
+                    new_cmd = new_cmd.arg(new_arg.required(true));
+                } else {
+                    new_cmd = new_cmd.arg(new_arg);
+                }
+            }
+            cmd = cmd.subcommand(new_cmd);
+        }
+    }
+    cmd
 }
 
 #[cfg(test)]

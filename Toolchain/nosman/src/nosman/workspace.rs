@@ -68,8 +68,15 @@ impl Workspace {
     pub fn get_remote_repo_dir(&self, remote: &Remote) -> PathBuf {
         get_nosman_dir_for(&self.root).join("remote").join(remote.name.clone())
     }
-    pub fn get() -> Result<Workspace, io::Error> {
-        Workspace::from_root(current_root().unwrap())
+    pub fn get<'a>() -> Result<&'a mut Workspace, io::Error> {
+        unsafe {
+            match WORKSPACE.get_mut() {
+                Some(workspace) => Ok(workspace),
+                None => {
+                    Err(io::Error::new(io::ErrorKind::NotFound, "No workspace found"))
+                }
+            }
+        }
     }
     pub fn add_remote(&mut self, remote: Remote) {
         self.remotes.push(remote);
@@ -314,6 +321,33 @@ impl Workspace {
         }
         res
     }
+    pub fn get_latest_installed_modules(&self) -> Vec<&InstalledModule> {
+        let mut versions_map = HashMap::new();
+        for (module_name, versions) in &self.installed_modules {
+            for (version, module) in versions {
+                if !versions_map.contains_key(module_name) {
+                    versions_map.insert(module_name.clone(), module);
+                } else {
+                    let existing = versions_map.get(module_name).unwrap();
+                    let existing_semver = SemVer::parse_from_string(existing.info.id.version.as_str());
+                    let new_semver = SemVer::parse_from_string(version.as_str());
+                    if existing_semver.is_none() || new_semver.is_none() {
+                        continue;
+                    }
+                    let existing_semver = existing_semver.unwrap();
+                    let new_semver = new_semver.unwrap();
+                    if new_semver > existing_semver {
+                        versions_map.insert(module_name.clone(), module);
+                    }
+                }
+            }
+        }
+        let mut ret = vec![];
+        for (_name, module) in versions_map {
+            ret.push(module);
+        }
+        ret
+    }
 }
 
 pub fn find_root_from(path: &PathBuf) -> Option<PathBuf> {
@@ -330,13 +364,26 @@ pub fn find_root_from(path: &PathBuf) -> Option<PathBuf> {
 }
 
 static WORKSPACE_ROOT: OnceLock<PathBuf> = OnceLock::new();
+static mut WORKSPACE: OnceLock<Workspace> = OnceLock::new();
 
-pub fn set_workspace_root(workspace_dir: PathBuf, required: bool) {
-    WORKSPACE_ROOT.set(workspace_dir.clone()).unwrap();
+pub fn check_workspace(required: bool) {
     if required && !exists() {
-        eprintln!("No workspace found in {}", workspace_dir.display());
+        eprintln!("No workspace found in {}", WORKSPACE_ROOT.get().unwrap().display());
         std::process::exit(1);
     }
+}
+
+pub fn setup_workspace(workspace_dir: PathBuf) {
+    set_workspace_root(workspace_dir);
+    if exists() {
+        unsafe {
+            WORKSPACE.set(Workspace::from_root(current_root().unwrap()).unwrap()).unwrap();
+        }
+    }
+}
+
+pub fn set_workspace_root(workspace_dir: PathBuf) {
+    WORKSPACE_ROOT.set(workspace_dir.clone()).unwrap();
 }
 
 pub fn current_root<'a>() -> Option<&'a PathBuf> {

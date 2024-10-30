@@ -11,7 +11,7 @@ use inquire::Text;
 use libloading::Library;
 use crate::nosman::command::CommandError;
 use crate::nosman::command::CommandError::{InvalidArgumentError, RuntimeError};
-use crate::nosman::constants;
+use crate::nosman::{constants, extensions};
 use crate::nosman::extensions::NosCommandDesc;
 use crate::nosman::index::{ModuleType};
 use crate::nosman::path::{get_plugin_manifest_file, get_subsystem_manifest_file};
@@ -227,16 +227,18 @@ impl InstalledModule {
         let res = load_installed_module(&self, workspace);
         let lib = match res {
             Ok(lib) => lib,
-            Err(e) => {
-                eprintln!("{}", format!("{}", e).red());
+            Err(_) => {
                 return;
             }
         };
-        if let Some(commands) = self.get_commands(&lib) {
+        if let Some(commands) = extensions::get_commands(lib) {
             for command in commands {
                 self.commands.push(command);
             }
         }
+    }
+    pub fn get_abs_manifest_path(&self, workspace: &Workspace) -> PathBuf {
+        workspace.root.join(&self.manifest_path)
     }
 }
 
@@ -418,9 +420,9 @@ pub fn load_module_with_search_paths(verbose: bool, binary_path: &OsString, addi
 }
 
 pub fn load_installed_module(module: &InstalledModule, workspace: &Workspace) -> Result<Library, CommandError> {
-    let manifest_file_contents = std::fs::read_to_string(&module.manifest_path).expect("Failed to read module manifest file");
+    let manifest_file_contents = fs::read_to_string(&module.get_abs_manifest_path(workspace)).expect("Failed to read module manifest file");
     let manifest: serde_json::Value = serde_json::from_str(&manifest_file_contents).expect("Failed to parse module manifest file");
-    load_module(true, manifest, module.manifest_path.parent().unwrap().to_path_buf(), workspace)
+    load_module(false, manifest, module.get_abs_manifest_path(workspace).parent().unwrap().to_path_buf(), workspace)
 }
 
 pub fn load_module(verbose: bool, manifest: serde_json::Value, manifest_file_parent: PathBuf, workspace: &Workspace) -> Result<Library, CommandError> {
