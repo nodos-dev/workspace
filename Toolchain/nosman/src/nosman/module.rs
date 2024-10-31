@@ -248,31 +248,37 @@ impl InstalledModule {
         let res = unsafe { lib.get::<unsafe extern "C" fn(*const CNosRunCommandParams) -> c_int>(fn_name) };
         match res {
             Ok(fn_run_command) => {
-                // Convert Rust strings to CString to avoid memory issues
+                // Store the CStrings to keep them alive for the lifetime of the function call
                 let command_name_cstr = CString::new(command_name).expect("CString::new failed for command_name");
-                let mut args_cstr: Vec<_> = params.args.iter()
+                let workspace_dir = Workspace::get()?.root.to_str().unwrap();
+                let workspace_dir_cstr = CString::new(workspace_dir).expect("CString::new failed for workspace_dir");
+
+                // Hold CString instances for the arguments
+                let args_cstr_vec: Vec<_> = params.args.iter()
                     .map(|arg| {
                         let name_cstr = CString::new(arg.name.as_str()).expect("CString::new failed for arg name");
                         let value_cstr = CString::new(arg.value.as_str()).expect("CString::new failed for arg value");
-                        CNosArg {
-                            name: name_cstr.as_ptr(),
-                            value: value_cstr.as_ptr(),
-                        }
+                        (name_cstr, value_cstr)
                     })
                     .collect();
 
-                // Pass C-style command structure
+                // Create CNosArg array with pointers to CString data
+                let mut args_cstr: Vec<_> = args_cstr_vec.iter()
+                    .map(|(name_cstr, value_cstr)| CNosArg {
+                        name: name_cstr.as_ptr(),
+                        value: value_cstr.as_ptr(),
+                    })
+                    .collect();
+
+                // Create the command struct
                 let mut c_command = CNosCommand {
                     name: command_name_cstr.as_ptr(),
                     args_count: args_cstr.len(),
                     args: args_cstr.as_mut_ptr(),
-                    sub_command: ptr::null_mut(),
+                    sub_command: ptr::null_mut(), // TODO: Subcommands
                 };
 
-                // Convert workspace directory to CString for C compatibility
-                let workspace_dir = Workspace::get()?.root.to_str().unwrap();
-                let workspace_dir_cstr = CString::new(workspace_dir).expect("CString::new failed for workspace_dir");
-
+                // Prepare the parameters for fn_run_command
                 let c_run_command_params = CNosRunCommandParams {
                     command: &mut c_command,
                     workspace_dir: workspace_dir_cstr.as_ptr(),
