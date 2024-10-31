@@ -43,7 +43,7 @@ pub struct InstalledModule {
     pub public_include_folder: Option<PathBuf>,
     pub type_schema_files: Vec<PathBuf>,
     pub module_type: ModuleType,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub commands: Vec<NosCommandDesc>
 }
 
