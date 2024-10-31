@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{fmt, fs, ptr};
-use std::ffi::OsString;
+use std::ffi::{CString, OsString};
 use std::fmt::Display;
 use std::os::raw::c_int;
 use std::os::windows::ffi::OsStrExt;
@@ -13,7 +13,7 @@ use libloading::Library;
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgumentError, RuntimeError};
 use crate::nosman::{constants, extensions};
-use crate::nosman::extensions::{CNosArg, CNosCommand, NosCommand, NosCommandDesc};
+use crate::nosman::extensions::{CNosArg, CNosCommand, CNosRunCommandParams, NosCommand, NosCommandDesc};
 use crate::nosman::index::{ModuleType};
 use crate::nosman::path::{get_plugin_manifest_file, get_subsystem_manifest_file};
 use crate::nosman::platform::get_host_platform;
@@ -43,6 +43,7 @@ pub struct InstalledModule {
     pub public_include_folder: Option<PathBuf>,
     pub type_schema_files: Vec<PathBuf>,
     pub module_type: ModuleType,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub commands: Vec<NosCommandDesc>
 }
 
@@ -244,26 +245,48 @@ impl InstalledModule {
     pub fn run_command(&self, command_name: &str, params: NosCommand) -> CommandResult {
         let lib = load_installed_module(&self, Workspace::get().expect("Failed to get workspace"))?;
         let fn_name = b"nosRunCommand\0";
-        let res = unsafe { lib.get::<unsafe extern "C" fn(*const CNosCommand) -> c_int>(fn_name) };
+        let res = unsafe { lib.get::<unsafe extern "C" fn(*const CNosRunCommandParams) -> c_int>(fn_name) };
         match res {
             Ok(fn_run_command) => {
-                let c_command = CNosCommand {
-                    name: std::ffi::CString::new(command_name).unwrap().into_raw(),
-                    args_count: params.args.len(),
-                    args: params.args.iter().map(|arg| CNosArg {
-                        name: std::ffi::CString::new(arg.name.clone()).unwrap().into_raw(),
-                        value: std::ffi::CString::new(arg.value.clone()).unwrap().into_raw(),
-                    }).collect::<Vec<_>>().as_mut_ptr(),
+                // Convert Rust strings to CString to avoid memory issues
+                let command_name_cstr = CString::new(command_name).expect("CString::new failed for command_name");
+                let mut args_cstr: Vec<_> = params.args.iter()
+                    .map(|arg| {
+                        let name_cstr = CString::new(arg.name.as_str()).expect("CString::new failed for arg name");
+                        let value_cstr = CString::new(arg.value.as_str()).expect("CString::new failed for arg value");
+                        CNosArg {
+                            name: name_cstr.as_ptr(),
+                            value: value_cstr.as_ptr(),
+                        }
+                    })
+                    .collect();
+
+                // Pass C-style command structure
+                let mut c_command = CNosCommand {
+                    name: command_name_cstr.as_ptr(),
+                    args_count: args_cstr.len(),
+                    args: args_cstr.as_mut_ptr(),
                     sub_command: ptr::null_mut(),
                 };
-                let res = unsafe { fn_run_command(&c_command) };
+
+                // Convert workspace directory to CString for C compatibility
+                let workspace_dir = Workspace::get()?.root.to_str().unwrap();
+                let workspace_dir_cstr = CString::new(workspace_dir).expect("CString::new failed for workspace_dir");
+
+                let c_run_command_params = CNosRunCommandParams {
+                    command: &mut c_command,
+                    workspace_dir: workspace_dir_cstr.as_ptr(),
+                };
+
+                // Call the function and handle the result
+                let res = unsafe { fn_run_command(&c_run_command_params) };
                 if res == 0 {
                     Ok(true)
                 } else {
                     Err(RuntimeError { message: format!("Command {} returned with code {}", command_name, res) })
                 }
             }
-            Err(_) => Err (RuntimeError { message: format!("Failed to get function {}", std::str::from_utf8(fn_name).unwrap()) })
+            Err(_) => Err(RuntimeError { message: format!("Failed to get function {}", std::str::from_utf8(fn_name).unwrap()) })
         }
     }
 }

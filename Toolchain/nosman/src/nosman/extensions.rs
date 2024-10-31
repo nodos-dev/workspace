@@ -51,6 +51,13 @@ pub struct CNosCommand {
     pub sub_command: *mut CNosCommand,
 }
 
+#[repr(C)]
+#[derive(Debug)]
+pub struct CNosRunCommandParams {
+    pub command: *mut CNosCommand,
+    pub workspace_dir: *const c_char
+}
+
 // Rust representation for CNosArgDesc
 #[derive(Debug, Serialize, Deserialize, Hash, Clone, Eq, PartialEq)]
 pub struct NosArgDesc {
