@@ -44,7 +44,7 @@ impl Command for UnpublishCommand {
         args.subcommand_matches("unpublish")
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let package_name = args.get_one::<String>("package_name").unwrap();
         let remote_name = args.get_one::<String>("remote").unwrap();
         let version = args.get_one::<String>("version");

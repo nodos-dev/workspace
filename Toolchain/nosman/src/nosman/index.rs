@@ -120,10 +120,7 @@ impl SemVer {
             } else {
                 s.parse::<u32>().ok()
             });
-        if opt_major.is_none() {
-            return None;
-        }
-        let major = opt_major.unwrap();
+        let major = opt_major?;
         Some(SemVer {
             major,
             minor: opt_minor,
@@ -182,7 +179,7 @@ impl SemVer {
 		if self.major != requested.major {
 			return false;
 		}
-		return self.minor >= requested.minor;
+		self.minor >= requested.minor
 	}
 }
 
@@ -584,13 +581,10 @@ impl Index {
     }
     pub fn get_package(&self, name: &str, version: &str) -> Option<(&PackageType, &PackageReleaseEntry)> {
         let res = self.packages.get(name);
-        if res.is_none() {
-            return None;
-        }
-        let (package_type, version_list) = res.unwrap();
+        let (package_type, version_list) = res?;
         let platform = get_host_platform().to_string();
         for module in version_list {
-            if module.version == version && (module.platform.is_none() || module.platform.as_ref().unwrap() == &platform) {
+            if module.version == version && (module.platform.is_none() || module.platform.as_ref()? == &platform) {
                 return Some((package_type, module));
             }
         }
@@ -598,10 +592,7 @@ impl Index {
     }
     pub fn get_latest_release(&self, name: &str) -> Option<(&PackageType, &PackageReleaseEntry)> {
         let res = self.packages.get(name);
-        if res.is_none() {
-            return None;
-        }
-        let (package_type, version_list) = res.unwrap();
+        let (package_type, version_list) = res?;
         let mut versions: Vec<&PackageReleaseEntry> = version_list.iter().collect();
         sort_version_list(&mut versions);
         versions.reverse();
@@ -610,7 +601,7 @@ impl Index {
         }
         let platform = get_host_platform().to_string();
         for module in versions {
-            if module.platform.is_none() || module.platform.as_ref().unwrap() == &platform {
+            if module.platform.is_none() || module.platform.as_ref()? == &platform {
                 return Some((package_type, &module));
             }
         }
@@ -618,10 +609,7 @@ impl Index {
     }
     pub fn get_latest_compatible_release_within_range(&self, name: &str, version_start: &SemVer, version_end: &SemVer) -> Option<(&PackageType, &PackageReleaseEntry)> {
         let res = self.packages.get(name);
-        if res.is_none() {
-            return None;
-        }
-        let (package_type, version_list) = res.unwrap();
+        let (package_type, version_list) = res?;
         let mut versions: Vec<&PackageReleaseEntry> = version_list.iter().collect();
         sort_version_list(&mut versions);
         versions.reverse();
@@ -629,10 +617,10 @@ impl Index {
         for module in versions {
             let semver = SemVer::parse_from_string(&module.version);
             if semver.is_none() {
-                return None;
+                continue;
             }
-            let semver = semver.unwrap();
-            if semver >= *version_start && semver < *version_end && (module.platform.is_none() || module.platform.as_ref().unwrap() == &platform) {
+            let semver = semver?;
+            if semver >= *version_start && semver < *version_end && (module.platform.is_none() || module.platform.as_ref()? == &platform) {
                 return Some((package_type, module));
             }
         }

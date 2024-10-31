@@ -24,7 +24,7 @@ impl From<ZipError> for CommandError {
 impl InstallCommand {
     pub(crate) fn run_install(&self, package_name: &str, version_opt: Option<&String>, exact: bool, output_dir: &PathBuf, prefix: Option<&String>) -> CommandResult {
         // Fetch remotes
-        let mut workspace = Workspace::get()?;
+        let workspace = Workspace::get()?;
         workspace.fetch_package_releases(package_name);
         let version;
         if version_opt.is_none() {
@@ -104,7 +104,7 @@ impl Command for InstallCommand {
         args.subcommand_matches("install")
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let module_name = args.get_one::<String>("module").unwrap();
         let version = args.get_one::<String>("version");
         let output_dir = args.get_one::<String>("out_dir").map(|p| PathBuf::from(p)).unwrap_or_else(|| PathBuf::from("."));

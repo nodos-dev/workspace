@@ -15,7 +15,7 @@ impl DeinitCommand {
         let nosman_fpath = workspace::get_nosman_index_filepath().unwrap();
         if nosman_fpath.exists() {
             // Ask user whether to remove the installed modules
-            let mut workspace = Workspace::get()?;
+            let workspace = Workspace::get()?;
             let erase_modules = Confirm::new("Would you like to erase all installed modules?")
                 .with_default(false)
                 .prompt();
@@ -36,7 +36,7 @@ impl Command for DeinitCommand {
         args.subcommand_matches("deinit")
     }
 
-    fn run(&self, _args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, _args: &ArgMatches) -> CommandResult {
         self.run_deinit()
     }
 

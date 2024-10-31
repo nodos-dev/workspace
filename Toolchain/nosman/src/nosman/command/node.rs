@@ -60,7 +60,7 @@ impl Command for NodeCommand {
         args.subcommand_matches("node")
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let plugin_name = args.get_one::<String>("plugin").unwrap();
         let node_class_name = args.get_one::<String>("node_class_name").unwrap();
         let remove = *args.get_one::<bool>("remove").unwrap();

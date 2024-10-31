@@ -36,7 +36,7 @@ bitflags! {
 
 impl PartialEq<u8> for RescanFlags {
     fn eq(&self, other: &u8) -> bool {
-        return self.bits() == *other;
+        self.bits() == *other
     }
 }
 
@@ -112,19 +112,16 @@ impl Workspace {
     }
     pub fn get_latest_installed_module_within_range(&self, name: &str, version_start: &SemVer, version_end: &SemVer) -> Option<&InstalledModule> {
         let version_list = self.installed_modules.get(name);
-        if version_list.is_none() {
-            return None;
-        }
-        let version_list = version_list.unwrap();
+        let version_list = version_list?;
         let mut versions: Vec<(&String, &InstalledModule)> = version_list.iter().collect();
         versions.sort_by(|a, b| a.0.cmp(b.0));
         versions.reverse();
         for (version, module) in versions {
             let semver = SemVer::parse_from_string(version);
             if semver.is_none() {
-                return None;
+                continue;
             }
-            let semver = semver.unwrap();
+            let semver = semver?;
             if semver >= *version_start && semver < *version_end {
                 return Some(module);
             }

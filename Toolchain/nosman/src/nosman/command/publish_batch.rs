@@ -105,7 +105,7 @@ impl PublishBatchCommand {
             PublishCommand {}.run_publish(dry_run, verbose, &module_root, None, None, version_suffix, None, remote_name, vendor, publisher_name, publisher_email, release_tags, target_platform)?;
         }
 
-        return Ok(true);
+        Ok(true)
     }
 }
 
@@ -114,7 +114,7 @@ impl Command for PublishBatchCommand {
         args.subcommand_matches("publish-batch")
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
         let verbose = args.get_one::<bool>("verbose").unwrap();
         let remote_name = args.get_one::<String>("remote").unwrap();

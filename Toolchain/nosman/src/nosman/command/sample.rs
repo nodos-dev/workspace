@@ -30,7 +30,7 @@ impl Command for SampleCommand {
         args.subcommand_matches("get-sample")
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let name = args.get_one::<String>("name").unwrap();
         let output_dir = args.get_one::<String>("output_dir").map(|p| PathBuf::from(p)).unwrap_or_else(|| PathBuf::from("."));
         self.run_get_sample(name, &output_dir)

@@ -27,8 +27,8 @@ pub fn get_engine_sdk_infos() -> Result<Vec<SdkInfo>, CommandError> {
 
     let mut result = Vec::new();
     // For each folder in engines_dir, check if it has SDK/version.json
-    for entry in std::fs::read_dir(engines_dir).unwrap() {
-        let entry = entry.unwrap();
+    for entry in std::fs::read_dir(engines_dir)? {
+        let entry = entry?;
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -124,7 +124,7 @@ impl Command for SdkInfoCommand {
         args.subcommand_matches("sdk-info")
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
 		let version = args.get_one::<String>("version").unwrap();
 		let sdk_type_opt = args.get_one::<String>("sdk-type").map(|s| s.as_str());
 		let sdk_type = sdk_type_opt.unwrap_or("engine");

@@ -143,7 +143,7 @@ impl Command for PinCommand {
         args.subcommand_matches("pin")
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let node_class_name = args.get_one::<String>("node_class_name").unwrap();
         let pin_name = args.get_one::<String>("pin_name").unwrap();
         let remove = args.get_one::<bool>("remove").unwrap();

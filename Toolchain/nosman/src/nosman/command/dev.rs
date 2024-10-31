@@ -104,7 +104,7 @@ impl Command for DevPullCommand {
         None
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let dirs: Vec<&String> = args.get_many::<String>("dir").unwrap_or_default().collect();
         let dirs: Vec<PathBuf> = dirs.iter().map(|s| PathBuf::from(s)).collect();
         self.run_pull(dirs)
@@ -150,7 +150,7 @@ impl Command for DevGenCommand {
         None
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let lang_tool = args.get_one::<String>("language/tool").unwrap();
         let mut extra_args = Vec::new();
         if let Some(args) = args.get_one::<String>("extra_args") {

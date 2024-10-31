@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::{fmt, fs};
+use std::{fmt, fs, ptr};
 use std::ffi::OsString;
 use std::fmt::Display;
+use std::os::raw::c_int;
 use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -9,10 +10,10 @@ use colored::Colorize;
 use indicatif::{ProgressBar};
 use inquire::Text;
 use libloading::Library;
-use crate::nosman::command::CommandError;
+use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgumentError, RuntimeError};
 use crate::nosman::{constants, extensions};
-use crate::nosman::extensions::NosCommandDesc;
+use crate::nosman::extensions::{CNosArg, CNosCommand, NosCommand, NosCommandDesc};
 use crate::nosman::index::{ModuleType};
 use crate::nosman::path::{get_plugin_manifest_file, get_subsystem_manifest_file};
 use crate::nosman::platform::get_host_platform;
@@ -110,8 +111,8 @@ impl InstalledModule {
         if node_defs_rel_paths.is_none() {
             return None;
         }
-        for node_defs_rel_path in node_defs_rel_paths.unwrap() {
-            let node_defs_path = self.get_module_dir().join(node_defs_rel_path.as_str().unwrap());
+        for node_defs_rel_path in node_defs_rel_paths? {
+            let node_defs_path = self.get_module_dir().join(node_defs_rel_path.as_str()?);
             let node_defs_file_content = fs::read_to_string(&node_defs_path);
             if let Err(e) = node_defs_file_content {
                 eprintln!("{}", format!("Failed to read node definitions file ({}): {}", node_defs_path.display(), e).red());
@@ -240,6 +241,31 @@ impl InstalledModule {
     pub fn get_abs_manifest_path(&self, workspace: &Workspace) -> PathBuf {
         workspace.root.join(&self.manifest_path)
     }
+    pub fn run_command(&self, command_name: &str, params: NosCommand) -> CommandResult {
+        let lib = load_installed_module(&self, Workspace::get().expect("Failed to get workspace"))?;
+        let fn_name = b"nosRunCommand\0";
+        let res = unsafe { lib.get::<unsafe extern "C" fn(*const CNosCommand) -> c_int>(fn_name) };
+        match res {
+            Ok(fn_run_command) => {
+                let c_command = CNosCommand {
+                    name: std::ffi::CString::new(command_name).unwrap().into_raw(),
+                    args_count: params.args.len(),
+                    args: params.args.iter().map(|arg| CNosArg {
+                        name: std::ffi::CString::new(arg.name.clone()).unwrap().into_raw(),
+                        value: std::ffi::CString::new(arg.value.clone()).unwrap().into_raw(),
+                    }).collect::<Vec<_>>().as_mut_ptr(),
+                    sub_command: ptr::null_mut(),
+                };
+                let res = unsafe { fn_run_command(&c_command) };
+                if res == 0 {
+                    Ok(true)
+                } else {
+                    Err(RuntimeError { message: format!("Command {} returned with code {}", command_name, res) })
+                }
+            }
+            Err(_) => Err (RuntimeError { message: format!("Failed to get function {}", std::str::from_utf8(fn_name).unwrap()) })
+        }
+    }
 }
 
 impl fmt::Display for PackageIdentifier {
@@ -253,12 +279,9 @@ pub fn get_module_manifest_file_in_folder(folder: &PathBuf) -> Result<Option<(Mo
     if res.is_err() {
         return Err(res.err().unwrap());
     }
-    let plugin_manifest_file = res.unwrap();
+    let plugin_manifest_file = res?;
     let res = get_subsystem_manifest_file(folder);
-    if res.is_err() {
-        return Err(res.err().unwrap());
-    }
-    let subsystem_manifest_file = res.unwrap();
+    let subsystem_manifest_file = res?;
     if plugin_manifest_file.is_some() && subsystem_manifest_file.is_some() {
         return Err(format!("Multiple module manifest files found in {}", folder.display()));
     }
@@ -460,14 +483,12 @@ pub fn load_module(verbose: bool, manifest: serde_json::Value, manifest_file_par
         }
     }
     // Load the dynamic library
-    unsafe {
-        let lib = load_module_with_search_paths(verbose, &binary_path, additional_search_paths);
-        if lib.is_err() {
-            return Err(RuntimeError {
-                message: format!("Could not load dynamic library {}: {}. \
-                                Make sure all the dependencies are present in the system and the search paths.", &binary_path.to_str().unwrap(), lib.err().unwrap())
-            });
-        }
-        lib
+    let lib = load_module_with_search_paths(verbose, &binary_path, additional_search_paths);
+    if lib.is_err() {
+        return Err(RuntimeError {
+            message: format!("Could not load dynamic library {}: {}. \
+                            Make sure all the dependencies are present in the system and the search paths.", &binary_path.to_str().unwrap(), lib.err().unwrap())
+        });
     }
+    lib
 }

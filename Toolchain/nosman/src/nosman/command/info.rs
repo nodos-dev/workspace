@@ -43,7 +43,7 @@ impl Command for InfoCommand {
         args.subcommand_matches("info")
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let module_name = args.get_one::<String>("module").unwrap();
         let version = args.get_one::<String>("version").unwrap();
         let relaxed = args.get_one::<bool>("relaxed").unwrap();

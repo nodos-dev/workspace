@@ -192,7 +192,7 @@ impl PublishCommand {
             if manifest_file.is_some() {
                 let package_type = package_type.as_ref().unwrap();
                 let manifest_file = manifest_file.as_ref().unwrap();
-                let contents = std::fs::read_to_string(manifest_file).unwrap();
+                let contents = std::fs::read_to_string(manifest_file)?;
                 let manifest: serde_json::Value = serde_json::from_str(&contents).unwrap();
                 name = Some(manifest["info"]["id"]["name"].as_str().expect(format!("Module manifest file {:?} must contain info.id.name field!", manifest_file).as_str()).to_string());
                 version = Some(manifest["info"]["id"]["version"].as_str().expect(format!("Module manifest file {:?} must contain info.id.version field!", manifest_file).as_str()).to_string());
@@ -280,7 +280,7 @@ impl PublishCommand {
         }
         let workspace = Workspace::get()?;
         let artifact_file_path;
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir()?;
 
         if abs_path.is_dir() {
             pb.println("Following files will be included in the release:".yellow().to_string().as_str());
@@ -424,7 +424,7 @@ impl Command for PublishCommand {
         args.subcommand_matches("publish")
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let path = path::PathBuf::from(args.get_one::<String>("path").unwrap());
         let opt_name = args.get_one::<String>("name");
         let opt_version = args.get_one::<String>("version");

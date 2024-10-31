@@ -17,6 +17,7 @@ mod pin;
 mod node;
 mod dev;
 pub(crate) mod launch;
+mod extension;
 
 use std::io;
 
@@ -45,7 +46,7 @@ pub(crate) type CommandResult = Result<bool, CommandError>;
 
 pub trait Command {
     fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches>;
-    fn run(&self, args: &ArgMatches) -> CommandResult;
+    fn run(&self, command_name: Option<&str>, args: &ArgMatches) -> CommandResult;
     fn needs_workspace(&self) -> bool {
         true
     }
@@ -74,5 +75,6 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(dev::DevPullCommand {}),
         Box::new(dev::DevGenCommand {}),
         Box::new(launch::LaunchCommand {}),
+        Box::new(extension::Extension {}),
     ]
 }

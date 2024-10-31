@@ -30,7 +30,7 @@ impl Command for InitCommand {
         args.subcommand_matches("init")
     }
 
-    fn run(&self, _args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, _args: &ArgMatches) -> CommandResult {
         let directory = nosman::workspace::current_root().unwrap();
         self.run_init(directory)
     }

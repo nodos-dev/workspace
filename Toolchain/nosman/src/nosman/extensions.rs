@@ -1,11 +1,19 @@
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_int};
+use std::os::raw::{c_char};
 use serde::{Deserialize, Serialize};
 use std::ptr;
-use clap::Command;
+use clap::{ArgAction, Command};
 use colored::Colorize;
 use libloading::Library;
 use crate::nosman::workspace::Workspace;
+
+#[repr(C)]
+#[derive(Debug, Serialize, Deserialize, Hash, Clone, Eq, PartialEq)]
+pub enum NosArgAction {
+    Set,
+    SetTrue,
+    SetFalse,
+}
 
 #[repr(C)]
 #[derive(Debug)]
@@ -13,6 +21,7 @@ pub struct CNosArgDesc {
     pub name: *const c_char,
     pub description: *const c_char,
     pub required: bool,
+    pub action: NosArgAction,
 }
 
 #[repr(C)]
@@ -42,21 +51,13 @@ pub struct CNosCommand {
     pub sub_command: *mut CNosCommand,
 }
 
-extern "C" {
-    /// Nodos CLI tool will call this to retrieve any CLI extension this module might have. This
-    /// function can be called without any other initialization call. Nodos engine can also call this to send available commands to editors.
-    pub fn nosGetCommands(out_count: *mut usize, out_commands: *mut *mut CNosCommandDesc);
-
-    /// Nodos CLI tool will call this run the commands provided in nosGetCommands. Nodos engine can also call this.
-    pub fn nosRunCommand(command: *const CNosCommand) -> c_int;
-}
-
 // Rust representation for CNosArgDesc
 #[derive(Debug, Serialize, Deserialize, Hash, Clone, Eq, PartialEq)]
 pub struct NosArgDesc {
     pub name: String,
     pub description: String,
     pub required: bool,
+    pub action: NosArgAction,
 }
 
 // Rust representation for CNosCommandDesc
@@ -98,7 +99,7 @@ impl From<&CNosArgDesc> for NosArgDesc {
     fn from(c_arg_desc: &CNosArgDesc) -> Self {
         let name = c_str_to_string(c_arg_desc.name);
         let description = c_str_to_string(c_arg_desc.description);
-        NosArgDesc { name, description, required: c_arg_desc.required }
+        NosArgDesc { name, description, required: c_arg_desc.required, action: c_arg_desc.action.clone() }
     }
 }
 
@@ -213,12 +214,18 @@ pub fn add_extensions(mut cmd: Command) -> Command {
         for command in &module.commands {
             let mut new_cmd = Command::new(command.name.as_str()).about(command.description.as_str());
             for arg in &command.args {
-                let new_arg = clap::Arg::new(arg.name.as_str()).help(arg.description.as_str());
+                let mut new_arg = clap::Arg::new(arg.name.as_str())
+                    .long(arg.name.as_str())
+                    .action(match arg.action {
+                        NosArgAction::Set => ArgAction::Set,
+                        NosArgAction::SetTrue => ArgAction::SetTrue,
+                        NosArgAction::SetFalse => ArgAction::SetFalse,
+                    })
+                    .help(arg.description.as_str());
                 if arg.required {
-                    new_cmd = new_cmd.arg(new_arg.required(true));
-                } else {
-                    new_cmd = new_cmd.arg(new_arg);
+                    new_arg = new_arg.required(true);
                 }
+                new_cmd = new_cmd.arg(new_arg);
             }
             cmd = cmd.subcommand(new_cmd);
         }
@@ -243,6 +250,7 @@ mod tests {
             name: name.as_ptr(),
             description: desc.as_ptr(),
             required: false,
+            action: NosArgAction::Set,
         };
 
         // Convert to Rust type and check fields
@@ -264,6 +272,7 @@ mod tests {
             name: ptr::null(),
             description: ptr::null(),
             required: false,
+            action: NosArgAction::Set,
         }];
 
         // Create CNosCommandDesc array for subcommands

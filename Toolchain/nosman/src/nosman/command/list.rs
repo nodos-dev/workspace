@@ -27,7 +27,7 @@ impl Command for ListCommand {
         true
     }
 
-    fn run(&self, _args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, _args: &ArgMatches) -> CommandResult {
         self.run_list()
     }
 }

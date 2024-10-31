@@ -11,10 +11,10 @@ impl Command for RescanCommand {
         args.subcommand_matches("rescan")
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let now = std::time::Instant::now();
         let fetch_index = args.get_one::<bool>("fetch_index").unwrap();
-        let mut workspace = Workspace::get()?;
+        let workspace = Workspace::get()?;
         let mut flags = RescanFlags::ScanModules;
         if *fetch_index {
             flags |= RescanFlags::FetchPackageIndex;

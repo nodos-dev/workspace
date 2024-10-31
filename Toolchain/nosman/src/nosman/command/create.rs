@@ -143,7 +143,7 @@ impl CreateCommand {
 
         let ws_res = Workspace::get();
         if ws_res.is_ok() {
-            let mut ws = ws_res.unwrap();
+            let ws = ws_res?;
             ws.scan_modules_in_folder(output_dir.clone(), true);
             ws.save()?;
         }
@@ -157,7 +157,7 @@ impl Command for CreateCommand {
         args.subcommand_matches("create")
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let module_type = match args.get_one::<String>("type").unwrap().as_str() {
             "plugin" => ModuleType::Plugin,
             "subsystem" => ModuleType::Subsystem,

@@ -35,25 +35,16 @@ impl GetCommand {
             }
         } else {
             let res = File::open(&src);
-            if let Err(e) = res {
-                return Err(e);
-            }
-            let mut source = res.unwrap();
+            let mut source = res?;
             let res = File::create(&dst);
-            if let Err(e) = res {
-                return Err(e);
-            }
-            let mut target = res.unwrap();
+            let mut target = res?;
             let res = std::io::copy(&mut source, &mut target);
             if let Err(e) = res {
                 return Err(e);
             }
             // Copy last access and modification times
             let metadata = fs::metadata(src);
-            if let Err(e) = metadata {
-                return Err(e);
-            }
-            let metadata = metadata.unwrap();
+            let metadata = metadata?;
             let atime = FileTime::from_last_access_time(&metadata);
             let mtime = FileTime::from_last_modification_time(&metadata);
             let res = filetime::set_file_times(dst, atime, mtime);
@@ -147,7 +138,7 @@ impl GetCommand {
         let progress_tick_duration = Duration::from_millis(100);
         pb.enable_steady_tick(progress_tick_duration);
         pb.set_message(format!("Bringing {}", nodos_name));
-        let mut workspace = Workspace::get()?;
+        let workspace = Workspace::get()?;
 
         if fetch_index {
             pb.println("Updating index");
@@ -190,8 +181,8 @@ impl GetCommand {
         pb.println(format!("Installing {}-{}", nodos_name, release.version));
 
         // Get current executable's absolute path
-        let dst_path = dunce::canonicalize(path).unwrap();
-        let current_exe = dunce::canonicalize(std::env::current_exe().unwrap()).unwrap();
+        let dst_path = dunce::canonicalize(path)?;
+        let current_exe = dunce::canonicalize(std::env::current_exe().unwrap())?;
         let removed_dir = tempfile::tempdir()?;
 
         let glob_prev = globwalk::GlobWalkerBuilder::from_patterns(&dst_path, &["**"]).min_depth(1).build().unwrap();
@@ -365,7 +356,7 @@ impl Command for GetCommand {
         args.subcommand_matches("get")
     }
 
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let nodos_name = args.get_one::<String>("name").unwrap();
         let version = args.get_one::<String>("version");
         let dont_ask = args.get_one::<bool>("yes_to_all").unwrap();

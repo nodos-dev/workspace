@@ -10,7 +10,7 @@ use colored::Colorize;
 use sysinfo::System;
 use crate::nosman::{constants, workspace};
 use crate::nosman::command::sample;
-use crate::nosman::workspace::{check_workspace, setup_workspace, Workspace};
+use crate::nosman::workspace::{check_workspace, setup_workspace};
 
 mod nosman;
 
@@ -584,9 +584,9 @@ fn main() {
     let mut matched = false;
     for command in nosman::command::commands().iter() {
         match command.matched_args(&matches) {
-            Some(command_args) => {
+            Some(matched_args) => {
                 check_workspace((*command).needs_workspace());
-                match (*command).run(command_args) {
+                match (*command).run(matches.subcommand_name(), matched_args) {
                     Ok(_) => {
                         // nothing
                     },
@@ -597,7 +597,7 @@ fn main() {
                 };
                 matched = true;
                 break;
-            },
+            }
             None => continue,
         };
     }
