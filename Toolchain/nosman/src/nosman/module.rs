@@ -394,7 +394,10 @@ pub fn get_module_manifests(folder: &PathBuf) -> Vec<(ModuleType, PathBuf)> {
         }
     }
 
-    let patterns = &[format!("*.{{{},{}}}", constants::SUBSYSTEM_MANIFEST_FILE_EXT, constants::PLUGIN_MANIFEST_FILE_EXT)];
+    let patterns = &[
+        format!("*.{{{},{}}}", constants::SUBSYSTEM_MANIFEST_FILE_EXT, constants::PLUGIN_MANIFEST_FILE_EXT),
+        "!**/.git/**".to_string()
+    ];
     let walker = globwalk::GlobWalkerBuilder::from_patterns(folder, patterns)
         .file_type(globwalk::FileType::FILE)
         .build()
