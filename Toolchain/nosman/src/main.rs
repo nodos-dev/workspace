@@ -614,7 +614,8 @@ fn read_workspace_dir(cmd: &Command) {
         .disable_help_subcommand(true)
         .ignore_errors(true);
     let matches = wcmd.get_matches();
-    let workspace_dir = std::path::PathBuf::from(matches.get_one::<String>("workspace").expect("Workspace was not specified"));
+    // TODO: Try to get --workspace option without having to clone command and parse all args.
+    let workspace_dir = std::path::PathBuf::from(matches.get_one::<String>("workspace").unwrap_or(&".".to_string()));
     setup_workspace(workspace_dir);
 }
 

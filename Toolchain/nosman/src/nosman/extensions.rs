@@ -2,7 +2,7 @@ use std::ffi::CStr;
 use std::os::raw::{c_char};
 use serde::{Deserialize, Serialize};
 use std::ptr;
-use clap::{ArgAction, Command};
+use clap::{ArgAction};
 use colored::Colorize;
 use libloading::Library;
 use crate::nosman::workspace::Workspace;
@@ -209,7 +209,7 @@ pub fn get_commands(lib: Library) -> Option<Vec<NosCommandDesc>> {
     }
 }
 
-pub fn add_extensions(mut cmd: Command) -> Command {
+pub fn add_extensions(mut cmd: clap::Command) -> clap::Command {
     let ws_res = Workspace::get();
     if let Err(err) = ws_res {
         eprintln!("{}", format!("{}", err).red());
@@ -219,7 +219,8 @@ pub fn add_extensions(mut cmd: Command) -> Command {
     let modules = workspace.get_latest_installed_modules();
     for module in modules {
         for command in &module.commands {
-            let mut new_cmd = Command::new(command.name.as_str()).about(command.description.as_str());
+            let mut new_cmd = clap::Command::new(command.name.as_str())
+                .about(format!("{} {}", format!("{}", module.info.id.name).italic().green(), command.description.as_str()));
             for arg in &command.args {
                 let mut new_arg = clap::Arg::new(arg.name.as_str())
                     .long(arg.name.as_str())
