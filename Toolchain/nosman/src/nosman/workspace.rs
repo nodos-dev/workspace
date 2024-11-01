@@ -123,6 +123,7 @@ impl Workspace {
             }
             let semver = semver?;
             if semver >= *version_start && semver < *version_end {
+                
                 return Some(module);
             }
         }
@@ -185,45 +186,14 @@ impl Workspace {
 
         pb.println(format!("Found {} modules in {}", module_manifests.len(), folder.display()).as_str().green().to_string());
 
-        for (ty, path) in module_manifests {
+        for (_ty, path) in module_manifests {
             pb.set_message(format!("Scanning module: {}", path.display()));
-            let file = match fs::File::open(&path) {
-                Ok(file) => file,
-                Err(ref e) => {
-                    pb.println(format!("Error reading file {}: {}", path.display(), e).as_str().red().to_string());
-                    continue;
-                }
-            };
-            // Parse file
-            let mut installed_module: InstalledModule = InstalledModule::new(get_rel_path_based_on(&path, &self.root));
-            let res: Result<serde_json::Value, serde_json::Error> = serde_json::from_reader(file);
-            if let Err(ref e) = res {
-                pb.println(format!("Error parsing file {}: {}", path.display(), e).as_str().red().to_string());
+            let res = InstalledModule::new(&self, get_rel_path_based_on(&path, &self.root));
+            if let Err(msg) = res {
+                pb.println(format!("Error while scanning {}: {}", path.display(), msg).red().to_string());
                 continue;
             }
-            let module = res.unwrap();
-            installed_module.info = serde_json::from_value(module["info"].clone()).expect(format!("Failed to parse module info from {}", path.display()).as_str());
-
-            // Check custom_types field
-            if let Some(custom_types) = module["custom_types"].as_array() {
-                for custom_type_file in custom_types {
-                    let type_file = path.parent().unwrap().join(custom_type_file.as_str().unwrap());
-                    if !type_file.exists() {
-                        pb.println(format!("Module {} ({}) references a non-existent data schema file: {}", installed_module.info.id.name, path.display(), type_file.display()).as_str().red().to_string());
-                        continue;
-                    }
-                    installed_module.type_schema_files.push(get_rel_path_based_on(&type_file.canonicalize().unwrap(), &self.root));
-                }
-            }
-
-            // Check include folder
-            if path.parent().unwrap().join("Include").exists() {
-                installed_module.public_include_folder = Some(get_rel_path_based_on(&path.parent().unwrap().join("Include").canonicalize().unwrap(), &self.root));
-            }
-
-            pb.set_message(format!("Scanning modules: {}", installed_module.info.id));
-            installed_module.module_type = ty;
-
+            let installed_module = res.unwrap();
             let opt_found = self.get_installed_module(&installed_module.info.id.name, &installed_module.info.id.version);
             if opt_found.is_some() {
                 let found = opt_found.unwrap();
@@ -234,7 +204,6 @@ impl Workspace {
                     continue;
                 }
             }
-            installed_module.register_commands(&self);
             self.add(installed_module);
         }
     }

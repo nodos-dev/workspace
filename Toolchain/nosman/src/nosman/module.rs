@@ -18,7 +18,7 @@ use crate::nosman::command::CommandError::{InvalidArgumentError, RuntimeError};
 use crate::nosman::{constants, extensions};
 use crate::nosman::extensions::{CNosArg, CNosCommand, CNosRunCommandParams, NosCommand, NosCommandDesc};
 use crate::nosman::index::{ModuleType};
-use crate::nosman::path::{get_plugin_manifest_file, get_subsystem_manifest_file};
+use crate::nosman::path::{get_plugin_manifest_file, get_rel_path_based_on, get_subsystem_manifest_file};
 use crate::nosman::platform::get_host_platform;
 use crate::nosman::workspace::Workspace;
 
@@ -72,8 +72,8 @@ impl Display for NodeDefinition {
 }
 
 impl InstalledModule {
-    pub fn new(path: PathBuf) -> InstalledModule {
-        InstalledModule {
+    pub fn new(workspace: &Workspace, path: PathBuf) -> Result<InstalledModule, String> {
+        let mut installed_module = InstalledModule {
             info: ModuleInfo {
                 id: PackageIdentifier {
                     name: String::new(),
@@ -85,12 +85,45 @@ impl InstalledModule {
                 category: None,
                 tags: None,
             },
-            manifest_path: path,
+            manifest_path: path.clone(),
             public_include_folder: None,
             type_schema_files: Vec::new(),
             module_type: ModuleType::Plugin,
             commands: Vec::new(),
+        };
+
+        let file = match fs::File::open(&path) {
+            Ok(file) => file,
+            Err(ref e) => {
+                return Err(format!("Error reading file {}: {}", path.display(), e).as_str().red().to_string());
+            }
+        };
+        
+        let res: Result<serde_json::Value, serde_json::Error> = serde_json::from_reader(file);
+        if let Err(ref e) = res {
+            return Err(format!("Error parsing file {}: {}", path.display(), e).as_str().red().to_string());
         }
+        let module = res.unwrap();
+        installed_module.info = serde_json::from_value(module["info"].clone()).expect(format!("Failed to parse module info from {}", path.display()).as_str());
+
+        // Check custom_types field
+        if let Some(custom_types) = module["custom_types"].as_array() {
+            for custom_type_file in custom_types {
+                let type_file = path.parent().unwrap().join(custom_type_file.as_str().unwrap());
+                if !type_file.exists() {
+                    return Err(format!("Module {} ({}) references a non-existent data schema file: {}", installed_module.info.id.name, path.display(), type_file.display()).as_str().red().to_string());
+                }
+                installed_module.type_schema_files.push(get_rel_path_based_on(&type_file.canonicalize().unwrap(), &workspace.root));
+            }
+        }
+
+        // Check include folder
+        if path.parent().unwrap().join("Include").exists() {
+            installed_module.public_include_folder = Some(get_rel_path_based_on(&path.parent().unwrap().join("Include").canonicalize().unwrap(), &workspace.root));
+        }
+        installed_module.module_type = get_module_type_from_manifest_file_path(&path).unwrap();
+        installed_module.register_commands(&workspace);
+        Ok(installed_module)
     }
     pub fn get_module_dir(&self) -> PathBuf {
         self.manifest_path.parent().unwrap().to_path_buf()
@@ -298,6 +331,18 @@ impl InstalledModule {
             Err(_) => Err(RuntimeError { message: format!("Failed to get function {}", std::str::from_utf8(fn_name).unwrap()) })
         }
     }
+    pub fn needs_rescan(&self, workspace: &Workspace) -> bool {
+        if !self.manifest_path.exists() {
+            return false;
+        }
+        let res = InstalledModule::new(workspace, self.manifest_path.clone());
+        if let Err(msg) = res {
+            eprintln!("{}", msg);
+            return false;
+        }
+        let installed_module = res.unwrap();
+        &installed_module == self
+    }
 }
 
 impl fmt::Display for PackageIdentifier {
@@ -324,6 +369,17 @@ pub fn get_module_manifest_file_in_folder(folder: &PathBuf) -> Result<Option<(Mo
         return Ok(Some((ModuleType::Plugin, plugin_manifest_file.unwrap())));
     }
     Ok(Some((ModuleType::Subsystem, subsystem_manifest_file.unwrap())))
+}
+
+pub fn get_module_type_from_manifest_file_path(file_path: &PathBuf) -> Option<ModuleType> {
+    if file_path.extension()?.to_str()? == constants::SUBSYSTEM_MANIFEST_FILE_EXT {
+        Some(ModuleType::Subsystem)
+    }
+    else if file_path.extension()?.to_str()? == constants::PLUGIN_MANIFEST_FILE_EXT {
+        Some(ModuleType::Plugin)
+    } else {
+        None
+    }
 }
 
 pub fn get_module_manifests(folder: &PathBuf) -> Vec<(ModuleType, PathBuf)> {
