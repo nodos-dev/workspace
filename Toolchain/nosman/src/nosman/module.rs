@@ -3,7 +3,10 @@ use std::{fmt, fs, ptr};
 use std::ffi::{CString, OsString};
 use std::fmt::Display;
 use std::os::raw::c_int;
+#[cfg(target_os = "windows")]
 use std::os::windows::ffi::OsStrExt;
+#[cfg(unix)]
+use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
 use colored::Colorize;

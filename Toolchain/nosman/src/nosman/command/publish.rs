@@ -2,8 +2,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read};
 #[cfg(unix)]
-use std::env;
-#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 #[cfg(target_os = "windows")]
 use std::io::{Write};
