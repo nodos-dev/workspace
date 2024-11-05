@@ -69,7 +69,7 @@ impl Workspace {
         get_nosman_dir_for(&self.root).join("remote").join(remote.name.clone())
     }
     pub fn get<'a>() -> Result<&'a mut Workspace, io::Error> {
-        unsafe {
+        unsafe { // TODO: This causes borrow checker to not see some memory corruption cases for workspace object. Remove static global WORKSPACE and pass it as parameter to commands.
             match WORKSPACE.get_mut() {
                 Some(workspace) => Ok(workspace),
                 None => {

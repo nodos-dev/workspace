@@ -22,10 +22,13 @@ impl From<ZipError> for CommandError {
 }
 
 impl InstallCommand {
-    pub(crate) fn run_install(&self, package_name: &str, version_opt: Option<&String>, exact: bool, output_dir: &PathBuf, prefix: Option<&String>) -> CommandResult {
+    pub(crate) fn run_install(&self, package_name: &str, version_opt: Option<&String>, exact: bool, output_dir: &PathBuf, prefix: Option<&String>, fetch_index: bool) -> CommandResult {
         // Fetch remotes
         let workspace = Workspace::get()?;
-        workspace.fetch_package_releases(package_name);
+        if fetch_index {
+            println!("Fetching index...");
+            workspace.fetch_package_releases(package_name);    
+        }
         let version;
         if version_opt.is_none() {
             let latest = workspace.index_cache.get_latest_release(package_name);
@@ -33,6 +36,8 @@ impl InstallCommand {
                 return Err(InvalidArgumentError { message: format!("No versions found for package {}", package_name) });
             }
             version = latest.unwrap().1.version.clone();
+            println!("Installing latest version {} of {}", version, package_name);
+            return self.run_install(package_name, Some(&version), true, output_dir, prefix, false);
         } else {
             version = version_opt.unwrap().to_string();
         }
@@ -43,6 +48,7 @@ impl InstallCommand {
                 return Err(InvalidArgumentError { message: "Please provide a minor version too!".to_string() });
             }
             let version_end = version_start.get_one_up();
+            println!("Installing {} with a version in range [{}, {})", package_name, version_start.to_string(), version_end.to_string());
             return if let Some(installed_module) = workspace.get_latest_installed_module_within_range(package_name, &version_start, &version_end) {
                 println!("{}", format!("Found an already installed compatible version for {} version {}: {}", package_name, version, installed_module.info.id.version).as_str().yellow());
                 Ok(true)
@@ -51,7 +57,7 @@ impl InstallCommand {
                     if *package_type == PackageType::Nodos || *package_type == PackageType::Engine {
                         return Err(InvalidArgumentError { message: format!("Package {} requires special treatment", package_name) });
                     }
-                    self.run_install(package_name, Some(&release.version), true, output_dir, prefix)
+                    self.run_install(package_name, Some(&release.version), true, output_dir, prefix, false)
                 } else {
                     Err(InvalidArgumentError { message: format!("No remote contained a version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), package_name) })
                 }
@@ -110,6 +116,6 @@ impl Command for InstallCommand {
         let output_dir = args.get_one::<String>("out_dir").map(|p| PathBuf::from(p)).unwrap_or_else(|| PathBuf::from("."));
         let prefix = args.get_one::<String>("prefix");
         let exact = args.get_one::<bool>("exact").unwrap().clone();
-        self.run_install(module_name, version, exact, &output_dir, prefix)
+        self.run_install(module_name, version, exact, &output_dir, prefix, true)
     }
 }
