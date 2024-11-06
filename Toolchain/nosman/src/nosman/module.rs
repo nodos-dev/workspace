@@ -279,15 +279,15 @@ impl InstalledModule {
     pub fn get_abs_manifest_path(&self, workspace: &Workspace) -> PathBuf {
         workspace.root.join(&self.manifest_path)
     }
-    pub fn run_command(&self, command_name: &str, params: NosCommand) -> CommandResult {
-        let lib = load_installed_module(&self, Workspace::get().expect("Failed to get workspace"))?;
+    pub fn run_command(&self, workspace: &Workspace, command_name: &str, params: NosCommand) -> CommandResult {
+        let lib = load_installed_module(&self, workspace)?;
         let fn_name = b"nosRunCommand\0";
         let res = unsafe { lib.get::<unsafe extern "C" fn(*const CNosRunCommandParams) -> c_int>(fn_name) };
         match res {
             Ok(fn_run_command) => {
                 // Store the CStrings to keep them alive for the lifetime of the function call
                 let command_name_cstr = CString::new(command_name).expect("CString::new failed for command_name");
-                let workspace_dir = Workspace::get()?.root.to_str().unwrap();
+                let workspace_dir = workspace.root.to_str().unwrap();
                 let workspace_dir_cstr = CString::new(workspace_dir).expect("CString::new failed for workspace_dir");
 
                 // Hold CString instances for the arguments

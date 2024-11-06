@@ -9,8 +9,7 @@ pub struct RemoteAddCommand {
 }
 
 impl RemoteAddCommand {
-    fn run_add_remote(&self, url: &str) -> Result<bool, CommandError> {
-        let workspace = Workspace::get()?;
+    fn run_add_remote(&self, workspace: &mut Workspace, url: &str) -> Result<bool, CommandError> {
         if workspace.remotes.iter().any(|r| r.url == url) {
             return Err(CommandError::InvalidArgumentError { message: format!("Remote {} already exists", url) });
         }
@@ -27,19 +26,19 @@ impl RemoteAddCommand {
 }
 
 impl Command for RemoteAddCommand {
-    fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         if let Some(subcommand) = args.subcommand_matches("remote") {
             return subcommand.subcommand_matches("add");
         }
         None
     }
 
-    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let url = args.get_one::<String>("url").unwrap();
         if url.is_empty() {
             return Err(CommandError::InvalidArgumentError { message: "url is required".to_string() });
         }
-        self.run_add_remote(url)
+        self.run_add_remote(workspace, url)
     }
 }
 
@@ -47,32 +46,29 @@ pub struct RemoteListCommand {
 }
 
 impl RemoteListCommand {
-    fn run_list_remotes(&self) -> Result<bool, CommandError> {
-        let workspace = Workspace::get()?;
+    fn run_list_remotes(&self, workspace: &Workspace) -> Result<bool, CommandError> {
         if workspace.remotes.is_empty() {
             println!("No remotes found");
             return Ok(true);
         }
-
         println!("{}", "Remotes".green());
         for remote in &workspace.remotes {
             println!("  {} - {}", remote.name, remote.url);
         }
-
         Ok(true)
     }
 }
 
 impl Command for RemoteListCommand {
-    fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         if let Some(subcommand) = args.subcommand_matches("remote") {
             return subcommand.subcommand_matches("list");
         }
         None
     }
 
-    fn run(&self, _command_name: Option<&str>, _args: &ArgMatches) -> CommandResult {
-        self.run_list_remotes()
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, _args: &ArgMatches) -> CommandResult {
+        self.run_list_remotes(workspace)
     }
 }
 

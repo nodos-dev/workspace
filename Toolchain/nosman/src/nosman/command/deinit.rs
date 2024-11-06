@@ -11,11 +11,10 @@ pub struct DeinitCommand {
 }
 
 impl DeinitCommand {
-    fn run_deinit(&self) -> CommandResult {
-        let nosman_fpath = workspace::get_nosman_index_filepath().unwrap();
+    fn run_deinit(&self, workspace: &mut Workspace) -> CommandResult {
+        let nosman_fpath = workspace.get_nosman_index_filepath();
         if nosman_fpath.exists() {
             // Ask user whether to remove the installed modules
-            let workspace = Workspace::get()?;
             let erase_modules = Confirm::new("Would you like to erase all installed modules?")
                 .with_default(false)
                 .prompt();
@@ -32,12 +31,12 @@ impl DeinitCommand {
 }
 
 impl Command for DeinitCommand {
-    fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("deinit")
     }
 
-    fn run(&self, _command_name: Option<&str>, _args: &ArgMatches) -> CommandResult {
-        self.run_deinit()
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, _args: &ArgMatches) -> CommandResult {
+        self.run_deinit(workspace)
     }
 
     fn needs_workspace(&self) -> bool {

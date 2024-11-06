@@ -2,8 +2,8 @@ use colored::Colorize;
 use crate::nosman;
 use crate::nosman::common::get_hostname;
 
-pub fn silently_agree_eulas() {
-    let engines_dir = nosman::path::get_default_engines_dir(&nosman::workspace::current_root().unwrap());
+pub fn silently_agree_eulas(workspace_dir: &std::path::PathBuf) {
+    let engines_dir = nosman::path::get_default_engines_dir(workspace_dir);
     if !engines_dir.exists() {
         println!("{}", "No installed Nodos engine found in workspace.".red());
         return;

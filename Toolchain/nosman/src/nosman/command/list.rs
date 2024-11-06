@@ -7,8 +7,7 @@ use crate::nosman::workspace::{Workspace};
 pub struct ListCommand {}
 
 impl ListCommand {
-    fn run_list(&self) -> CommandResult {
-        let workspace = Workspace::get()?;
+    fn run_list(&self, workspace: &Workspace) -> CommandResult {
         for (name, ver_map) in &workspace.installed_modules {
             for (version, module) in ver_map {
                 println!("{} ({})", format!("{}-{}", name, version).green().to_string(), module.get_module_dir().display());
@@ -19,7 +18,7 @@ impl ListCommand {
 }
 
 impl Command for ListCommand {
-    fn matched_args<'a>(&self, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("list")
     }
 
@@ -27,7 +26,7 @@ impl Command for ListCommand {
         true
     }
 
-    fn run(&self, _command_name: Option<&str>, _args: &ArgMatches) -> CommandResult {
-        self.run_list()
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, _args: &ArgMatches) -> CommandResult {
+        self.run_list(workspace)
     }
 }

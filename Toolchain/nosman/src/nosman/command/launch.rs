@@ -4,6 +4,7 @@ use colored::Colorize;
 use native_dialog::MessageDialog;
 use crate::nosman;
 use crate::nosman::command::{Command, CommandResult};
+use crate::nosman::workspace::Workspace;
 
 pub struct LaunchCommand {}
 
@@ -73,15 +74,14 @@ pub fn launch_nodos(workspace_dir: &PathBuf, hide_output: bool) {
 }
 
 impl LaunchCommand {
-    fn launch_nodos(&self) -> CommandResult {
-        let workspace_dir = nosman::workspace::current_root().unwrap();
+    fn launch_nodos(&self, workspace_dir: &PathBuf) -> CommandResult {
         launch_nodos(workspace_dir, true);
         Ok(true)
     }
 }
 
 impl Command for LaunchCommand {
-    fn matched_args<'a>(&self, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("launch")
     }
 
@@ -89,7 +89,7 @@ impl Command for LaunchCommand {
         true
     }
 
-    fn run(&self, _command_name: Option<&str>, _args: &ArgMatches) -> CommandResult {
-        self.launch_nodos()
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, _args: &ArgMatches) -> CommandResult {
+        self.launch_nodos(&workspace.root)
     }
 }

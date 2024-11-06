@@ -209,13 +209,7 @@ pub fn get_commands(lib: Library) -> Option<Vec<NosCommandDesc>> {
     }
 }
 
-pub fn add_extensions(mut cmd: clap::Command) -> clap::Command {
-    let ws_res = Workspace::get();
-    if let Err(err) = ws_res {
-        eprintln!("{}", format!("{}", err).red());
-        std::process::exit(1);
-    }
-    let workspace = ws_res.unwrap();
+pub fn add_extensions(workspace: &Workspace, mut cmd: clap::Command) -> clap::Command {
     let modules = workspace.get_latest_installed_modules();
     for module in modules {
         for command in &module.commands {

@@ -5,6 +5,7 @@ use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::path::get_default_engines_dir;
 use crate::nosman::workspace;
 use crate::nosman::index::SemVer;
+use crate::nosman::workspace::Workspace;
 
 pub struct SdkInfoCommand {
 }
@@ -18,9 +19,9 @@ pub struct SdkInfo {
     path: String,
 }
 
-pub fn get_engine_sdk_infos() -> Result<Vec<SdkInfo>, CommandError> {
-    let workspace_dir = workspace::current_root().unwrap();
-    let engines_dir = get_default_engines_dir(&workspace_dir);
+pub fn get_engine_sdk_infos(workspace: &Workspace) -> Result<Vec<SdkInfo>, CommandError> {
+    let workspace_dir = &workspace.root;
+    let engines_dir = get_default_engines_dir(workspace_dir);
     if !engines_dir.exists() {
         return Err(CommandError::InvalidArgumentError { message: "No Engine directory found in workspace".to_string() });
     }
@@ -74,9 +75,9 @@ struct SdkInfoOutput {
 }
 
 impl SdkInfoCommand {
-    fn run_get_sdk_info(&self,  requested_version: &str, sdk_type: &str) -> CommandResult {
+    fn run_get_sdk_info(&self, workspace: &Workspace, requested_version: &str, sdk_type: &str) -> CommandResult {
         // Search ./Engine directory under workspace dir and find the version.json with bin/ include/ folders in it
-        let engines = get_engine_sdk_infos()?;
+        let engines = get_engine_sdk_infos(workspace)?;
 
 		let mut selected_versions = engines.iter().map(|x| {
 			match sdk_type {
@@ -120,15 +121,15 @@ impl SdkInfoCommand {
 }
 
 impl Command for SdkInfoCommand {
-    fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("sdk-info")
     }
 
-    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
 		let version = args.get_one::<String>("version").unwrap();
 		let sdk_type_opt = args.get_one::<String>("sdk-type").map(|s| s.as_str());
 		let sdk_type = sdk_type_opt.unwrap_or("engine");
-        self.run_get_sdk_info(version, sdk_type)
+        self.run_get_sdk_info(workspace, version, sdk_type)
     }
 
     fn needs_workspace(&self) -> bool {

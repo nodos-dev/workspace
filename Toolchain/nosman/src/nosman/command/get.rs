@@ -124,11 +124,12 @@ impl GetCommand {
         }
         Ok(())
     }
-    fn run_get(&self, path: &PathBuf, nodos_name: &String, version: Option<&String>, fetch_index: bool, dont_ask: bool, clean_modules: bool) -> CommandResult {
+    fn run_get(&self, workspace: &mut Workspace, nodos_name: &String, version: Option<&String>, fetch_index: bool, dont_ask: bool, clean_modules: bool) -> CommandResult {
         // If not under a workspace, init
-        if !workspace::exists_in(path) {
+        let path = workspace.root.clone();
+        if !workspace.ready() {
             println!("No workspace found, initializing one under {:?}", path);
-            let res = InitCommand{}.run_init(path);
+            let res = InitCommand{}.run_init(workspace);
             if res.is_err() {
                 return res;
             }
@@ -139,14 +140,12 @@ impl GetCommand {
         pb.enable_steady_tick(progress_tick_duration);
         pb.set_message(format!("Bringing {}", nodos_name));
         
-        let mut workspace = Workspace::from_root(path)?;
-
         if fetch_index {
             pb.println("Updating index");
             pb.finish_and_clear();
             workspace.fetch_package_releases(nodos_name);
             workspace.save()?;
-            return self.run_get(path, nodos_name, version, false, dont_ask, clean_modules)
+            return self.run_get(workspace, nodos_name, version, false, dont_ask, clean_modules)
         }
 
         let res;
@@ -345,7 +344,7 @@ impl GetCommand {
         if !clean_modules {
             pb.println("Rescanning...");
             drop(pb);
-            let _ = Workspace::create_new(&dst_path)?;
+            workspace.recreate()?;
         }
 
         Ok(true)
@@ -353,16 +352,16 @@ impl GetCommand {
 }
 
 impl Command for GetCommand {
-    fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("get")
     }
 
-    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let nodos_name = args.get_one::<String>("name").unwrap();
         let version = args.get_one::<String>("version");
         let dont_ask = args.get_one::<bool>("yes_to_all").unwrap();
         let clean_modules = args.get_one::<bool>("clean_modules").unwrap();
-        self.run_get(&workspace::current_root().unwrap(), nodos_name, version, true, *dont_ask, *clean_modules)
+        self.run_get(workspace, nodos_name, version, true, *dont_ask, *clean_modules)
     }
 
     fn needs_workspace(&self) -> bool {

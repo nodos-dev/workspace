@@ -9,10 +9,9 @@ use crate::nosman::workspace::{Workspace};
 pub struct NodeCommand {}
 
 impl NodeCommand {
-    fn run_node(&self, plugin_name: &String, node_class_name: &String,
+    fn run_node(&self, workspace: &Workspace, plugin_name: &String, node_class_name: &String,
                 remove: bool, display_name: Option<String>, description: Option<String>,
                 category: Option<String>, hide_in_context_menu: bool) -> CommandResult {
-        let workspace = Workspace::get()?;
         let modules = workspace.get_installed_modules(plugin_name);
         let plugins: Vec<_> = modules.iter().filter(|m| m.module_type == ModuleType::Plugin).collect();
         if plugins.len() == 0 {
@@ -56,11 +55,11 @@ impl NodeCommand {
 }
 
 impl Command for NodeCommand {
-    fn matched_args<'a>(&self, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("node")
     }
 
-    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let plugin_name = args.get_one::<String>("plugin").unwrap();
         let node_class_name = args.get_one::<String>("node_class_name").unwrap();
         let remove = *args.get_one::<bool>("remove").unwrap();
@@ -68,7 +67,7 @@ impl Command for NodeCommand {
         let description = args.get_one::<String>("description").cloned();
         let category = args.get_one::<String>("category").cloned();
         let hide_in_context_menu = *args.get_one::<bool>("hide_in_context_menu").unwrap();
-        self.run_node(plugin_name, node_class_name, remove, display_name, description, category, hide_in_context_menu)
+        self.run_node(workspace, plugin_name, node_class_name, remove, display_name, description, category, hide_in_context_menu)
     }
 
     fn needs_workspace(&self) -> bool {

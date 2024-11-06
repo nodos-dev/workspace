@@ -75,9 +75,9 @@ impl CreateCommand {
         }
     }
 
-    fn replace_tool_placeholders(content: &mut String, module_name: &str, deps: &Vec<PackageIdentifier>, tool: &str) {
+    fn replace_tool_placeholders(workspace: &Workspace, content: &mut String, module_name: &str, deps: &Vec<PackageIdentifier>, tool: &str) {
         let mut nos_version = "1.3.0".to_string();
-        if let Ok(engines) = get_engine_sdk_infos() {
+        if let Ok(engines) = get_engine_sdk_infos(workspace) {
             if let Some(engine) = engines.first() {
                 nos_version = engine.version.to_string();
             }
@@ -92,7 +92,7 @@ impl CreateCommand {
         }
     }
 
-    fn run_create(&self, module_name: &str, module_type: ModuleType, lang_tool: LangTool,
+    fn run_create(&self, workspace: &mut Workspace, module_name: &str, module_type: ModuleType, lang_tool: LangTool,
                   output_dir: &PathBuf, deps: Vec<PackageIdentifier>, description: &str) -> CommandResult {
         println!("{}", format!("Creating a new Nodos module project of type '{:?}'", module_type).green());
 
@@ -132,7 +132,7 @@ impl CreateCommand {
 
         // Recursively copy the tool directory
         copy_dir_recursive(tool_template_dir, output_dir, &mut |content| {
-            Self::replace_tool_placeholders(content, module_name, &deps, lang_tool.tool());
+            Self::replace_tool_placeholders(workspace, content, module_name, &deps, lang_tool.tool());
         })?;
 
         copy_dir_recursive(lang_template_dir, output_dir, &mut |content| {
@@ -141,11 +141,9 @@ impl CreateCommand {
 
         println!("{:?} project created at {:?}", module_type, output_dir);
 
-        let ws_res = Workspace::get();
-        if ws_res.is_ok() {
-            let ws = ws_res?;
-            ws.scan_modules_in_folder(output_dir.clone(), true);
-            ws.save()?;
+        if workspace.ready() {
+            workspace.scan_modules_in_folder(output_dir.clone(), true);
+            workspace.save()?;
         }
 
         Ok(true)
@@ -153,11 +151,11 @@ impl CreateCommand {
 }
 
 impl Command for CreateCommand {
-    fn matched_args<'a>(&self, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("create")
     }
 
-    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let module_type = match args.get_one::<String>("type").unwrap().as_str() {
             "plugin" => ModuleType::Plugin,
             "subsystem" => ModuleType::Subsystem,
@@ -188,7 +186,7 @@ impl Command for CreateCommand {
             });
         }
         let description = args.get_one::<String>("description").unwrap();
-        self.run_create(module_name, module_type, lang_tool, &output_dir, deps, description)
+        self.run_create(workspace, module_name, module_type, lang_tool, &output_dir, deps, description)
     }
 
     fn needs_workspace(&self) -> bool {

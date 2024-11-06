@@ -10,7 +10,7 @@ use colored::Colorize;
 use sysinfo::System;
 use crate::nosman::{constants, workspace};
 use crate::nosman::command::sample;
-use crate::nosman::workspace::{check_workspace, setup_workspace};
+use crate::nosman::workspace::Workspace;
 
 mod nosman;
 
@@ -538,7 +538,7 @@ fn main() {
             )
         );
 
-    read_workspace_dir(&cmd);
+    let mut workspace = Workspace::from_root(&get_workspace_dir_from_cmd(&cmd));
 
     let mut subcommand_helps: HashMap<String, StyledStr> = HashMap::new();
     for subcommand in cmd.get_subcommands_mut() {
@@ -549,8 +549,8 @@ fn main() {
     }
 
     // Add commands from extensions
-    if workspace::exists() {
-        cmd = nosman::extensions::add_extensions(cmd);
+    if workspace.ready() {
+        cmd = nosman::extensions::add_extensions(&workspace, cmd);
     }
 
     let help_str = cmd.render_help();
@@ -559,8 +559,8 @@ fn main() {
     // If contains --silently-agree-eula, agree to EULAs
     if let Some(agree_eula) = matches.get_one::<bool>("silently_agree_eula") {
         if *agree_eula {
-            check_workspace(true);
-            nosman::eula::silently_agree_eulas();
+            workspace.exit_if_required_but_not_found(true);
+            nosman::eula::silently_agree_eulas(&workspace.root);
             return;
         }
     }
@@ -583,10 +583,10 @@ fn main() {
 
     let mut matched = false;
     for command in nosman::command::commands().iter() {
-        match command.matched_args(&matches) {
+        match command.matched_args(&mut workspace, &matches) {
             Some(matched_args) => {
-                check_workspace((*command).needs_workspace());
-                match (*command).run(matches.subcommand_name(), matched_args) {
+                workspace.exit_if_required_but_not_found((*command).needs_workspace());
+                match (*command).run(&mut workspace, matches.subcommand_name(), matched_args) {
                     Ok(_) => {
                         // nothing
                     },
@@ -608,14 +608,13 @@ fn main() {
     }
 }
 
-fn read_workspace_dir(cmd: &Command) {
+fn get_workspace_dir_from_cmd(cmd: &Command) -> std::path::PathBuf {
     let mut wcmd = cmd.clone();
     wcmd = wcmd.subcommand(Command::new("help")) // trick because we can't get workspace dir without parsing everything.
         .disable_help_subcommand(true)
         .ignore_errors(true);
     let matches = wcmd.get_matches();
     // TODO: Try to get --workspace option without having to clone command and parse all args.
-    let workspace_dir = std::path::PathBuf::from(matches.get_one::<String>("workspace").unwrap_or(&".".to_string()));
-    setup_workspace(workspace_dir);
+    std::path::PathBuf::from(matches.get_one::<String>("workspace").unwrap_or(&".".to_string()))
 }
 

@@ -23,6 +23,7 @@ use std::io;
 
 use clap::ArgMatches;
 use err_derive::Error;
+use crate::nosman::workspace::Workspace;
 
 #[derive(Debug, Error)]
 pub enum CommandError {
@@ -45,8 +46,8 @@ impl From<io::Error> for CommandError {
 pub(crate) type CommandResult = Result<bool, CommandError>;
 
 pub trait Command {
-    fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches>;
-    fn run(&self, command_name: Option<&str>, args: &ArgMatches) -> CommandResult;
+    fn matched_args<'a>(&self, workspace: &'a mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches>;
+    fn run(&self, workspace: &mut Workspace, command_name: Option<&str>, args: &ArgMatches) -> CommandResult;
     fn needs_workspace(&self) -> bool {
         true
     }

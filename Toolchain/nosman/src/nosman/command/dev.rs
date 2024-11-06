@@ -7,6 +7,7 @@ use indicatif::ProgressBar;
 use rayon::prelude::*;
 use CommandError::InvalidArgumentError;
 use crate::nosman::command::{Command, CommandError, CommandResult};
+use crate::nosman::workspace::Workspace;
 
 pub struct DevPullCommand {
 }
@@ -97,14 +98,14 @@ impl DevPullCommand {
 }
 
 impl Command for DevPullCommand {
-    fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
         if let Some(subcommand) = args.subcommand_matches("dev") {
             return subcommand.subcommand_matches("pull");
         }
         None
     }
 
-    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let dirs: Vec<&String> = args.get_many::<String>("dir").unwrap_or_default().collect();
         let dirs: Vec<PathBuf> = dirs.iter().map(|s| PathBuf::from(s)).collect();
         self.run_pull(dirs)
@@ -143,14 +144,14 @@ impl DevGenCommand {
 }
 
 impl Command for DevGenCommand {
-    fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
         if let Some(subcommand) = args.subcommand_matches("dev") {
             return subcommand.subcommand_matches("gen");
         }
         None
     }
 
-    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+    fn run(&self, _workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let lang_tool = args.get_one::<String>("language/tool").unwrap();
         let mut extra_args = Vec::new();
         if let Some(args) = args.get_one::<String>("extra_args") {

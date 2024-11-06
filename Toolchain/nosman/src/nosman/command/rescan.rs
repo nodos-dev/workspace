@@ -7,14 +7,13 @@ pub struct RescanCommand {
 }
 
 impl Command for RescanCommand {
-    fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("rescan")
     }
 
-    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let now = std::time::Instant::now();
         let fetch_index = args.get_one::<bool>("fetch_index").unwrap();
-        let workspace = Workspace::get()?;
         let mut flags = RescanFlags::ScanModules;
         if *fetch_index {
             flags |= RescanFlags::FetchPackageIndex;

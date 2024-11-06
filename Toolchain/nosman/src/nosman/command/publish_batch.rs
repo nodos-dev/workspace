@@ -10,12 +10,13 @@ use crate::nosman::constants;
 use crate::nosman::module::get_module_manifests;
 
 use path_slash::PathExt as _;
+use crate::nosman::workspace::Workspace;
 
 pub struct PublishBatchCommand {
 }
 
 impl PublishBatchCommand {
-    fn run_publish_batch(&self, dry_run: bool, verbose: bool, remote_name: &String, repo_path: &PathBuf, compare_with: Option<&String>,
+    fn run_publish_batch(&self, workspace: &Workspace, dry_run: bool, verbose: bool, remote_name: &String, repo_path: &PathBuf, compare_with: Option<&String>,
                         version_suffix: &String, vendor: Option<&String>, publisher_name: Option<&String>,
                         publisher_email: Option<&String>, release_tags: &Vec<String>, target_platform: Option<&String>) -> CommandResult {
         if !repo_path.exists() {
@@ -102,7 +103,7 @@ impl PublishBatchCommand {
             return Ok(true);
         }
         for module_root in to_be_published {
-            PublishCommand {}.run_publish(dry_run, verbose, &module_root, None, None, version_suffix, None, remote_name, vendor, publisher_name, publisher_email, release_tags, target_platform)?;
+            PublishCommand {}.run_publish(workspace, dry_run, verbose, &module_root, None, None, version_suffix, None, remote_name, vendor, publisher_name, publisher_email, release_tags, target_platform)?;
         }
 
         Ok(true)
@@ -110,11 +111,11 @@ impl PublishBatchCommand {
 }
 
 impl Command for PublishBatchCommand {
-    fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("publish-batch")
     }
 
-    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
         let verbose = args.get_one::<bool>("verbose").unwrap();
         let remote_name = args.get_one::<String>("remote").unwrap();
@@ -132,7 +133,7 @@ impl Command for PublishBatchCommand {
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
         let target_platform = args.get_one::<String>("target_platform");
-        self.run_publish_batch(*dry_run, *verbose, &remote_name, &repo_path, opt_compare_with, &version_suffix, vendor, publisher_name, publisher_email, &release_tags, target_platform)
+        self.run_publish_batch(workspace, *dry_run, *verbose, &remote_name, &repo_path, opt_compare_with, &version_suffix, vendor, publisher_name, publisher_email, &release_tags, target_platform)
     }
 
     fn needs_workspace(&self) -> bool {

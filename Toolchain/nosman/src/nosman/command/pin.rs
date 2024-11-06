@@ -11,9 +11,8 @@ pub struct PinCommand {
 
 impl PinCommand {
 
-    fn run_pin(&self, node_class_name: &String, pin_name: &String, remove: bool,
+    fn run_pin(&self, workspace: &Workspace, node_class_name: &String, pin_name: &String, remove: bool,
                show_as: Option<&String>, can_show_as: Option<&String>, type_name: Option<&String>) -> CommandResult {
-        let workspace = Workspace::get()?;
         let mut node_def;
         let node_defs = workspace.get_node_definitions(node_class_name);
         if node_defs.len() == 0 {
@@ -139,18 +138,18 @@ impl PinCommand {
 }
 
 impl Command for PinCommand {
-    fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("pin")
     }
 
-    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let node_class_name = args.get_one::<String>("node_class_name").unwrap();
         let pin_name = args.get_one::<String>("pin_name").unwrap();
         let remove = args.get_one::<bool>("remove").unwrap();
         let show_as = args.get_one::<String>("show_as");
         let can_show_as = args.get_one::<String>("can_show_as");
         let type_name = args.get_one::<String>("type_name");
-        self.run_pin(node_class_name, pin_name, *remove, show_as, can_show_as, type_name)
+        self.run_pin(workspace, node_class_name, pin_name, *remove, show_as, can_show_as, type_name)
     }
 
     fn needs_workspace(&self) -> bool {

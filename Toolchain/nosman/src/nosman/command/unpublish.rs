@@ -10,9 +10,7 @@ pub struct UnpublishCommand {
 }
 
 impl UnpublishCommand {
-    fn run_unpublish(&self, dry_run: bool, verbose: bool, remote_name: &String, package_name: &String, version: Option<&String>) -> CommandResult {
-        let workspace = Workspace::get()?;
-
+    fn run_unpublish(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, remote_name: &String, package_name: &String, version: Option<&String>) -> CommandResult {
         let remote = workspace.find_remote(remote_name);
         if remote.is_none() {
             return Err(InvalidArgumentError { message: format!("Remote {} not found", remote_name) });
@@ -40,16 +38,16 @@ impl UnpublishCommand {
 }
 
 impl Command for UnpublishCommand {
-    fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("unpublish")
     }
 
-    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let package_name = args.get_one::<String>("package_name").unwrap();
         let remote_name = args.get_one::<String>("remote").unwrap();
         let version = args.get_one::<String>("version");
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
         let verbose = args.get_one::<bool>("verbose").unwrap();
-        self.run_unpublish(*dry_run, *verbose, remote_name, package_name, version)
+        self.run_unpublish(workspace, *dry_run, *verbose, remote_name, package_name, version)
     }
 }

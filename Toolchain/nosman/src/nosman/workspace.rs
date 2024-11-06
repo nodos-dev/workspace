@@ -14,6 +14,14 @@ use crate::nosman::index::{Index, PackageIndexEntry, PackageReleases, Remote, Se
 use crate::nosman::module::{InstalledModule, get_module_manifests, NodeDefinition};
 use crate::nosman::path::get_rel_path_based_on;
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
+pub enum WorkspaceStatus {
+    DoesNotExist,
+    FailedToOpen,
+    #[default]
+    Ready
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Workspace {
     #[serde(skip_serializing, skip_deserializing)]
@@ -21,6 +29,8 @@ pub struct Workspace {
     pub remotes: Vec<Remote>,
     pub installed_modules: HashMap<String, HashMap<String, InstalledModule>>,
     pub index_cache: Index,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub status: WorkspaceStatus,
 }
 
 #[derive(Clone, Copy)]
@@ -41,42 +51,48 @@ impl PartialEq<u8> for RescanFlags {
 }
 
 impl Workspace {
-    pub fn new_empty(path: PathBuf) -> Workspace {
+    fn new_empty(path: PathBuf) -> Workspace {
         Workspace {
             root: path,
             remotes: Vec::new(),
             installed_modules: HashMap::new(),
             index_cache: Index { packages: HashMap::new() },
+            status: WorkspaceStatus::DoesNotExist,
         }
     }
-    pub fn from_root(path: &PathBuf) -> Result<Workspace, io::Error> {
+    pub fn from_root(path: &PathBuf) -> Workspace {
         let index_filepath = get_nosman_index_filepath_for(&path);
-        let file = fs::File::open(&index_filepath)?;
-        let mut workspace: Workspace = match serde_json::from_reader(file) {
-            Ok(workspace) => workspace,
-            Err(e) => {
-                println!("{}", format!("Failed to parse workspace file: {}. Rescanning...", e).red());
-                let mut workspace = Workspace::new_empty(path.clone());
-                workspace.rescan(RescanFlags::all()).expect("Failed to rescan workspace");
-                workspace.save().expect("Failed to save workspace");
-                workspace
-            }
-        };
-        workspace.root = dunce::canonicalize(path).expect(format!("Failed to canonicalize path: {}", path.display()).as_str());
-        Ok(workspace)
+        let exists = index_filepath.exists();
+        let mut workspace = Workspace::new_empty(path.clone());
+        if !exists {
+            workspace.status = WorkspaceStatus::DoesNotExist;
+            return workspace;
+        }
+        let res = fs::File::open(&index_filepath);
+        if let Ok(file) = res {
+            let mut parsed_ws = match serde_json::from_reader(file) {
+                Ok(workspace) => workspace,
+                Err(e) => {
+                    println!("{}", format!("Failed to parse workspace file: {}. Rescanning...", e).red());
+                    workspace.rescan(RescanFlags::all()).expect("Failed to rescan workspace");
+                    workspace.save().expect("Failed to save workspace");
+                    workspace
+                }
+            };
+            parsed_ws.root = dunce::canonicalize(path).expect(format!("Failed to canonicalize path: {}", path.display()).as_str());
+            parsed_ws.status = WorkspaceStatus::Ready;
+            workspace = parsed_ws;
+        } else {
+            println!("{}", format!("Failed to open workspace file: {}", index_filepath.display()).red());
+            workspace.status = WorkspaceStatus::FailedToOpen;
+        }
+        workspace
+    }
+    pub fn ready(&self) -> bool {
+        self.status == WorkspaceStatus::Ready
     }
     pub fn get_remote_repo_dir(&self, remote: &Remote) -> PathBuf {
         get_nosman_dir_for(&self.root).join("remote").join(remote.name.clone())
-    }
-    pub fn get<'a>() -> Result<&'a mut Workspace, io::Error> {
-        unsafe { // TODO: This causes borrow checker to not see some memory corruption cases for workspace object. Remove static global WORKSPACE and pass it as parameter to commands.
-            match WORKSPACE.get_mut() {
-                Some(workspace) => Ok(workspace),
-                None => {
-                    Err(io::Error::new(io::ErrorKind::NotFound, "No workspace found"))
-                }
-            }
-        }
     }
     pub fn add_remote(&mut self, remote: Remote) {
         self.remotes.push(remote);
@@ -210,11 +226,10 @@ impl Workspace {
     pub fn scan_modules(&mut self, force_replace_in_registry: bool) {
        self.scan_modules_in_folder(self.root.clone(), force_replace_in_registry);
     }
-    pub fn create_new(directory: &PathBuf) -> Result<Workspace, CommandError> {
-        let mut workspace = Workspace::new_empty(directory.clone());
-        workspace.rescan(RescanFlags::all())?;
-        workspace.save()?;
-        Ok(workspace)
+    pub fn recreate(&mut self) -> Result<(), CommandError> {
+        self.rescan(RescanFlags::all())?;
+        self.save()?;
+        Ok(())
     }
     pub fn rescan(&mut self, flags: RescanFlags) -> CommandResult {
         if flags.contains(RescanFlags::FetchPackageIndex) {
@@ -226,6 +241,7 @@ impl Workspace {
             self.scan_modules(true);
         }
         self.save()?;
+        self.status = WorkspaceStatus::Ready;
         Ok(true)
     }
     pub fn fetch_remotes(&mut self, add_default_remote: bool) -> Result<(), io::Error>{
@@ -314,6 +330,12 @@ impl Workspace {
         }
         ret
     }
+    pub fn exit_if_required_but_not_found(&self, required: bool) {
+        if required && !self.ready() {
+            eprintln!("Workspace required but not found in {}", self.root.display());
+            std::process::exit(1);
+        }
+    }
 }
 
 pub fn find_root_from(path: &PathBuf) -> Option<PathBuf> {
@@ -329,55 +351,12 @@ pub fn find_root_from(path: &PathBuf) -> Option<PathBuf> {
     None
 }
 
-// TODO: Remove these.
-static WORKSPACE_ROOT: OnceLock<PathBuf> = OnceLock::new();
-static mut WORKSPACE: OnceLock<Workspace> = OnceLock::new();
-
-pub fn check_workspace(required: bool) {
-    if required && !exists() {
-        eprintln!("No workspace found in {}", WORKSPACE_ROOT.get().unwrap().display());
-        std::process::exit(1);
-    }
-}
-
-pub fn setup_workspace(workspace_dir: PathBuf) {
-    set_workspace_root(workspace_dir);
-    if exists() {
-        unsafe {
-            WORKSPACE.set(Workspace::from_root(current_root().unwrap()).unwrap()).unwrap();
-        }
-    }
-}
-
-pub fn set_workspace_root(workspace_dir: PathBuf) {
-    WORKSPACE_ROOT.set(workspace_dir.clone()).unwrap();
-}
-
-pub fn current_root<'a>() -> Option<&'a PathBuf> {
-    WORKSPACE_ROOT.get()
-}
-
 pub fn get_nosman_dir_for(path: &PathBuf) -> PathBuf {
     path.join(".nosman")
 }
 
 pub fn get_nosman_index_filepath_for(path: &PathBuf) -> PathBuf {
     get_nosman_dir_for(path).join("index")
-}
-
-pub fn get_nosman_index_filepath<'a>() -> Option<PathBuf> {
-    match current_root() {
-        Some(root) => Some(get_nosman_index_filepath_for(root)),
-        None => None,
-    }
-}
-
-pub fn exists() -> bool {
-    let res = get_nosman_index_filepath();
-    if res.is_none() {
-        return false;
-    }
-    res.unwrap().exists()
 }
 
 pub fn exists_in(path: &PathBuf) -> bool {

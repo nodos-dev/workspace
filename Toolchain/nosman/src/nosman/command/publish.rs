@@ -111,7 +111,7 @@ impl PublishCommand {
         // Should be lowercase alphanumeric, with only . and _ symbols are permitted
         name.chars().all(|c| c == '.' || c == '_' || c.is_numeric() || c.is_ascii_lowercase())
     }
-    pub fn run_publish(&self, dry_run: bool, verbose: bool, path: &PathBuf, mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
+    pub fn run_publish(&self, workspace: &Workspace, dry_run: bool, verbose: bool, path: &PathBuf, mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
                    mut package_type: Option<PackageType>, remote_name: &String, vendor: Option<&String>,
                    publisher_name: Option<&String>, publisher_email: Option<&String>, release_tags: &Vec<String>, opt_target_platform: Option<&String>) -> CommandResult {
         // Check if git and gh is installed.
@@ -208,8 +208,7 @@ impl PublishCommand {
                 module_tags = manifest["info"]["tags"].as_array().map(|a| a.iter().map(|v| v.as_str().unwrap().to_string()).collect());
                 let binary_path = manifest["binary_path"].as_str();
                 if binary_path.is_some() {
-                    let ws = Workspace::get()?;
-                    let lib = match load_module(verbose, manifest, manifest_file.parent().unwrap().to_path_buf(), &ws) {
+                    let lib = match load_module(verbose, manifest, manifest_file.parent().unwrap().to_path_buf(), workspace) {
                         Ok(lib) => lib,
                         Err(error) => return Err(error),
                     };
@@ -276,7 +275,6 @@ impl PublishCommand {
         if None == SemVer::parse_from_string(version.as_str()) {
             return Err(InvalidArgumentError { message: format!("Version should be semantic-versioning compatible: {}", version) });
         }
-        let workspace = Workspace::get()?;
         let artifact_file_path;
         let temp_dir = tempdir()?;
 
@@ -418,11 +416,11 @@ impl PublishCommand {
 }
 
 impl Command for PublishCommand {
-    fn matched_args<'a>(&self, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("publish")
     }
 
-    fn run(&self, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let path = path::PathBuf::from(args.get_one::<String>("path").unwrap());
         let opt_name = args.get_one::<String>("name");
         let opt_version = args.get_one::<String>("version");
@@ -439,7 +437,7 @@ impl Command for PublishCommand {
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
         let target_platform: Option<&String> = args.get_one::<String>("target_platform");
-        self.run_publish(*dry_run, *verbose, &path, name, version, version_suffix, package_type, &remote_name, vendor, publisher_name, publisher_email, &release_tags, target_platform)
+        self.run_publish(workspace, *dry_run, *verbose, &path, name, version, version_suffix, package_type, &remote_name, vendor, publisher_name, publisher_email, &release_tags, target_platform)
     }
 
     fn needs_workspace(&self) -> bool {
