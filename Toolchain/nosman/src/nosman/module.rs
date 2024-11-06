@@ -92,10 +92,11 @@ impl InstalledModule {
             commands: Vec::new(),
         };
 
-        let file = match fs::File::open(&path) {
+        let abs_path = workspace.root.join(&path);
+        let file = match fs::File::open(&abs_path) {
             Ok(file) => file,
             Err(ref e) => {
-                return Err(format!("Error reading file {}: {}", path.display(), e).as_str().red().to_string());
+                return Err(format!("Error reading file {}: {}", abs_path.display(), e).as_str().red().to_string());
             }
         };
         

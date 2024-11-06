@@ -15,7 +15,7 @@ use crate::nosman::command::init::InitCommand;
 use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::common::{download_and_extract};
 use crate::nosman::{common, workspace};
-use crate::nosman::workspace::Workspace;
+use crate::nosman::workspace::{Workspace};
 
 pub struct GetCommand {
 }
@@ -138,7 +138,8 @@ impl GetCommand {
         let progress_tick_duration = Duration::from_millis(100);
         pb.enable_steady_tick(progress_tick_duration);
         pb.set_message(format!("Bringing {}", nodos_name));
-        let workspace = Workspace::get()?;
+        
+        let mut workspace = Workspace::from_root(path)?;
 
         if fetch_index {
             pb.println("Updating index");
@@ -344,7 +345,7 @@ impl GetCommand {
         if !clean_modules {
             pb.println("Rescanning...");
             drop(pb);
-            let _ = Workspace::new(&dst_path)?;
+            let _ = Workspace::create_new(&dst_path)?;
         }
 
         Ok(true)

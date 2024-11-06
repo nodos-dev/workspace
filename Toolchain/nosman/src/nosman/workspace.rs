@@ -51,7 +51,7 @@ impl Workspace {
     }
     pub fn from_root(path: &PathBuf) -> Result<Workspace, io::Error> {
         let index_filepath = get_nosman_index_filepath_for(&path);
-        let file = std::fs::File::open(&index_filepath)?;
+        let file = fs::File::open(&index_filepath)?;
         let mut workspace: Workspace = match serde_json::from_reader(file) {
             Ok(workspace) => workspace,
             Err(e) => {
@@ -210,7 +210,7 @@ impl Workspace {
     pub fn scan_modules(&mut self, force_replace_in_registry: bool) {
        self.scan_modules_in_folder(self.root.clone(), force_replace_in_registry);
     }
-    pub fn new(directory: &PathBuf) -> Result<Workspace, CommandError> {
+    pub fn create_new(directory: &PathBuf) -> Result<Workspace, CommandError> {
         let mut workspace = Workspace::new_empty(directory.clone());
         workspace.rescan(RescanFlags::all())?;
         workspace.save()?;
@@ -329,6 +329,7 @@ pub fn find_root_from(path: &PathBuf) -> Option<PathBuf> {
     None
 }
 
+// TODO: Remove these.
 static WORKSPACE_ROOT: OnceLock<PathBuf> = OnceLock::new();
 static mut WORKSPACE: OnceLock<Workspace> = OnceLock::new();
 

@@ -18,7 +18,7 @@ impl InitCommand {
         }
         println!("Creating a new workspace under {:?}", directory);
 
-        let workspace = Workspace::new(&directory)?;
+        let workspace = Workspace::create_new(&directory)?;
 
         println!("{}", format!("Workspace initialized with {} modules", workspace.installed_modules.len()).as_str().green());
         Ok(true)
