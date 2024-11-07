@@ -110,7 +110,7 @@ impl InstalledModule {
         // Check custom_types field
         if let Some(custom_types) = module["custom_types"].as_array() {
             for custom_type_file in custom_types {
-                let type_file = path.parent().unwrap().join(custom_type_file.as_str().unwrap());
+                let type_file = abs_path.parent().unwrap().join(custom_type_file.as_str().unwrap());
                 if !type_file.exists() {
                     return Err(format!("Module {} ({}) references a non-existent data schema file: {}", installed_module.info.id.name, path.display(), type_file.display()).as_str().red().to_string());
                 }
