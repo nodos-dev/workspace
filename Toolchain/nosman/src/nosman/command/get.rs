@@ -14,7 +14,7 @@ use crate::nosman::command::CommandError::{InvalidArgumentError, IOError};
 use crate::nosman::command::init::InitCommand;
 use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::common::{download_and_extract};
-use crate::nosman::{common, workspace};
+use crate::nosman::{common};
 use crate::nosman::workspace::{Workspace};
 
 pub struct GetCommand {
@@ -352,7 +352,7 @@ impl GetCommand {
 }
 
 impl Command for GetCommand {
-    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("get")
     }
 

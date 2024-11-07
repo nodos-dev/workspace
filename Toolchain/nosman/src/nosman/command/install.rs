@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::path::PathBuf;
 
 use clap::{ArgMatches};
@@ -23,22 +22,19 @@ impl From<ZipError> for CommandError {
 }
 
 impl InstallCommand {
-    pub(crate) fn run_install(&self, workspace: RefCell<Workspace>, package_name: &str, version_opt: Option<&String>, exact: bool, output_dir: &PathBuf, prefix: Option<&String>, fetch_index: bool) -> CommandResult {
+    pub(crate) fn run_install(&self, workspace: &mut Workspace, package_name: &str, version_opt: Option<&String>, exact: bool, output_dir: &PathBuf, prefix: Option<&String>, fetch_index: bool) -> CommandResult {
         // Fetch remotes
         if fetch_index {
             println!("Fetching index...");
-            workspace.borrow_mut().fetch_package_releases(package_name);    
+            workspace.fetch_package_releases(package_name);    
         }
         let version;
         if version_opt.is_none() {
-            {
-                let ws_borrow = workspace.borrow();
-                let latest = ws_borrow.index_cache.get_latest_release(package_name);
-                if latest.is_none() {
-                    return Err(InvalidArgumentError { message: format!("No versions found for package {}", package_name) });
-                }
-                version = latest.unwrap().1.version.clone();
+            let latest = workspace.index_cache.get_latest_release(package_name);
+            if latest.is_none() {
+                return Err(InvalidArgumentError { message: format!("No versions found for package {}", package_name) });
             }
+            version = latest.unwrap().1.version.clone();
             println!("Installing latest version {} of {}", version, package_name);
             return self.run_install(workspace, package_name, Some(&version), true, output_dir, prefix, false);
         } else {
@@ -52,32 +48,25 @@ impl InstallCommand {
             }
             let version_end = version_start.get_one_up();
             println!("Installing {} with a version in range [{}, {})", package_name, version_start.to_string(), version_end.to_string());
-            let installed_module_opt = {
-                let ws_borrow = workspace.borrow();
-                ws_borrow.get_latest_installed_module_within_range(package_name, &version_start, &version_end)
-            };
-            if let Some(installed_module) = installed_module_opt {
+            if let Some(installed_module) = workspace.get_latest_installed_module_within_range(package_name, &version_start, &version_end) {
                 println!("{}", format!("Found an already installed compatible version for {} version {}: {}", package_name, version, installed_module.info.id.version).as_str().yellow());
                 return Ok(true)
             }
             else {
-                let latest_compatible_opt = {
-                    let ws_borrow = workspace.borrow();
-                    ws_borrow.index_cache.get_latest_compatible_release_within_range(package_name, &version_start, &version_end)
-                };
-                if let Some((package_type, release)) = latest_compatible_opt {
+                let latest_compatible_opt = workspace.index_cache.get_latest_compatible_release_within_range(package_name, &version_start, &version_end);
+                let compatible_package = if let Some((package_type, release)) = latest_compatible_opt {
                     if *package_type == PackageType::Nodos || *package_type == PackageType::Engine {
                         return Err(InvalidArgumentError { message: format!("Package {} requires special treatment", package_name) });
                     }
-
-                    return self.run_install(workspace, package_name, Some(&release.version), true, output_dir, prefix, false)
+                    Some(release.version.clone()) // Clone version to avoid lifetime issues.
                 } else {
-                    return Err(InvalidArgumentError { message: format!("No remote contained a version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), package_name) })
-                }
+                    return Err(InvalidArgumentError { message: format!("No remote contained a version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), package_name) });
+                };
+                return self.run_install(workspace, package_name, compatible_package.as_ref(), true, output_dir, prefix, false);
             }
         }
         let mut replace_entry_in_index = false;
-        if let Some(existing) = workspace.borrow().get_installed_module(package_name, version.as_str()) {
+        if let Some(existing) = workspace.get_installed_module(package_name, version.as_str()) {
             if existing.get_module_dir().exists() {
                 println!("{}", format!("Module {} version {} is already installed", package_name, version).as_str().yellow());
                 return Ok(true);
@@ -86,7 +75,7 @@ impl InstallCommand {
                 replace_entry_in_index = true;
             }
         }
-        if let Some((package_type, package)) = workspace.borrow().index_cache.get_package(package_name, version.as_str()) {
+        if let Some((package_type, package)) = workspace.index_cache.get_package(package_name, version.as_str()) {
             let mut install_dir = output_dir.clone();
             if let Some(p) = prefix {
                 install_dir = install_dir.join(p);
@@ -96,7 +85,7 @@ impl InstallCommand {
 
             let pkg_type_str = if package_type.is_module() { "module" } else { "package" };
 
-            let final_out_dir = if install_dir.is_relative() && package_type.is_module() { workspace.borrow().root.join(install_dir) } else { install_dir };
+            let final_out_dir = if install_dir.is_relative() && package_type.is_module() { workspace.root.join(install_dir) } else { install_dir };
             let module_name_version = format!("{}-{}", package_name, version);
             println!("Downloading {} {}", pkg_type_str, module_name_version);
 
@@ -106,9 +95,9 @@ impl InstallCommand {
             }
             println!("Extracted {} {} to {}", pkg_type_str, package_name, final_out_dir.display());
             if package_type.is_module() {
-                workspace.borrow_mut().scan_modules_in_folder(final_out_dir, replace_entry_in_index);
+                workspace.scan_modules_in_folder(final_out_dir, replace_entry_in_index);
                 println!("Adding to workspace file");
-                workspace.borrow_mut().save()?;
+                workspace.save()?;
             }
             println!("{}", format!("{}-{} installed successfully", package_name, version).as_str().green());
             Ok(true)
@@ -119,7 +108,7 @@ impl InstallCommand {
 }
 
 impl Command for InstallCommand {
-    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("install")
     }
 
@@ -129,8 +118,6 @@ impl Command for InstallCommand {
         let output_dir = args.get_one::<String>("out_dir").map(|p| PathBuf::from(p)).unwrap_or_else(|| PathBuf::from("."));
         let prefix = args.get_one::<String>("prefix");
         let exact = args.get_one::<bool>("exact").unwrap().clone();
-        // Add workspace into RefCell:
-        let workspace_ref = RefCell::new(workspace);
-        self.run_install(workspace_ref, module_name, version, exact, &output_dir, prefix, true)
+        self.run_install(workspace, module_name, version, exact, &output_dir, prefix, true)
     }
 }

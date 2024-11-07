@@ -151,7 +151,7 @@ impl CreateCommand {
 }
 
 impl Command for CreateCommand {
-    fn matched_args<'a>(&self, _workspace: &mut Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("create")
     }
 

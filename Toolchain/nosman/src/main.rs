@@ -1,5 +1,6 @@
 extern crate clap;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use clap::{Arg, ArgAction, Command};
 
@@ -8,7 +9,7 @@ use std::mem;
 use clap::builder::StyledStr;
 use colored::Colorize;
 use sysinfo::System;
-use crate::nosman::{constants, workspace};
+use crate::nosman::{constants};
 use crate::nosman::command::sample;
 use crate::nosman::workspace::Workspace;
 
@@ -538,7 +539,7 @@ fn main() {
             )
         );
 
-    let mut workspace = Workspace::from_root(&get_workspace_dir_from_cmd(&cmd));
+    let workspace = Workspace::from_root(&get_workspace_dir_from_cmd(&cmd));
 
     let mut subcommand_helps: HashMap<String, StyledStr> = HashMap::new();
     for subcommand in cmd.get_subcommands_mut() {
@@ -582,11 +583,13 @@ fn main() {
     }
 
     let mut matched = false;
+    let workspace_ref = RefCell::new(workspace);
     for command in nosman::command::commands().iter() {
-        match command.matched_args(&mut workspace, &matches) {
+        let match_res = command.matched_args(&workspace_ref.borrow(), &matches);
+        match match_res {
             Some(matched_args) => {
-                workspace.exit_if_required_but_not_found((*command).needs_workspace());
-                match (*command).run(&mut workspace, matches.subcommand_name(), matched_args) {
+                workspace_ref.borrow().exit_if_required_but_not_found((*command).needs_workspace());
+                match (*command).run(&mut workspace_ref.borrow_mut(), matches.subcommand_name(), matched_args) {
                     Ok(_) => {
                         // nothing
                     },

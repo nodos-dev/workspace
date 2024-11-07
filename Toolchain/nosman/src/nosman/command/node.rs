@@ -55,7 +55,7 @@ impl NodeCommand {
 }
 
 impl Command for NodeCommand {
-    fn matched_args<'a>(&self, _workspace: &mut Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("node")
     }
 

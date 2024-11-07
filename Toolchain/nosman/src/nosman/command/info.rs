@@ -2,7 +2,7 @@ use clap::{ArgMatches};
 use colored::Colorize;
 use crate::nosman::command::{Command, CommandError, CommandResult};
 
-use crate::nosman::workspace::{RescanFlags, Workspace};
+use crate::nosman::workspace::{Workspace};
 
 pub struct InfoCommand {
 }
@@ -49,7 +49,7 @@ impl InfoCommand {
 }
 
 impl Command for InfoCommand {
-    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("info")
     }
 

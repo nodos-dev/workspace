@@ -213,17 +213,17 @@ pub fn add_extensions(workspace: &Workspace, mut cmd: clap::Command) -> clap::Co
     let modules = workspace.get_latest_installed_modules();
     for module in modules {
         for command in &module.commands {
-            let mut new_cmd = clap::Command::new(command.name.as_str())
+            let mut new_cmd = clap::Command::new(command.name.clone())
                 .about(format!("{} {}", format!("{}", module.info.id.name).italic().green(), command.description.as_str()));
             for arg in &command.args {
-                let mut new_arg = clap::Arg::new(arg.name.as_str())
-                    .long(arg.name.as_str())
+                let mut new_arg = clap::Arg::new(arg.name.clone())
+                    .long(arg.name.clone())
                     .action(match arg.action {
                         NosArgAction::Set => ArgAction::Set,
                         NosArgAction::SetTrue => ArgAction::SetTrue,
                         NosArgAction::SetFalse => ArgAction::SetFalse,
                     })
-                    .help(arg.description.as_str());
+                    .help(arg.description.clone());
                 if arg.required {
                     new_arg = new_arg.required(true);
                 }

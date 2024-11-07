@@ -98,7 +98,7 @@ impl DevPullCommand {
 }
 
 impl Command for DevPullCommand {
-    fn matched_args<'a>(&self, _workspace: &mut Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
         if let Some(subcommand) = args.subcommand_matches("dev") {
             return subcommand.subcommand_matches("pull");
         }
@@ -144,7 +144,7 @@ impl DevGenCommand {
 }
 
 impl Command for DevGenCommand {
-    fn matched_args<'a>(&self, _workspace: &mut Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
         if let Some(subcommand) = args.subcommand_matches("dev") {
             return subcommand.subcommand_matches("gen");
         }

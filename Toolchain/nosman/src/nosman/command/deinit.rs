@@ -3,7 +3,6 @@ use clap::{ArgMatches};
 use colored::Colorize;
 use inquire::Confirm;
 use crate::nosman::command::{Command, CommandError, CommandResult};
-use crate::nosman::workspace;
 
 use crate::nosman::workspace::{Workspace};
 
@@ -31,7 +30,7 @@ impl DeinitCommand {
 }
 
 impl Command for DeinitCommand {
-    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("deinit")
     }
 

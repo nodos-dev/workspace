@@ -26,7 +26,7 @@ impl RemoteAddCommand {
 }
 
 impl Command for RemoteAddCommand {
-    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         if let Some(subcommand) = args.subcommand_matches("remote") {
             return subcommand.subcommand_matches("add");
         }
@@ -60,7 +60,7 @@ impl RemoteListCommand {
 }
 
 impl Command for RemoteListCommand {
-    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         if let Some(subcommand) = args.subcommand_matches("remote") {
             return subcommand.subcommand_matches("list");
         }

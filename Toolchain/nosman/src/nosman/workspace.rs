@@ -2,7 +2,6 @@ use std::collections::{HashMap};
 use std::{fs, io};
 use std::cmp::PartialEq;
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use std::time::Duration;
 use bitflags::bitflags;
 use colored::Colorize;
@@ -357,8 +356,4 @@ pub fn get_nosman_dir_for(path: &PathBuf) -> PathBuf {
 
 pub fn get_nosman_index_filepath_for(path: &PathBuf) -> PathBuf {
     get_nosman_dir_for(path).join("index")
-}
-
-pub fn exists_in(path: &PathBuf) -> bool {
-    get_nosman_index_filepath_for(path).exists()
 }

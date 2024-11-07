@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::path::get_default_engines_dir;
-use crate::nosman::workspace;
 use crate::nosman::index::SemVer;
 use crate::nosman::workspace::Workspace;
 
@@ -121,7 +120,7 @@ impl SdkInfoCommand {
 }
 
 impl Command for SdkInfoCommand {
-    fn matched_args<'a>(&self, _workspace: &mut Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("sdk-info")
     }
 

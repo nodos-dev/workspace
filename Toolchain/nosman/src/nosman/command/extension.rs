@@ -68,7 +68,7 @@ impl Extension {
         }
         module.run_command(workspace, &command_name, outgoing)
     }
-    fn get_command<'a>(workspace: &'a Workspace, matches: &'a ArgMatches) -> Option<(&'a NosCommandDesc, &'a InstalledModule, &'a ArgMatches)> {
+    fn get_command<'a, 'b>(workspace: &'a Workspace, matches: &'b ArgMatches) -> Option<(&'a NosCommandDesc, &'a InstalledModule, &'b ArgMatches)> {
         let latest_modules = workspace.get_latest_installed_modules();
         for module in latest_modules {
             for command in &module.commands {
@@ -93,7 +93,7 @@ impl Extension {
 }
 
 impl Command for Extension {
-    fn matched_args<'a>(&self, workspace: &'a mut Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a, 'b>(&self, workspace: &'a Workspace, args: &'b ArgMatches) -> Option<&'b ArgMatches> {
         if let Some((_command_desc, _module, matches)) = Self::get_command(workspace, &args) {
             return Some(matches);
         }
