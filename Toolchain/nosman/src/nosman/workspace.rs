@@ -5,10 +5,12 @@ use std::path::PathBuf;
 use std::time::Duration;
 use bitflags::bitflags;
 use colored::Colorize;
+use crate::nosman::common::get_progress_bar;
+use inquire::Select;
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::{constants};
-use crate::nosman::common::get_progress_bar;
+use crate::nosman::command::CommandError::InvalidArgumentError;
 use crate::nosman::index::{Index, PackageIndexEntry, PackageReleases, Remote, SemVer};
 use crate::nosman::module::{InstalledModule, get_module_manifests, NodeDefinition};
 use crate::nosman::path::get_rel_path_based_on;
@@ -137,6 +139,24 @@ impl Workspace {
             }
         }
         res
+    }
+    pub fn select_installed_module(&self, module_name: &String) -> Result<&InstalledModule, CommandError> {
+        let modules = self.get_installed_modules(module_name);
+        let module;
+        if modules.len() == 0 {
+            return Err(InvalidArgumentError { message: format!("Module {} not found", module_name) });
+        } else if modules.len() > 1 {
+            let selection = Select::new(format!("Multiple modules found with name {}. Please select one:", module_name).as_str(), modules)
+                .prompt();
+            if let Err(e) = selection {
+                return Err(InvalidArgumentError { message: format!("Failed to select module: {}", e) });
+            } else {
+                module = selection.unwrap();
+            }
+        } else {
+            module = modules[0];
+        }
+        Ok(module)
     }
     pub fn get_latest_installed_module_within_range(&self, name: &str, version_start: &SemVer, version_end: &SemVer) -> Option<&InstalledModule> {
         let version_list = self.installed_modules.get(name);

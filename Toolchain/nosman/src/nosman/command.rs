@@ -18,6 +18,7 @@ mod node;
 mod dev;
 pub(crate) mod launch;
 mod extension;
+mod depend;
 
 use std::io;
 
@@ -77,5 +78,6 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(dev::DevGenCommand {}),
         Box::new(launch::LaunchCommand {}),
         Box::new(extension::Extension {}),
+        Box::new(depend::DependsCommands{}),
     ]
 }

@@ -584,3 +584,29 @@ pub fn load_module(verbose: bool, manifest: serde_json::Value, manifest_file_par
     }
     lib
 }
+
+use clap::{ArgMatches};
+pub fn get_dependency_arguments(args: &ArgMatches, allow_any: bool, success: &mut bool) -> Vec<PackageIdentifier>{
+    let depss: Vec<&String> = args.get_many::<String>("dependency").unwrap_or_default().collect();
+    let mut deps = Vec::new();
+    for dep in depss {
+        let mut parts: Vec<&str> = dep.split('-').collect();
+        if parts.len() == 1 && allow_any{
+            *success = true;
+            parts.push("any");
+        }
+        if parts.len() == 2 {
+            *success = true;
+        }
+        else{
+            *success = false;
+            println!("Invalid dependency format: {}", dep);
+        }
+        deps.push(PackageIdentifier {
+            name: parts[0].to_string(),
+            version: parts[1].to_string(),
+        });
+    }
+    *success = true;
+    return deps;
+}

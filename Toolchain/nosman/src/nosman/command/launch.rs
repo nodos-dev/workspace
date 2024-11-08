@@ -81,15 +81,15 @@ impl LaunchCommand {
 }
 
 impl Command for LaunchCommand {
-    fn matched_args<'a>(&self, _workspace: &Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+    fn matched_args<'a, 'b>(&self, _workspace: &'a Workspace, args : &'b ArgMatches) -> Option<&'b ArgMatches> {
         args.subcommand_matches("launch")
-    }
-
-    fn needs_workspace(&self) -> bool {
-        true
     }
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, _args: &ArgMatches) -> CommandResult {
         self.launch_nodos(&workspace.root)
+    }
+
+    fn needs_workspace(&self) -> bool {
+        true
     }
 }

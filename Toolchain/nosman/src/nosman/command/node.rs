@@ -1,6 +1,5 @@
 use clap::{ArgMatches};
 use colored::Colorize;
-use inquire::{Select};
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::CommandError::InvalidArgumentError;
 use crate::nosman::index::ModuleType;
@@ -9,28 +8,14 @@ use crate::nosman::workspace::{Workspace};
 pub struct NodeCommand {}
 
 impl NodeCommand {
-    fn run_node(&self, workspace: &Workspace, plugin_name: &String, node_class_name: &String,
+    fn run_node(&self, workspace: &mut Workspace, plugin_name: &String, node_class_name: &String,
                 remove: bool, display_name: Option<String>, description: Option<String>,
                 category: Option<String>, hide_in_context_menu: bool) -> CommandResult {
-        let modules = workspace.get_installed_modules(plugin_name);
-        let plugins: Vec<_> = modules.iter().filter(|m| m.module_type == ModuleType::Plugin).collect();
-        if plugins.len() == 0 {
-            return Err(InvalidArgumentError { message: format!("Plugin {} not found", plugin_name) });
+        let module = workspace.select_installed_module(&plugin_name)?;
+        if module.module_type != ModuleType::Plugin {
+            return Err(InvalidArgumentError { message: format!("Selected module {} is not a Nodos plugin. Only plugins can have nodes!", plugin_name) });
         }
-        let plugin;
-        if plugins.len() > 1 {
-            let selection = Select::new(format!("Multiple plugins found with name {}. Please select one:", plugin_name).as_str(), plugins)
-                .prompt();
-            if let Err(e) = selection {
-                return Err(InvalidArgumentError { message: format!("Failed to select plugin: {}", e) });
-            }
-            else {
-                plugin = selection.unwrap();
-            }
-        }
-        else {
-            plugin = plugins[0];
-        }
+        let plugin = module;
         if remove {
             // Prefix node_class_name if it doesn't have the plugin name
             let node_class_name = if node_class_name.starts_with(plugin_name.as_str()) {

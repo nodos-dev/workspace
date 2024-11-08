@@ -8,7 +8,7 @@ use crate::nosman::index::ModuleType;
 use include_dir::{include_dir, Dir};
 use crate::nosman::command::sdk_info::get_engine_sdk_infos;
 use crate::nosman::constants;
-use crate::nosman::module::PackageIdentifier;
+use crate::nosman::module::{get_dependency_arguments, PackageIdentifier};
 use crate::nosman::workspace::Workspace;
 
 pub struct CreateCommand {}
@@ -185,6 +185,12 @@ impl Command for CreateCommand {
                 version: parts[1].to_string(),
             });
         }
+        let mut deps_success = false;
+        let deps = get_dependency_arguments(args, false, &mut deps_success);
+        if !deps_success{
+            return Err(InvalidArgumentError { message: format!("Invalid dependency format") });
+        }
+
         let description = args.get_one::<String>("description").unwrap();
         self.run_create(workspace, module_name, module_type, lang_tool, &output_dir, deps, description)
     }
