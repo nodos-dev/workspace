@@ -2,12 +2,11 @@ use std::collections::HashMap;
 use std::{fs};
 use std::path::PathBuf;
 use std::time::Duration;
-use indicatif::{ProgressBar};
 use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 use crate::nosman::constants;
 use crate::nosman::workspace::Workspace;
-use crate::nosman::common::{run_if_not};
+use crate::nosman::common::{get_progress_bar, run_if_not};
 use crate::nosman::module::{PackageIdentifier};
 use crate::nosman::platform::get_host_platform;
 
@@ -558,8 +557,8 @@ fn sort_version_list(versions: &mut Vec<&PackageReleaseEntry>) {
 }
 
 impl Index {
-    pub fn fetch(workspace: &Workspace) -> Index {
-        let pb = ProgressBar::new_spinner();
+    pub fn fetch(workspace: &Workspace, silent: bool) -> Index {
+        let pb = get_progress_bar(silent);
         pb.enable_steady_tick(Duration::from_millis(100));
         pb.println("Fetching package index");
         workspace.remotes.par_iter().for_each(|remote| {

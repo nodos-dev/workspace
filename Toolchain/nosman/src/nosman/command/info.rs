@@ -1,14 +1,14 @@
 use clap::{ArgMatches};
-use colored::Colorize;
 use crate::nosman::command::{Command, CommandError, CommandResult};
 
-use crate::nosman::workspace::{Workspace};
+use crate::nosman::workspace::{OutputMode, Workspace};
 
 pub struct InfoCommand {
 }
 
 impl InfoCommand {
     fn run_get_info(&self, workspace: &mut Workspace, module_name: &str, version: &str, relaxed: bool, rescan_if_needed: bool) -> CommandResult {
+        workspace.set_output_mode(OutputMode::Silent);
         let module =  if relaxed {
             let res = workspace.get_latest_installed_module_for_version(module_name, version);
             if let Err(msg) = res {
@@ -19,7 +19,6 @@ impl InfoCommand {
             let res = workspace.get_installed_module(module_name, version);
             if res.is_none() {
                 if rescan_if_needed {
-                    println!("{}", format!("Module {} version {} is not found. Rescanning...", module_name, version).yellow());
                     workspace.recreate()?;
                     return self.run_get_info(workspace, module_name, version, relaxed, false);
                 }
@@ -28,8 +27,7 @@ impl InfoCommand {
             res.unwrap()
         };
         // Rescan if needed.
-        if rescan_if_needed && !module.needs_rescan(&workspace) {
-            println!("{}", format!("Index entry for module {} version {} is out of date. Rescanning...", module_name, version).yellow());
+        if rescan_if_needed && module.needs_rescan(&workspace) {
             workspace.recreate()?;
             return self.run_get_info(workspace, module_name, version, relaxed, false);
         }

@@ -5,10 +5,10 @@ use std::path::PathBuf;
 use std::time::Duration;
 use bitflags::bitflags;
 use colored::Colorize;
-use indicatif::{ProgressBar};
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::{constants};
+use crate::nosman::common::get_progress_bar;
 use crate::nosman::index::{Index, PackageIndexEntry, PackageReleases, Remote, SemVer};
 use crate::nosman::module::{InstalledModule, get_module_manifests, NodeDefinition};
 use crate::nosman::path::get_rel_path_based_on;
@@ -21,6 +21,19 @@ pub enum WorkspaceStatus {
     Ready
 }
 
+#[derive(Debug, PartialEq, Default)]
+pub enum OutputMode {
+    Silent,
+    #[default]
+    Default,
+}
+
+#[derive(Debug, Default)]
+struct WorkspaceRuntimeParams {
+    status: WorkspaceStatus,
+    output_mode: OutputMode,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Workspace {
     #[serde(skip_serializing, skip_deserializing)]
@@ -29,7 +42,7 @@ pub struct Workspace {
     pub installed_modules: HashMap<String, HashMap<String, InstalledModule>>,
     pub index_cache: Index,
     #[serde(skip_serializing, skip_deserializing)]
-    pub status: WorkspaceStatus,
+    runtime: WorkspaceRuntimeParams,
 }
 
 #[derive(Clone, Copy)]
@@ -56,7 +69,7 @@ impl Workspace {
             remotes: Vec::new(),
             installed_modules: HashMap::new(),
             index_cache: Index { packages: HashMap::new() },
-            status: WorkspaceStatus::DoesNotExist,
+            runtime: WorkspaceRuntimeParams { status: WorkspaceStatus::DoesNotExist, output_mode: OutputMode::Default },
         }
     }
     pub fn from_root(path: &PathBuf) -> Workspace {
@@ -64,7 +77,7 @@ impl Workspace {
         let exists = index_filepath.exists();
         let mut workspace = Workspace::new_empty(path.clone());
         if !exists {
-            workspace.status = WorkspaceStatus::DoesNotExist;
+            workspace.runtime.status = WorkspaceStatus::DoesNotExist;
             return workspace;
         }
         let res = fs::File::open(&index_filepath);
@@ -79,16 +92,16 @@ impl Workspace {
                 }
             };
             parsed_ws.root = dunce::canonicalize(path).expect(format!("Failed to canonicalize path: {}", path.display()).as_str());
-            parsed_ws.status = WorkspaceStatus::Ready;
+            parsed_ws.runtime.status = WorkspaceStatus::Ready;
             workspace = parsed_ws;
         } else {
             println!("{}", format!("Failed to open workspace file: {}", index_filepath.display()).red());
-            workspace.status = WorkspaceStatus::FailedToOpen;
+            workspace.runtime.status = WorkspaceStatus::FailedToOpen;
         }
         workspace
     }
     pub fn ready(&self) -> bool {
-        self.status == WorkspaceStatus::Ready
+        self.runtime.status == WorkspaceStatus::Ready
     }
     pub fn get_remote_repo_dir(&self, remote: &Remote) -> PathBuf {
         get_nosman_dir_for(&self.root).join("remote").join(remote.name.clone())
@@ -191,12 +204,18 @@ impl Workspace {
         println!("{}", "All modules removed successfully".green());
         Ok(true)
     }
+    fn is_silent(&self) -> bool {
+        self.runtime.output_mode == OutputMode::Silent
+    }
+    pub fn set_output_mode(&mut self, mode: OutputMode) {
+        self.runtime.output_mode = mode;
+    }
     pub fn scan_modules_in_folder(&mut self, folder: PathBuf, force_replace_in_registry: bool) {
         // Scan folders with .noscfg and .nossys files
         let folder = dunce::canonicalize(folder).expect("Failed to canonicalize path");
-        let module_manifests = get_module_manifests(&folder);
+        let module_manifests = get_module_manifests(&folder, self.is_silent());
 
-        let pb = ProgressBar::new_spinner();
+        let pb = get_progress_bar(self.is_silent());
         pb.enable_steady_tick(Duration::from_millis(100));
 
         pb.println(format!("Found {} modules in {}", module_manifests.len(), folder.display()).as_str().green().to_string());
@@ -240,7 +259,7 @@ impl Workspace {
             self.scan_modules(true);
         }
         self.save()?;
-        self.status = WorkspaceStatus::Ready;
+        self.runtime.status = WorkspaceStatus::Ready;
         Ok(true)
     }
     pub fn fetch_remotes(&mut self, add_default_remote: bool) -> Result<(), io::Error>{
@@ -251,11 +270,11 @@ impl Workspace {
                 return Ok(());
             }
         }
-        self.index_cache = Index::fetch(self);
+        self.index_cache = Index::fetch(self, self.is_silent());
         self.save()
     }
     pub fn fetch_package_releases(&mut self, package_name: &str) {
-        let pb = ProgressBar::new_spinner();
+        let pb = get_progress_bar(self.is_silent());
         pb.enable_steady_tick(Duration::from_millis(100));
         pb.set_message(format!("Fetching package index for {}", package_name));
         for remote in &self.remotes {

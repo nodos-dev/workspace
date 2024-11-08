@@ -52,7 +52,7 @@ impl PublishBatchCommand {
 
         // Find all modules in the repo
         let mut to_be_published: Vec<PathBuf> = vec![];
-        let module_manifests = get_module_manifests(&repo_path);
+        let module_manifests = get_module_manifests(&repo_path, false);
         println!("Found {} modules in {}", module_manifests.len(), repo_path.display());
         for (_module_type, manifest_file_path) in module_manifests {
             let parent = manifest_file_path.parent().unwrap();

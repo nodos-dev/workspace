@@ -1,9 +1,10 @@
-use std::fs;
+use std::{fs};
 use std::fs::File;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 use std::process::Output;
 use colored::Colorize;
+use indicatif::ProgressBar;
 use inquire::Confirm;
 use zip::ZipArchive;
 use crate::nosman::command::CommandError;
@@ -119,4 +120,12 @@ pub fn run_if_not(dry_run: bool, verbose: bool, cmd: &mut std::process::Command)
 pub fn get_hostname() -> String {
     let hostname = hostname::get().expect("Failed to get hostname");
     hostname.into_string().expect("Failed to convert hostname to string")
+}
+
+pub fn get_progress_bar(silent: bool) -> ProgressBar{
+    if silent {
+        ProgressBar::hidden()
+    } else {
+        ProgressBar::new_spinner()
+    }
 }

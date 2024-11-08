@@ -10,12 +10,12 @@ use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
 use colored::Colorize;
-use indicatif::{ProgressBar};
 use inquire::Text;
 use libloading::Library;
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgumentError, RuntimeError};
 use crate::nosman::{constants, extensions};
+use crate::nosman::common::get_progress_bar;
 use crate::nosman::extensions::{CNosArg, CNosCommand, CNosRunCommandParams, NosCommand, NosCommandDesc};
 use crate::nosman::index::{ModuleType};
 use crate::nosman::path::{get_plugin_manifest_file, get_rel_path_based_on, get_subsystem_manifest_file};
@@ -333,16 +333,16 @@ impl InstalledModule {
         }
     }
     pub fn needs_rescan(&self, workspace: &Workspace) -> bool {
-        if !self.manifest_path.exists() {
-            return false;
+        if !workspace.root.join(&self.manifest_path).exists() {
+            return true;
         }
         let res = InstalledModule::new(workspace, self.manifest_path.clone());
         if let Err(msg) = res {
             eprintln!("{}", msg);
-            return false;
+            return true;
         }
         let installed_module = res.unwrap();
-        &installed_module == self
+        &installed_module != self
     }
 }
 
@@ -383,8 +383,8 @@ pub fn get_module_type_from_manifest_file_path(file_path: &PathBuf) -> Option<Mo
     }
 }
 
-pub fn get_module_manifests(folder: &PathBuf) -> Vec<(ModuleType, PathBuf)> {
-    let pb = ProgressBar::new_spinner();
+pub fn get_module_manifests(folder: &PathBuf, silent: bool) -> Vec<(ModuleType, PathBuf)> {
+    let pb = get_progress_bar(silent);
     pb.enable_steady_tick(Duration::from_millis(100));
 
     pb.set_message(format!("Looking for Nodos modules in {}", folder.to_str().expect("Non-UTF-8 path")).to_string());
