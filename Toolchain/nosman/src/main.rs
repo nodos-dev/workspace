@@ -114,7 +114,7 @@ fn main() {
             )
             .arg(Arg::new("out_dir")
                 .help("The directory where the module will be installed")
-                .default_value("./Module")
+                .default_value("./Module/Downloaded")
                 .long("out-dir")
                 .required(false)
             )
