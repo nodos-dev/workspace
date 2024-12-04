@@ -550,7 +550,8 @@ fn main() {
             )
         );
 
-    let workspace = Workspace::from_root(&get_workspace_dir_from_cmd(&cmd));
+    let workspace_dir = get_workspace_dir_from_cmd(&cmd);
+    let workspace = Workspace::from_root(&workspace_dir);
 
     let mut subcommand_helps: HashMap<String, StyledStr> = HashMap::new();
     for subcommand in cmd.get_subcommands_mut() {

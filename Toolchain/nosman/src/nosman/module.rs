@@ -119,10 +119,10 @@ impl InstalledModule {
         }
 
         // Check include folder
-        if path.parent().unwrap().join("Include").exists() {
-            installed_module.public_include_folder = Some(get_rel_path_based_on(&path.parent().unwrap().join("Include").canonicalize().unwrap(), &workspace.root));
+        if abs_path.parent().unwrap().join("Include").exists() {
+            installed_module.public_include_folder = Some(get_rel_path_based_on(&abs_path.parent().unwrap().join("Include").canonicalize().unwrap(), &workspace.root));
         }
-        installed_module.module_type = get_module_type_from_manifest_file_path(&path).unwrap();
+        installed_module.module_type = get_module_type_from_manifest_file_path(&abs_path).unwrap();
         installed_module.register_commands(&workspace);
         Ok(installed_module)
     }

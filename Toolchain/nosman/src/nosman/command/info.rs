@@ -27,7 +27,7 @@ impl InfoCommand {
             res.unwrap()
         };
         // Rescan if needed.
-        if rescan_if_needed && module.needs_rescan(&workspace) {
+        if rescan_if_needed && module.needs_rescan(workspace) {
             workspace.recreate()?;
             return self.run_get_info(workspace, module_name, version, relaxed, false);
         }
@@ -55,7 +55,7 @@ impl Command for InfoCommand {
         let module_name = args.get_one::<String>("module").unwrap();
         let version = args.get_one::<String>("version").unwrap();
         let relaxed = args.get_one::<bool>("relaxed").unwrap();
-        self.run_get_info(workspace, module_name, version, relaxed.clone(), true)
+        self.run_get_info(workspace, module_name, version, *relaxed, true)
     }
 
     fn needs_workspace(&self) -> bool {
