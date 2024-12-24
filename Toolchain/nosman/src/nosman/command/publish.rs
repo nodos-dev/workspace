@@ -113,7 +113,7 @@ impl PublishCommand {
     }
     pub fn run_publish(&self, workspace: &Workspace, dry_run: bool, verbose: bool, path: &PathBuf, mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
                    mut package_type: Option<PackageType>, remote_name: &String, vendor: Option<&String>,
-                   publisher_name: Option<&String>, publisher_email: Option<&String>, release_tags: &Vec<String>, opt_target_platform: Option<&String>) -> CommandResult {
+                   publisher_name: Option<&String>, publisher_email: Option<&String>, release_tags: &Vec<String>, opt_target_platform: Option<&String>, release_notes: Option<&String>) -> CommandResult {
         // Check if git and gh is installed.
         let git_installed = std::process::Command::new("git")
             .arg("--version")
@@ -406,7 +406,9 @@ impl PublishCommand {
         let commit_sha = res.unwrap();
 
         println!("Uploading release {} on remote {}", format!("{}-{}", name, version), remote.name);
-        let res = remote.create_gh_release(dry_run, verbose, &workspace, &commit_sha, &name, &version, &target_platform.to_string(), &tag, vec![artifact_file_path]);
+        let empty_string = String::new();
+        let notes: &String = release_notes.unwrap_or(&empty_string);
+        let res = remote.create_gh_release(dry_run, verbose, &workspace, &commit_sha, &name, &version, &target_platform.to_string(), &tag, vec![artifact_file_path], notes);
         if res.is_err() {
             return Err(RuntimeError { message: res.err().unwrap() });
         }
@@ -437,7 +439,7 @@ impl Command for PublishCommand {
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
         let target_platform: Option<&String> = args.get_one::<String>("target_platform");
-        self.run_publish(workspace, *dry_run, *verbose, &path, name, version, version_suffix, package_type, &remote_name, vendor, publisher_name, publisher_email, &release_tags, target_platform)
+        self.run_publish(workspace, *dry_run, *verbose, &path, name, version, version_suffix, package_type, &remote_name, vendor, publisher_name, publisher_email, &release_tags, target_platform, None)
     }
 
     fn needs_workspace(&self) -> bool {

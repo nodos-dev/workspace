@@ -513,7 +513,7 @@ impl Remote {
 
         Ok(commit_sha)
     }
-    pub fn create_gh_release(&self, dry_run: bool, verbose: bool, workspace: &Workspace, commit_sha: &String, name: &String, version: &String, target_platform: &String, tag: &String, artifacts: Vec<PathBuf>) -> Result<(), String> {
+    pub fn create_gh_release(&self, dry_run: bool, verbose: bool, workspace: &Workspace, commit_sha: &String, name: &String, version: &String, target_platform: &String, tag: &String, artifacts: Vec<PathBuf>, release_notes: &String) -> Result<(), String> {
         let repo_dir = workspace.get_remote_repo_dir(&self);
         let (org_name, repo_name) = self.get_gh_remote_org_repo();
 
@@ -528,7 +528,9 @@ impl Remote {
             .arg(format!("{}/{}", org_name, repo_name))
             .arg("--target")
             .arg(commit_sha)
-            .args(artifacts.iter().map(|p| p.to_str().unwrap())));
+            .args(artifacts.iter().map(|p| p.to_str().unwrap()))
+            .arg("--notes").arg(release_notes)
+        );
         if let Some(output) = res {
             if !output.status.success() {
                 return Err(format!("Failed to create release: {}", String::from_utf8_lossy(&output.stderr)));

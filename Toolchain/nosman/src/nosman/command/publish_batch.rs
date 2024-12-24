@@ -18,7 +18,7 @@ pub struct PublishBatchCommand {
 impl PublishBatchCommand {
     fn run_publish_batch(&self, workspace: &Workspace, dry_run: bool, verbose: bool, remote_name: &String, repo_path: &PathBuf, compare_with: Option<&String>,
                         version_suffix: &String, vendor: Option<&String>, publisher_name: Option<&String>,
-                        publisher_email: Option<&String>, release_tags: &Vec<String>, target_platform: Option<&String>) -> CommandResult {
+                        publisher_email: Option<&String>, release_tags: &Vec<String>, target_platform: Option<&String>, release_notes: Option<&String>) -> CommandResult {
         if !repo_path.exists() {
             return Err(InvalidArgumentError { message: format!("Repo {} does not exist", repo_path.display()) });
         }
@@ -103,7 +103,7 @@ impl PublishBatchCommand {
             return Ok(true);
         }
         for module_root in to_be_published {
-            PublishCommand {}.run_publish(workspace, dry_run, verbose, &module_root, None, None, version_suffix, None, remote_name, vendor, publisher_name, publisher_email, release_tags, target_platform)?;
+            PublishCommand {}.run_publish(workspace, dry_run, verbose, &module_root, None, None, version_suffix, None, remote_name, vendor, publisher_name, publisher_email, release_tags, target_platform, release_notes)?;
         }
 
         Ok(true)
@@ -133,7 +133,8 @@ impl Command for PublishBatchCommand {
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
         let target_platform = args.get_one::<String>("target_platform");
-        self.run_publish_batch(workspace, *dry_run, *verbose, &remote_name, &repo_path, opt_compare_with, &version_suffix, vendor, publisher_name, publisher_email, &release_tags, target_platform)
+        let release_notes = args.get_one::<String>("release_notes");
+        self.run_publish_batch(workspace, *dry_run, *verbose, &remote_name, &repo_path, opt_compare_with, &version_suffix, vendor, publisher_name, publisher_email, &release_tags, target_platform, release_notes)
     }
 
     fn needs_workspace(&self) -> bool {
