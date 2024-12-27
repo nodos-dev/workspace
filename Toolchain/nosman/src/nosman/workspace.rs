@@ -1,17 +1,20 @@
-use std::collections::{HashMap};
+use rayon::iter::ParallelIterator;
+use std::collections::{HashMap, HashSet};
 use std::{fs, io};
 use std::cmp::PartialEq;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::Duration;
 use bitflags::bitflags;
 use colored::Colorize;
 use crate::nosman::common::get_progress_bar;
 use inquire::Select;
+use rayon::iter::IntoParallelRefIterator;
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::{constants};
 use crate::nosman::command::CommandError::InvalidArgumentError;
-use crate::nosman::index::{Index, PackageIndexEntry, PackageReleases, Remote, SemVer};
+use crate::nosman::index::{Index, PackageIndexEntry, PackageReleaseEntry, PackageReleases, PackageType, Remote, SemVer};
 use crate::nosman::module::{InstalledModule, get_module_manifests, NodeDefinition};
 use crate::nosman::path::get_rel_path_based_on;
 
@@ -62,6 +65,49 @@ impl PartialEq<u8> for RescanFlags {
     fn eq(&self, other: &u8) -> bool {
         self.bits() == *other
     }
+}
+
+fn fetch_releases_mt(workspace: &Workspace, package_names: Option<HashSet<String>>) -> HashMap<String, (PackageType, Vec<PackageReleaseEntry>)> {
+    let releases = Mutex::new(HashMap::new());
+    let pb = get_progress_bar(workspace.is_silent());
+    pb.enable_steady_tick(Duration::from_millis(100));
+    pb.set_message("Fetching package index...");
+    workspace.remotes.par_iter().for_each(|remote| {
+        pb.set_message(format!("Fetching remote {}", remote.name));
+        let res = remote.fetch(&workspace);
+        if let Err(e) = res {
+            pb.println(format!("Failed to fetch remote: {}", e));
+            return;
+        }
+        let package_list: Vec<PackageIndexEntry> = res.unwrap();
+        pb.println(format!("Fetched {} packages from remote {}", package_list.len(), remote.name));
+        package_list.par_iter().for_each(|package| {
+            if let Some(ref package_names) = package_names {
+                if !package_names.contains(&package.name) {
+                    return;
+                }
+            }
+            let res = reqwest::blocking::get(&package.releases_url);
+            if let Err(e) = res {
+                pb.println(format!("Failed to fetch package releases for {}: {}", package.name, e));
+                return;
+            }
+            let res = res.unwrap().json();
+            if let Err(e) = res {
+                pb.println(format!("Failed to parse package releases for {}: {}", package.name, e));
+                return;
+            }
+            let versions: PackageReleases = res.unwrap();
+            pb.set_message(format!("Remote {}: Found {} releases for package {}", remote.name, versions.releases.len(), versions.name));
+            // For each version in list
+            for release in versions.releases {
+                let mut map = releases.lock().unwrap();
+                let entry = map.entry(versions.name.clone()).or_insert((package.package_type.clone(), Vec::new()));
+                entry.1.push(release);
+            }
+        });
+    });
+    releases.into_inner().unwrap()
 }
 
 impl Workspace {
@@ -294,46 +340,33 @@ impl Workspace {
         self.save()
     }
     pub fn fetch_package_releases(&mut self, package_name: &str) {
-        let pb = get_progress_bar(self.is_silent());
-        pb.enable_steady_tick(Duration::from_millis(100));
-        pb.set_message(format!("Fetching package index for {}", package_name));
-        for remote in &self.remotes {
-            pb.set_message(format!("Fetching remote {}", remote.name));
-            let res = remote.fetch(&self);
-            if let Err(e) = res {
-                pb.println(format!("Failed to fetch remote: {}", e));
-                continue;
-            }
-            let package_list: Vec<PackageIndexEntry> = res.unwrap();
-            pb.println(format!("Fetched {} packages from remote {}", package_list.len(), remote.name));
-            // For each module in list
-            for package in package_list {
-                if package.name != *package_name {
-                    continue;
-                }
-                let res = reqwest::blocking::get(&package.releases_url);
-                if let Err(e) = res {
-                    pb.println(format!("Failed to fetch package releases for {}: {}", package_name, e));
-                    continue;
-                }
-                let res = res.unwrap().json();
-                if let Err(e) = res {
-                    pb.println(format!("Failed to parse package releases for {}: {}", package_name, e));
-                    continue;
-                }
-                let versions: PackageReleases = res.unwrap();
-                pb.set_message(format!("Remote {}: Found {} releases for package {}", remote.name, versions.releases.len(), versions.name));
-                // For each version in list
-                for release in versions.releases {
-                    self.index_cache.add_package(&versions.name, package.package_type.clone(), release);
-                }
+        let mut package_names = HashSet::new();
+        package_names.insert(package_name.to_string());
+        self.fetch_releases(Some(package_names));
+    }
+    pub fn fetch_releases(&mut self, package_names: Option<HashSet<String>>) {
+        let res = fetch_releases_mt(self, package_names);
+        for (name, (package_type, releases)) in res {
+            for release in releases {
+                self.index_cache.add_package(&name, package_type.clone(), release);
             }
         }
     }
+    pub fn fetch_latest_versions(&mut self) -> Vec<(&String, &PackageReleaseEntry)> {
+        println!("Fetching latest versions...");
+        self.fetch_releases(None);
+        let mut res = Vec::new();
+        for name in self.index_cache.packages.keys() {
+            if let Some(entry) = self.index_cache.get_latest_release(name) {
+                res.push((name, entry.1));
+            }
+        }
+        res
+    }
     pub fn get_node_definitions(&self, node_class_name: &String) -> Vec<NodeDefinition> {
         let mut res = Vec::new();
-        for (_name, versions) in &self.installed_modules {
-            for (_version, module) in versions {
+        for versions in self.installed_modules.values() {
+            for module in versions.values() {
                 if let Some(found) = module.get_node_definition(node_class_name) {
                     res.push(found);
                 }

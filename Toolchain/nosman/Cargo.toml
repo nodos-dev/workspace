@@ -14,8 +14,6 @@ strip = false       # Strip symbols from binary*
 clap = { version = "4.5.20", features = ["string"] }
 err-derive = "0.3.1"
 indicatif = "0.17.8"
-dirs = "5.0.1"
-log = "0.4.21"
 tempfile = "3.10.1"
 serde = { version = "1.0.201", features = ["derive"] }
 serde_json = "1.0.117"
