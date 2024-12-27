@@ -1,3 +1,4 @@
+use std::collections::LinkedList;
 use clap::{ArgMatches};
 use colored::Colorize;
 use inquire::{MultiSelect};
@@ -29,16 +30,22 @@ impl ListCommand {
         
         if installed {
             println!("{}", "Installed modules".green());
+            let mut installed_modules_alphabetical = Vec::new();
             for (name, ver_map) in &workspace.installed_modules {
                 for (version, module) in ver_map {
-                    println!("  {} ({})", format!("{}-{}", name, version).green().to_string(), module.get_module_dir().display());
+                    installed_modules_alphabetical.push((name.clone(), version.clone(), module.clone()));
                 }
+            }
+            installed_modules_alphabetical.sort_by(|a, b| a.0.cmp(&b.0));
+            for (name, version, module) in installed_modules_alphabetical {                   
+                println!("  {} ({})", format!("{}-{}", name, version).green().to_string(), module.get_module_dir().display());
             }
         }
         if remote {
             workspace.set_output_mode(crate::nosman::workspace::OutputMode::Silent);
-            let latest = workspace.fetch_latest_versions();
+            let mut latest = workspace.fetch_latest_versions();
             println!("{}", "Remote packages".green());
+            latest.sort_by(|a, b| a.0.cmp(&b.0));
             for (name, entry) in latest {
                 println!("  {} (latest: {})", format!("{}", name).green(), entry.version);
             }
