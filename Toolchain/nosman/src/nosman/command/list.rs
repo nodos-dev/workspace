@@ -1,5 +1,6 @@
 use clap::{ArgMatches};
 use colored::Colorize;
+use inquire::{MultiSelect};
 use crate::nosman::command::{Command, CommandResult};
 
 use crate::nosman::workspace::{Workspace};
@@ -7,7 +8,25 @@ use crate::nosman::workspace::{Workspace};
 pub struct ListCommand {}
 
 impl ListCommand {
-    fn run_list(&self, workspace: &mut Workspace, installed: bool, remote: bool) -> CommandResult {
+    fn run_list(&self, workspace: &mut Workspace, mut installed: bool, mut remote: bool) -> CommandResult {
+    
+        if !installed && !remote {
+            // Select
+            let selection = MultiSelect::new("What do you want to list?", vec!["Installed modules", "Remote packages"])
+                .prompt();
+            let selection = selection.map_err(|e| crate::nosman::command::CommandError::RuntimeError { message: format!("Failed to prompt user: {}", e) })?;
+            for sel in selection {
+                match sel {
+                    "Installed modules" => installed = true,
+                    "Remote packages" => remote = true,
+                    _ => {}
+                }
+            }
+            if !installed && !remote {
+                println!("{}", "Nothing selected".to_string().yellow());
+            }
+        }
+        
         if installed {
             println!("{}", "Installed modules".green());
             for (name, ver_map) in &workspace.installed_modules {
