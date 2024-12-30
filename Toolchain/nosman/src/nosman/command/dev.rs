@@ -5,7 +5,7 @@ use clap::{ArgMatches};
 use colored::Colorize;
 use indicatif::ProgressBar;
 use rayon::prelude::*;
-use CommandError::InvalidArgumentError;
+use CommandError::InvalidArgument;
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::workspace::Workspace;
 
@@ -124,7 +124,7 @@ impl DevGenCommand {
     fn run_gen(&self, lang_tool: &String, extra_args: Vec<String>) -> Result<bool, CommandError> {
         // Only cpp/cmake is supported for now
         if lang_tool != "cpp/cmake" {
-            return Err(InvalidArgumentError { message: format!("Unsupported language/tool: {}", lang_tool) });
+            return Err(InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool) });
         }
         let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", "Project", "-DNOS_INVOKED_FROM_NOSMAN=ON"];
         for arg in extra_args.iter() {
@@ -137,7 +137,7 @@ impl DevGenCommand {
             .args(&cmake_args)
             .status();
         if !status.is_ok() {
-            return Err(CommandError::RuntimeError { message: format!("Error during running '{:?}'. See output.", cmake_args)});
+            return Err(CommandError::Runtime { message: format!("Error during running '{:?}'. See output.", cmake_args)});
         }
         Ok(true)
     }

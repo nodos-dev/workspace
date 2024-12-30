@@ -11,14 +11,14 @@ pub struct RemoteAddCommand {
 impl RemoteAddCommand {
     fn run_add_remote(&self, workspace: &mut Workspace, url: &str) -> Result<bool, CommandError> {
         if workspace.remotes.iter().any(|r| r.url == url) {
-            return Err(CommandError::InvalidArgumentError { message: format!("Remote {} already exists", url) });
+            return Err(CommandError::InvalidArgument { message: format!("Remote {} already exists", url) });
         }
 
         // Add the remote
         workspace.add_remote(nosman::index::Remote::new("unnamed", url));
 
         // Write the workspace file
-        workspace.save().map_err(|e| CommandError::IOError { file: workspace.get_nosman_index_filepath().display().to_string(), message: format!("{}", e) })?;
+        workspace.save().map_err(|e| CommandError::IO { file: workspace.get_nosman_index_filepath().display().to_string(), message: format!("{}", e) })?;
 
         println!("Remote added: {}", url);
         Ok(true)
@@ -36,7 +36,7 @@ impl Command for RemoteAddCommand {
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let url = args.get_one::<String>("url").unwrap();
         if url.is_empty() {
-            return Err(CommandError::InvalidArgumentError { message: "url is required".to_string() });
+            return Err(CommandError::InvalidArgument { message: "url is required".to_string() });
         }
         self.run_add_remote(workspace, url)
     }

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use clap::{ArgMatches};
 use colored::Colorize;
 use crate::nosman::command::{Command, CommandResult};
-use crate::nosman::command::CommandError::InvalidArgumentError;
+use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::ModuleType;
 use include_dir::{include_dir, Dir};
 use crate::nosman::command::sdk_info::get_engine_sdk_infos;
@@ -98,7 +98,7 @@ impl CreateCommand {
 
         // Check module name contains at least one namespace
         if module_name.split('.').count() < 2 {
-            return Err(InvalidArgumentError { message: "Module name must contain a company/organization prefix".to_string() });
+            return Err(InvalidArgument { message: "Module name must contain a company/organization prefix".to_string() });
         }
 
         fs::create_dir_all(&output_dir)?;
@@ -178,7 +178,7 @@ impl Command for CreateCommand {
         for dep in depss {
             let parts: Vec<&str> = dep.split('-').collect();
             if parts.len() != 2 {
-                return Err(InvalidArgumentError { message: format!("Invalid dependency format: {}", dep) });
+                return Err(InvalidArgument { message: format!("Invalid dependency format: {}", dep) });
             }
             deps.push(PackageIdentifier {
                 name: parts[0].to_string(),
@@ -188,7 +188,7 @@ impl Command for CreateCommand {
         let mut deps_success = false;
         let deps = get_dependency_arguments(args, false, &mut deps_success);
         if !deps_success{
-            return Err(InvalidArgumentError { message: format!("Invalid dependency format") });
+            return Err(InvalidArgument { message: format!("Invalid dependency format") });
         }
 
         let description = args.get_one::<String>("description").unwrap();

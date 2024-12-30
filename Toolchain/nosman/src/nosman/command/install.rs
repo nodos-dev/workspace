@@ -8,7 +8,7 @@ use crate::nosman::command::{Command, CommandError, CommandResult};
 
 use zip::result::ZipError;
 use nosman::workspace::Workspace;
-use crate::nosman::command::CommandError::{RuntimeError, InvalidArgumentError};
+use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::common::download_and_extract;
 
@@ -17,7 +17,7 @@ pub struct InstallCommand {
 
 impl From<ZipError> for CommandError {
     fn from(err: ZipError) -> Self {
-        CommandError::ZipError { message: format!("{}", err) }
+        CommandError::Zip { message: format!("{}", err) }
     }
 }
 
@@ -32,7 +32,7 @@ impl InstallCommand {
         if version_opt.is_none() {
             let latest = workspace.index_cache.get_latest_release(package_name);
             if latest.is_none() {
-                return Err(InvalidArgumentError { message: format!("No versions found for package {}", package_name) });
+                return Err(InvalidArgument { message: format!("No versions found for package {}", package_name) });
             }
             version = latest.unwrap().1.version.clone();
             println!("Installing latest version {} of {}", version, package_name);
@@ -44,7 +44,7 @@ impl InstallCommand {
             // Find or download a version such that 'a.b <= x < a.(b+1)'
             let version_start = SemVer::parse_from_string(version.as_str()).unwrap();
             if version_start.minor.is_none() {
-                return Err(InvalidArgumentError { message: "Please provide a minor version too!".to_string() });
+                return Err(InvalidArgument { message: "Please provide a minor version too!".to_string() });
             }
             let version_end = version_start.get_one_up();
             println!("Installing {} with a version in range [{}, {})", package_name, version_start.to_string(), version_end.to_string());
@@ -56,11 +56,11 @@ impl InstallCommand {
                 let latest_compatible_opt = workspace.index_cache.get_latest_compatible_release_within_range(package_name, &version_start, &version_end);
                 let compatible_package = if let Some((package_type, release)) = latest_compatible_opt {
                     if *package_type == PackageType::Nodos || *package_type == PackageType::Engine {
-                        return Err(InvalidArgumentError { message: format!("Package {} requires special treatment", package_name) });
+                        return Err(InvalidArgument { message: format!("Package {} requires special treatment", package_name) });
                     }
                     Some(release.version.clone()) // Clone version to avoid lifetime issues.
                 } else {
-                    return Err(InvalidArgumentError { message: format!("No remote contained a version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), package_name) });
+                    return Err(InvalidArgument { message: format!("No remote contained a version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), package_name) });
                 };
                 return self.run_install(workspace, package_name, compatible_package.as_ref(), true, output_dir, prefix, false);
             }
@@ -102,7 +102,7 @@ impl InstallCommand {
             println!("{}", format!("{}-{} installed successfully", package_name, version).as_str().green());
             Ok(true)
         } else {
-            Err(RuntimeError { message: format!("None of the remotes contain package {} version {}. You can try rescan command to update index.", package_name, version) })
+            Err(Runtime { message: format!("None of the remotes contain package {} version {}. You can try rescan command to update index.", package_name, version) })
         }
     }
 }

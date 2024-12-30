@@ -46,7 +46,7 @@ impl Extension {
             }
         }
         if found.is_none() {
-            return Err(CommandError::InvalidArgumentError { message: format!("Command {} not found in module {}", command_name, module.manifest_path.display()) });
+            return Err(CommandError::InvalidArgument { message: format!("Command {} not found in module {}", command_name, module.manifest_path.display()) });
         }
         let desc = found.unwrap();
         fill_command(desc, matches, &mut outgoing);
@@ -102,12 +102,12 @@ impl Command for Extension {
 
     fn run(&self, workspace: &mut Workspace, subcommand_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         if subcommand_name.is_none() {
-            return Err(CommandError::InvalidArgumentError { message: "No subcommand provided".to_string() });
+            return Err(CommandError::InvalidArgument { message: "No subcommand provided".to_string() });
         }
         if let Some((command_desc, module)) = Self::get_command_by_name(workspace, subcommand_name.unwrap()) {
             return self.run(workspace, module, command_desc.name.as_str(), args);
         }
-        Err(CommandError::InvalidArgumentError { message: "No command found".to_string() })
+        Err(CommandError::InvalidArgument { message: "No command found".to_string() })
     }
 
     fn needs_workspace(&self) -> bool {

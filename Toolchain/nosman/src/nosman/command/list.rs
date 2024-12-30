@@ -1,4 +1,3 @@
-use std::collections::LinkedList;
 use clap::{ArgMatches};
 use colored::Colorize;
 use inquire::{MultiSelect};
@@ -15,7 +14,7 @@ impl ListCommand {
             // Select
             let selection = MultiSelect::new("What do you want to list?", vec!["Installed modules", "Remote packages"])
                 .prompt();
-            let selection = selection.map_err(|e| crate::nosman::command::CommandError::RuntimeError { message: format!("Failed to prompt user: {}", e) })?;
+            let selection = selection.map_err(|e| crate::nosman::command::CommandError::Runtime { message: format!("Failed to prompt user: {}", e) })?;
             for sel in selection {
                 match sel {
                     "Installed modules" => installed = true,
@@ -38,7 +37,7 @@ impl ListCommand {
             }
             installed_modules_alphabetical.sort_by(|a, b| a.0.cmp(&b.0));
             for (name, version, module) in installed_modules_alphabetical {                   
-                println!("  {} ({})", format!("{}-{}", name, version).green().to_string(), module.get_module_dir().display());
+                println!("  {} ({})", format!("{}-{}", name, version).green(), module.get_module_dir().display());
             }
         }
         if remote {
@@ -47,7 +46,7 @@ impl ListCommand {
             println!("{}", "Remote packages".green());
             latest.sort_by(|a, b| a.0.cmp(&b.0));
             for (name, entry) in latest {
-                println!("  {} (latest: {})", format!("{}", name).green(), entry.version);
+                println!("  {} (latest: {})", name.to_string().green(), entry.version.to_string().yellow());
             }
         }
         Ok(true)

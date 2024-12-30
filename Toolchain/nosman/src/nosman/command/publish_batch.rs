@@ -4,7 +4,7 @@ use colored::Colorize;
 use glob_match::glob_match;
 
 use crate::nosman::command::{Command, CommandResult};
-use crate::nosman::command::CommandError::{InvalidArgumentError};
+use crate::nosman::command::CommandError::{InvalidArgument};
 use crate::nosman::command::publish::{PublishCommand, PublishOptions};
 use crate::nosman::constants;
 use crate::nosman::module::get_module_manifests;
@@ -20,7 +20,7 @@ impl PublishBatchCommand {
                         version_suffix: &String, vendor: Option<&String>, publisher_name: Option<&String>,
                         publisher_email: Option<&String>, release_tags: &Vec<String>, target_platform: Option<&String>, release_notes: Option<&String>) -> CommandResult {
         if !repo_path.exists() {
-            return Err(InvalidArgumentError { message: format!("Repo {} does not exist", repo_path.display()) });
+            return Err(InvalidArgument { message: format!("Repo {} does not exist", repo_path.display()) });
         }
 
         let repo_path = dunce::canonicalize(repo_path).expect(format!("Failed to canonicalize repo path: {}", repo_path.display()).as_str());
@@ -37,7 +37,7 @@ impl PublishBatchCommand {
                 .output()
                 .expect("Failed to execute git diff");
             if !output.status.success() {
-                return Err(InvalidArgumentError { message: format!("Failed to execute git diff: {}", String::from_utf8_lossy(&output.stderr)) });
+                return Err(InvalidArgument { message: format!("Failed to execute git diff: {}", String::from_utf8_lossy(&output.stderr)) });
             }
             let output = String::from_utf8_lossy(&output.stdout);
             for line in output.lines() {

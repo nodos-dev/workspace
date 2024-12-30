@@ -13,7 +13,7 @@ use rayon::iter::IntoParallelRefIterator;
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::{constants};
-use crate::nosman::command::CommandError::InvalidArgumentError;
+use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{Index, PackageIndexEntry, PackageReleaseEntry, PackageReleases, PackageType, Remote, SemVer};
 use crate::nosman::module::{InstalledModule, get_module_manifests, NodeDefinition};
 use crate::nosman::path::get_rel_path_based_on;
@@ -190,12 +190,12 @@ impl Workspace {
         let modules = self.get_installed_modules(module_name);
         let module;
         if modules.len() == 0 {
-            return Err(InvalidArgumentError { message: format!("Module {} not found", module_name) });
+            return Err(InvalidArgument { message: format!("Module {} not found", module_name) });
         } else if modules.len() > 1 {
             let selection = Select::new(format!("Multiple modules found with name {}. Please select one:", module_name).as_str(), modules)
                 .prompt();
             if let Err(e) = selection {
-                return Err(InvalidArgumentError { message: format!("Failed to select module: {}", e) });
+                return Err(InvalidArgument { message: format!("Failed to select module: {}", e) });
             } else {
                 module = selection.unwrap();
             }
@@ -246,7 +246,7 @@ impl Workspace {
     pub fn remove(&mut self, name: &str, version: &str) -> CommandResult {
         let res = self.get_installed_module(name, version);
         if res.is_none() {
-            return Err(CommandError::InvalidArgumentError { message: format!("Module {} version {} is not installed", name, version) });
+            return Err(CommandError::InvalidArgument { message: format!("Module {} version {} is not installed", name, version) });
         }
         println!("Removing module {} version {}", name, version);
         let module = res.unwrap();

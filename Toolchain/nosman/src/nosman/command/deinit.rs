@@ -17,14 +17,14 @@ impl DeinitCommand {
             let erase_modules = Confirm::new("Would you like to erase all installed modules?")
                 .with_default(false)
                 .prompt();
-            if erase_modules.map_err(|e| CommandError::RuntimeError { message: format!("Failed to prompt user: {}", e) })? {
+            if erase_modules.map_err(|e| CommandError::Runtime { message: format!("Failed to prompt user: {}", e) })? {
                 workspace.remove_all()?;
             }
             fs::remove_file(nosman_fpath)?;
             println!("{}", "Workspace removed".green());
             Ok(true)
         } else {
-            Err(CommandError::InvalidArgumentError { message: format!("No workspace found at {:?}", nosman_fpath) })
+            Err(CommandError::InvalidArgument { message: format!("No workspace found at {:?}", nosman_fpath) })
         }
     }
 }

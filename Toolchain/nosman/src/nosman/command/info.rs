@@ -12,7 +12,7 @@ impl InfoCommand {
         let module =  if relaxed {
             let res = workspace.get_latest_installed_module_for_version(module_name, version);
             if let Err(msg) = res {
-                return Err(CommandError::InvalidArgumentError { message: msg });
+                return Err(CommandError::InvalidArgument { message: msg });
             }
             res.unwrap()
         } else {
@@ -22,7 +22,7 @@ impl InfoCommand {
                     workspace.recreate()?;
                     return self.run_get_info(workspace, module_name, version, relaxed, false);
                 }
-                return Err(CommandError::InvalidArgumentError { message: format!("Module {} version {} is not installed", module_name, version) });
+                return Err(CommandError::InvalidArgument { message: format!("Module {} version {} is not installed", module_name, version) });
             }
             res.unwrap()
         };

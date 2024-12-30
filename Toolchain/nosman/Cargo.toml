@@ -12,7 +12,6 @@ strip = false       # Strip symbols from binary*
 
 [dependencies]
 clap = { version = "4.5.20", features = ["string"] }
-err-derive = "0.3.1"
 indicatif = "0.17.8"
 tempfile = "3.10.1"
 serde = { version = "1.0.201", features = ["derive"] }
@@ -41,6 +40,7 @@ chrono = "0.4.38"
 inquire = "0.7.5"
 rayon = "1.10.0"
 hostname = "0.4.0"
+thiserror = "2.0.9"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["libloaderapi"] }

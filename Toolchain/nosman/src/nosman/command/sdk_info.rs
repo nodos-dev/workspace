@@ -22,7 +22,7 @@ pub fn get_engine_sdk_infos(workspace: &Workspace) -> Result<Vec<SdkInfo>, Comma
     let workspace_dir = &workspace.root;
     let engines_dir = get_default_engines_dir(workspace_dir);
     if !engines_dir.exists() {
-        return Err(CommandError::InvalidArgumentError { message: "No Engine directory found in workspace".to_string() });
+        return Err(CommandError::InvalidArgument { message: "No Engine directory found in workspace".to_string() });
     }
 
     let mut result = Vec::new();
@@ -98,7 +98,7 @@ impl SdkInfoCommand {
 
         let requested_sem_ver = match SemVer::parse_from_string(requested_version) {
             Some(semver) => semver,
-            None => return Err(CommandError::InvalidArgumentError { message: format!("Invalid version: {}", requested_version) }),
+            None => return Err(CommandError::InvalidArgument { message: format!("Invalid version: {}", requested_version) }),
         };
 
         let mut found_sdk_info: Option<SdkInfoOutput> = None;
@@ -115,7 +115,7 @@ impl SdkInfoCommand {
             return Ok(true);
         }
 
-        Err(CommandError::InvalidArgumentError { message: format!("No SDK found for version {}", requested_version) })
+        Err(CommandError::InvalidArgument { message: format!("No SDK found for version {}", requested_version) })
     }
 }
 

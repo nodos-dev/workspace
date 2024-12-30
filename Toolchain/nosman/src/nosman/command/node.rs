@@ -1,7 +1,7 @@
 use clap::{ArgMatches};
 use colored::Colorize;
 use crate::nosman::command::{Command, CommandResult};
-use crate::nosman::command::CommandError::InvalidArgumentError;
+use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::ModuleType;
 use crate::nosman::workspace::{Workspace};
 
@@ -13,7 +13,7 @@ impl NodeCommand {
                 category: Option<String>, hide_in_context_menu: bool) -> CommandResult {
         let module = workspace.select_installed_module(&plugin_name)?;
         if module.module_type != ModuleType::Plugin {
-            return Err(InvalidArgumentError { message: format!("Selected module {} is not a Nodos plugin. Only plugins can have nodes!", plugin_name) });
+            return Err(InvalidArgument { message: format!("Selected module {} is not a Nodos plugin. Only plugins can have nodes!", plugin_name) });
         }
         let plugin = module;
         if remove {
@@ -25,13 +25,13 @@ impl NodeCommand {
                 format!("{}.{}", plugin_name, node_class_name)
             };
             if !plugin.remove_node_definition(&node_class_name) {
-                return Err(InvalidArgumentError { message: format!("Node class {} not found in plugin {}", node_class_name, plugin) });
+                return Err(InvalidArgument { message: format!("Node class {} not found in plugin {}", node_class_name, plugin) });
             }
             println!("{}", format!("Node class {} removed from plugin {}", node_class_name, plugin_name).yellow());
         }
         else {
             if let Err (e) = plugin.add_node_definition(&node_class_name, display_name, description, category, hide_in_context_menu) {
-                return Err(InvalidArgumentError { message: format!("Failed to add node class: {}", e) });
+                return Err(InvalidArgument { message: format!("Failed to add node class: {}", e) });
             }
             println!("{}", format!("Node class {} added to plugin {}", node_class_name, plugin_name).green());
         }

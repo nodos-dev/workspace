@@ -13,7 +13,7 @@ use colored::Colorize;
 use inquire::Text;
 use libloading::Library;
 use crate::nosman::command::{CommandError, CommandResult};
-use crate::nosman::command::CommandError::{InvalidArgumentError, RuntimeError};
+use crate::nosman::command::CommandError::{InvalidArgument, Runtime};
 use crate::nosman::{constants, extensions};
 use crate::nosman::common::get_progress_bar;
 use crate::nosman::extensions::{CNosArg, CNosCommand, CNosRunCommandParams, NosCommand, NosCommandDesc};
@@ -326,10 +326,10 @@ impl InstalledModule {
                 if res == 0 {
                     Ok(true)
                 } else {
-                    Err(RuntimeError { message: format!("Command {} returned with code {}", command_name, res) })
+                    Err(Runtime { message: format!("Command {} returned with code {}", command_name, res) })
                 }
             }
-            Err(_) => Err(RuntimeError { message: format!("Failed to get function {}", std::str::from_utf8(fn_name).unwrap()) })
+            Err(_) => Err(Runtime { message: format!("Failed to get function {}", std::str::from_utf8(fn_name).unwrap()) })
         }
     }
     pub fn needs_rescan(&self, workspace: &Workspace) -> bool {
@@ -490,7 +490,7 @@ pub fn load_module_with_search_paths(verbose: bool, binary_path: &OsString, addi
         }
 
         if res.is_err() {
-            return Err(RuntimeError { message: format!("Failed to load dynamic library: {}", res.err().unwrap()) });
+            return Err(Runtime { message: format!("Failed to load dynamic library: {}", res.err().unwrap()) });
         }
         Ok(res.unwrap())
     }
@@ -503,7 +503,7 @@ pub fn load_module_with_search_paths(verbose: bool, binary_path: &OsString, addi
         if 0 == SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS) {
             // Get last error
             let err = std::io::Error::last_os_error();
-            return Err(RuntimeError { message: format!("Failed to set default DLL directories: {}", err) });
+            return Err(Runtime { message: format!("Failed to set default DLL directories: {}", err) });
         }
         let mut dll_cookies = vec![];
         for lib_dir in additional_search_paths {
@@ -519,7 +519,7 @@ pub fn load_module_with_search_paths(verbose: bool, binary_path: &OsString, addi
             let cookie = AddDllDirectory(wdir.as_ptr());
             if cookie.is_null() {
                 let err = std::io::Error::last_os_error();
-                return Err(RuntimeError { message: format!("Failed to add DLL search path {}: {}", lib_dir_canonical.display(), err) });
+                return Err(Runtime { message: format!("Failed to add DLL search path {}: {}", lib_dir_canonical.display(), err) });
             }
             dll_cookies.push(cookie);
         }
@@ -528,7 +528,7 @@ pub fn load_module_with_search_paths(verbose: bool, binary_path: &OsString, addi
             RemoveDllDirectory(cookie);
         }
         if res.is_err() {
-            return Err(RuntimeError { message: format!("Failed to load dynamic library: {}", res.err().unwrap()) });
+            return Err(Runtime { message: format!("Failed to load dynamic library: {}", res.err().unwrap()) });
         }
         Ok(res.unwrap())
     }
@@ -543,7 +543,7 @@ pub fn load_installed_module(module: &InstalledModule, workspace: &Workspace) ->
 pub fn load_module(verbose: bool, manifest: serde_json::Value, manifest_file_parent: PathBuf, workspace: &Workspace) -> Result<Library, CommandError> {
     let binary_path = manifest["binary_path"].as_str();
     if binary_path.is_none() {
-        return Err (InvalidArgumentError {message: "Module manifest does not specify a binary path".to_string() })
+        return Err (InvalidArgument {message: "Module manifest does not specify a binary path".to_string() })
     }
     let module_dir = manifest_file_parent;
     let binary_path = module_dir.join(binary_path.unwrap());
@@ -577,7 +577,7 @@ pub fn load_module(verbose: bool, manifest: serde_json::Value, manifest_file_par
     // Load the dynamic library
     let lib = load_module_with_search_paths(verbose, &binary_path, additional_search_paths);
     if lib.is_err() {
-        return Err(RuntimeError {
+        return Err(Runtime {
             message: format!("Could not load dynamic library {}: {}. \
                             Make sure all the dependencies are present in the system and the search paths.", &binary_path.to_str().unwrap(), lib.err().unwrap())
         });

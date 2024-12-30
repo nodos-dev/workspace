@@ -10,7 +10,7 @@ use indicatif::ProgressBar;
 use linked_hash_set::LinkedHashSet;
 
 use crate::nosman::command::{Command, CommandError, CommandResult};
-use crate::nosman::command::CommandError::{InvalidArgumentError, IOError};
+use crate::nosman::command::CommandError::{InvalidArgument, IO};
 use crate::nosman::command::init::InitCommand;
 use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::common::{download_and_extract};
@@ -120,7 +120,7 @@ impl GetCommand {
         if !Self::temp_remove(&pb, &cur_dst_path, &removed_path, dont_ask) {
             pb.println(format!("Failed to remove file: {}", cur_dst_path.display()).red().to_string());
             Self::rollback(&pb, removed, new_paths);
-            return Err(IOError { file: cur_dst_path.display().to_string(), message: "Failed to remove file".to_string() });
+            return Err(IO { file: cur_dst_path.display().to_string(), message: "Failed to remove file".to_string() });
         }
         Ok(())
     }
@@ -152,7 +152,7 @@ impl GetCommand {
         if let Some(version) = version {
             let version_start = SemVer::parse_from_string(version).expect(format!("Invalid semantic version: {}", version).as_str());
             if version_start.minor.is_none() {
-                return Err(InvalidArgumentError { message: "Please provide a minor version too!".to_string() });
+                return Err(InvalidArgument { message: "Please provide a minor version too!".to_string() });
             }
             let version_end = version_start.get_one_up();
             res = workspace.index_cache.get_latest_compatible_release_within_range(nodos_name, &version_start, &version_end);
@@ -162,14 +162,14 @@ impl GetCommand {
         }
         if res.is_none() {
             return if version.is_none() {
-                Err(InvalidArgumentError { message: format!("No release found for {}", nodos_name) })
+                Err(InvalidArgument { message: format!("No release found for {}", nodos_name) })
             } else {
-                Err(InvalidArgumentError { message: format!("No release found for {} version {}", nodos_name, version.unwrap()) })
+                Err(InvalidArgument { message: format!("No release found for {} version {}", nodos_name, version.unwrap()) })
             }
         }
         let (package_type, release) = res.unwrap();
         if *package_type != PackageType::Nodos {
-            return Err(InvalidArgumentError { message: format!("Package {} found in the index is not a Nodos package", nodos_name) });
+            return Err(InvalidArgument { message: format!("Package {} found in the index is not a Nodos package", nodos_name) });
         }
         let tmpdir = tempfile::tempdir()?;
         let downloaded_path = tmpdir.path().to_path_buf();
@@ -299,7 +299,7 @@ impl GetCommand {
                 }
                 if res.is_err() {
                     Self::rollback(&pb, &removed, &new_paths);
-                    return Err(IOError { file: cur_dst_path.display().to_string(), message: "Failed to copy file".to_string() });
+                    return Err(IO { file: cur_dst_path.display().to_string(), message: "Failed to copy file".to_string() });
                 }
                 new_paths.insert(cur_dst_path.clone());
             }
@@ -337,7 +337,7 @@ impl GetCommand {
             pb.println("Updating nosman");
             let res = self_replace::self_replace(&file_path);
             if let Err(e) = res {
-                return Err(IOError { file: current_exe.display().to_string(), message: format!("Error replacing executable: {}", e) });
+                return Err(IO { file: current_exe.display().to_string(), message: format!("Error replacing executable: {}", e) });
             }
         }
 

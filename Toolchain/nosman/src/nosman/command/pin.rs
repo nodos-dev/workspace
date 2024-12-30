@@ -2,7 +2,7 @@ use clap::{ArgMatches};
 use colored::Colorize;
 use inquire::{MultiSelect, Select, Text};
 use crate::nosman::command::{Command, CommandResult};
-use crate::nosman::command::CommandError::{RuntimeError, InvalidArgumentError};
+use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::constants;
 use crate::nosman::workspace::{Workspace};
 
@@ -16,14 +16,14 @@ impl PinCommand {
         let mut node_def;
         let node_defs = workspace.get_node_definitions(node_class_name);
         if node_defs.len() == 0 {
-            return Err(InvalidArgumentError { message: format!("Node class {} not found", node_class_name) });
+            return Err(InvalidArgument { message: format!("Node class {} not found", node_class_name) });
         }
         else if node_defs.len() > 1 {
             // Interactive selection
             let selection = Select::new(format!("Multiple node classes found with name {}. Please select one:", node_class_name).as_str(), node_defs)
                 .prompt();
             if let Err(e) = selection {
-                return Err(RuntimeError { message: format!("Failed to select node class: {}", e) });
+                return Err(Runtime { message: format!("Failed to select node class: {}", e) });
             }
             else {
                 node_def = selection.unwrap().clone();
@@ -53,13 +53,13 @@ impl PinCommand {
                     .expect("Failed to write node class definition file");
                 println!("{}", format!("Pin '{}' removed from node class '{}'", pin_name, node_class_name).green());
             } else {
-                return Err(InvalidArgumentError { message: format!("Pin '{}' not found in node class '{}'", pin_name, node_class_name) });
+                return Err(InvalidArgument { message: format!("Pin '{}' not found in node class '{}'", pin_name, node_class_name) });
             }
         } else {
             // Check if a pin with the same name already exists
             for pin in pins_json.iter() {
                 if pin.get("name").expect("Failed to get 'name' field in pin").as_str().expect("Failed to parse 'name' field in pin") == pin_name {
-                    return Err(InvalidArgumentError { message: format!("Pin '{}' already exists in node class '{}'", pin_name, node_class_name) });
+                    return Err(InvalidArgument { message: format!("Pin '{}' already exists in node class '{}'", pin_name, node_class_name) });
                 }
             }
             let mut pin_json = serde_json::Map::new();
@@ -70,7 +70,7 @@ impl PinCommand {
                 let selection = Select::new("Select pin show-as:", constants::POSSIBLE_SHOW_AS.to_vec())
                     .prompt();
                 if let Err(e) = selection {
-                    return Err(RuntimeError { message: format!("Failed to select pin show-as: {}", e) });
+                    return Err(Runtime { message: format!("Failed to select pin show-as: {}", e) });
                 }
                 else {
                     show_as_out = selection.unwrap().to_string();
@@ -86,7 +86,7 @@ impl PinCommand {
                 let selection = MultiSelect::new("Select pin can-show-as:", constants::POSSIBLE_SHOW_AS.to_vec())
                     .prompt();
                 if let Err(e) = selection {
-                    return Err(RuntimeError { message: format!("Failed to select pin can-show-as: {}", e) });
+                    return Err(Runtime { message: format!("Failed to select pin can-show-as: {}", e) });
                 }
                 else {
                     let mut input = false;

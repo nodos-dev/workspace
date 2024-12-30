@@ -19,7 +19,7 @@ use zip::write::{SimpleFileOptions};
 use chrono::{Utc};
 
 use crate::nosman::command::{Command, CommandResult};
-use crate::nosman::command::CommandError::{RuntimeError, InvalidArgumentError};
+use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::constants;
 use crate::nosman::index::{PackageReleaseEntry, PackageType, SemVer};
 use crate::nosman::module::{load_module, PackageIdentifier};
@@ -120,14 +120,14 @@ impl PublishCommand {
             .output()
             .is_ok();
         if !git_installed {
-            return Err(RuntimeError { message: "git is not on PATH".to_string() });
+            return Err(Runtime { message: "git is not on PATH".to_string() });
         }
         let gh_installed = std::process::Command::new("gh")
             .arg("--version")
             .output()
             .is_ok();
         if !gh_installed {
-            return Err(RuntimeError { message: "GitHub CLI client 'gh' is not on PATH".to_string() });
+            return Err(Runtime { message: "GitHub CLI client 'gh' is not on PATH".to_string() });
         }
 
         let target_platform = if opt_target_platform.is_none() {
@@ -139,7 +139,7 @@ impl PublishCommand {
         };
 
         if !path.exists() {
-            return Err(InvalidArgumentError { message: format!("Path {} does not exist", path.display()) });
+            return Err(InvalidArgument { message: format!("Path {} does not exist", path.display()) });
         }
 
         let abs_path = dunce::canonicalize(path).expect(format!("Failed to canonicalize path: {}", path.display()).as_str());
@@ -168,16 +168,16 @@ impl PublishCommand {
 
             let res = get_plugin_manifest_file(&abs_path);
             if res.is_err() {
-                return Err(InvalidArgumentError { message: res.err().unwrap() });
+                return Err(InvalidArgument { message: res.err().unwrap() });
             }
             let plugin_manifest_file = res.unwrap();
             let res = get_subsystem_manifest_file(&abs_path);
             if res.is_err() {
-                return Err(InvalidArgumentError { message: res.err().unwrap() });
+                return Err(InvalidArgument { message: res.err().unwrap() });
             }
             let subsystem_manifest_file = res.unwrap();
             if plugin_manifest_file.is_some() && subsystem_manifest_file.is_some() {
-                return Err(InvalidArgumentError { message: format!("Multiple module manifest files found in {}", abs_path.display()) });
+                return Err(InvalidArgument { message: format!("Multiple module manifest files found in {}", abs_path.display()) });
             }
 
             if plugin_manifest_file.is_some() {
@@ -253,10 +253,10 @@ impl PublishCommand {
         let package_type = package_type.unwrap();
 
         if name.is_none() {
-            return Err(InvalidArgumentError { message: "Name is not provided and could not be inferred".to_string() });
+            return Err(InvalidArgument { message: "Name is not provided and could not be inferred".to_string() });
         }
         if version.is_none() {
-            return Err(InvalidArgumentError { message: "Version is not provided and could not be inferred".to_string() });
+            return Err(InvalidArgument { message: "Version is not provided and could not be inferred".to_string() });
         }
 
         println!("Target platform: {:?}", target_platform);
@@ -270,10 +270,10 @@ impl PublishCommand {
         pb.println(format!("Publishing {}", tag).as_str().yellow().to_string());
         pb.set_message("Preparing release");
         if !Self::is_name_valid(&name) {
-            return Err(InvalidArgumentError { message: format!("Name {} is not valid. It should match regex [a-z0-9._]", name) });
+            return Err(InvalidArgument { message: format!("Name {} is not valid. It should match regex [a-z0-9._]", name) });
         }
         if None == SemVer::parse_from_string(version.as_str()) {
-            return Err(InvalidArgumentError { message: format!("Version should be semantic-versioning compatible: {}", version) });
+            return Err(InvalidArgument { message: format!("Version should be semantic-versioning compatible: {}", version) });
         }
         let artifact_file_path;
         let temp_dir = tempdir()?;
@@ -370,7 +370,7 @@ impl PublishCommand {
         // Create index entry for the release
         let remote = workspace.find_remote(remote_name);
         if remote.is_none() {
-            return Err(InvalidArgumentError { message: format!("Remote {} not found", remote_name) });
+            return Err(InvalidArgument { message: format!("Remote {} not found", remote_name) });
         }
         let remote = remote.unwrap();
 
@@ -401,7 +401,7 @@ impl PublishCommand {
         println!("Adding package {} version {} release entry to remote {}", name, version, remote.name);
         let res = remote.fetch_add(dry_run, verbose, &workspace, &name, vendor, &package_type, release, publisher_name, publisher_email);
         if res.is_err() {
-            return Err(RuntimeError { message: res.err().unwrap() });
+            return Err(Runtime { message: res.err().unwrap() });
         }
         let commit_sha = res.unwrap();
 
@@ -410,7 +410,7 @@ impl PublishCommand {
         let notes: &String = release_notes.unwrap_or(&empty_string);
         let res = remote.create_gh_release(dry_run, verbose, &workspace, &commit_sha, &name, &version, &target_platform.to_string(), &tag, vec![artifact_file_path], notes);
         if res.is_err() {
-            return Err(RuntimeError { message: res.err().unwrap() });
+            return Err(Runtime { message: res.err().unwrap() });
         }
         println!("{}", format!("Release {} on remote {} created successfully", format!("{}-{}", name, version), remote.name).as_str().green().to_string());
         Ok(true)

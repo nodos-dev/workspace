@@ -3,7 +3,7 @@ use clap::{ArgMatches};
 use serde_json::{json, Value};
 use crate::nosman::command::{Command, CommandResult};
 
-use crate::nosman::command::CommandError::InvalidArgumentError;
+use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{SemVer};
 use crate::nosman::module::{get_dependency_arguments, PackageIdentifier};
 use crate::nosman::workspace::{Workspace};
@@ -52,10 +52,10 @@ impl DependsCommands {
                 } else {
                     // Convert the `Option` from `parse_from_string` to a `Result` so we can use `map_err`
                     let version_start = SemVer::parse_from_string(&dep_id.version)
-                        .ok_or(InvalidArgumentError { message: "Invalid version format".to_string() })?;
+                        .ok_or(InvalidArgument { message: "Invalid version format".to_string() })?;
 
                     if version_start.minor.is_none() {
-                        return Err(InvalidArgumentError { message: "Please provide a minor version too!".to_string() });
+                        return Err(InvalidArgument { message: "Please provide a minor version too!".to_string() });
                     }
 
                     let version_end = version_start.get_one_up();
@@ -69,7 +69,7 @@ impl DependsCommands {
             }
 
             if dep.name.is_empty() {
-                return Err(InvalidArgumentError { message: format!("Dependency {} not found neither in local nor remotes", dep_id.name) });
+                return Err(InvalidArgument { message: format!("Dependency {} not found neither in local nor remotes", dep_id.name) });
             }
 
             // Check if the dependency is already in the manifest
@@ -105,7 +105,7 @@ impl Command for DependsCommands {
         let mut success = false;
         let deps = get_dependency_arguments(args, true, &mut success);
         if !success{
-            return Err(InvalidArgumentError { message: format!("Invalid dependency format") });
+            return Err(InvalidArgument { message: format!("Invalid dependency format") });
         }
         self.run_depends(workspace, module_name, &deps)
     }

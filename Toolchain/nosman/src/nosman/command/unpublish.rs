@@ -4,7 +4,7 @@ use crate::nosman;
 use crate::nosman::command::{Command, CommandResult};
 
 use nosman::workspace::Workspace;
-use crate::nosman::command::CommandError::{RuntimeError, InvalidArgumentError};
+use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 
 pub struct UnpublishCommand {
 }
@@ -13,7 +13,7 @@ impl UnpublishCommand {
     fn run_unpublish(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, remote_name: &String, package_name: &String, version: Option<&String>) -> CommandResult {
         let remote = workspace.find_remote(remote_name);
         if remote.is_none() {
-            return Err(InvalidArgumentError { message: format!("Remote {} not found", remote_name) });
+            return Err(InvalidArgument { message: format!("Remote {} not found", remote_name) });
         }
         let remote = remote.unwrap();
         if version.is_none() {
@@ -21,11 +21,11 @@ impl UnpublishCommand {
         }
         let res = remote.fetch(&workspace);
         if let Err(msg) = res {
-            return Err(RuntimeError { message: msg });
+            return Err(Runtime { message: msg });
         }
         let res = remote.remove_release(dry_run, verbose, &workspace, package_name, version);
         if let Err(msg) = res {
-            return Err(RuntimeError { message: msg });
+            return Err(Runtime { message: msg });
         }
         if let Some(version) = version {
             println!("{}", format!("Package {} version {} unpublished", package_name, version).yellow());

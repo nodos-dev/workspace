@@ -3,7 +3,7 @@ use colored::Colorize;
 
 use crate::nosman::command::{Command, CommandResult};
 
-use crate::nosman::command::CommandError::{InvalidArgumentError};
+use crate::nosman::command::CommandError::{InvalidArgument};
 use crate::nosman::workspace::{find_root_from, Workspace};
 
 pub struct InitCommand {
@@ -13,7 +13,7 @@ impl InitCommand {
     pub(crate) fn run_init(&self, workspace: &mut Workspace) -> CommandResult {
         let directory = &workspace.root;
         if let Some(ws) = find_root_from(&directory.to_path_buf()) {
-            return Err(InvalidArgumentError { message: format!("Directory {} is already under a workspace: {}", directory.display(), ws.display())});
+            return Err(InvalidArgument { message: format!("Directory {} is already under a workspace: {}", directory.display(), ws.display())});
         }
         println!("Creating a new workspace under {:?}", directory);
         workspace.recreate()?;

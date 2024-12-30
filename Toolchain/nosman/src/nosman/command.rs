@@ -23,24 +23,24 @@ mod depend;
 use std::io;
 
 use clap::ArgMatches;
-use err_derive::Error;
+use thiserror::Error;
 use crate::nosman::workspace::Workspace;
 
-#[derive(Debug, Error)]
+#[derive(Error, Debug)]
 pub enum CommandError {
-    #[error(display = "I/O (file {}): {}", file, message)]
-    IOError{ file: String, message: String },
-    #[error(display = "Invalid argument: {}", message)]
-    InvalidArgumentError { message: String },
-    #[error(display = "Zip: {}", message)]
-    ZipError { message: String },
-    #[error(display = "{}", message)]
-    RuntimeError { message: String },
+    #[error("I/O (file {}): {}", file, message)]
+    IO { file: String, message: String },
+    #[error("Invalid argument: {}", message)]
+    InvalidArgument { message: String },
+    #[error("Zip: {}", message)]
+    Zip { message: String },
+    #[error("{}", message)]
+    Runtime { message: String },
 }
 
 impl From<io::Error> for CommandError {
     fn from(err: io::Error) -> Self {
-        CommandError::IOError { file: "Unknown".to_string(), message: format!("{}", err) }
+        CommandError::IO { file: "Unknown".to_string(), message: format!("{}", err) }
     }
 }
 

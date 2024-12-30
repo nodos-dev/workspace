@@ -21,7 +21,7 @@ impl SampleCommand {
         if let Some(pkg_name) = opt_pkg_name {
             InstallCommand{}.run_install(workspace, pkg_name, None, true, output_dir, None, true)
         } else {
-            Err (crate::nosman::command::CommandError::RuntimeError { message: format!("Sample {} not found", name) })
+            Err (crate::nosman::command::CommandError::Runtime { message: format!("Sample {} not found", name) })
         }
     }
 }
