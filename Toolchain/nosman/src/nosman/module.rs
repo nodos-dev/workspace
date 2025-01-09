@@ -383,6 +383,34 @@ pub fn get_module_type_from_manifest_file_path(file_path: &PathBuf) -> Option<Mo
     }
 }
 
+pub fn get_module_manifest_and_type(dir: &PathBuf) -> Result<Option<(ModuleType, PathBuf)>, CommandError> {
+    let res = get_plugin_manifest_file(&dir);
+    if res.is_err() {
+        return Err(InvalidArgument { message: res.err().unwrap() });
+    }
+    let plugin_manifest_file = res.unwrap();
+    let res = get_subsystem_manifest_file(&dir);
+    if res.is_err() {
+        return Err(InvalidArgument { message: res.err().unwrap() });
+    }
+    let subsystem_manifest_file = res.unwrap();
+    if plugin_manifest_file.is_some() && subsystem_manifest_file.is_some() {
+        return Err(InvalidArgument { message: format!("Multiple module manifest files found in {}", dir.display()) });
+    }
+
+    let mut opt_module_type = None;
+    if plugin_manifest_file.is_some() {
+        opt_module_type = Some(ModuleType::Plugin);
+    } else if subsystem_manifest_file.is_some() {
+        opt_module_type = Some(ModuleType::Subsystem);
+    }
+    let opt_manifest_file = plugin_manifest_file.or(subsystem_manifest_file);
+    if let Some(manifest) = opt_manifest_file {
+        return Ok(Some((opt_module_type.unwrap(), manifest)))
+    }
+    Ok(None)
+}
+
 pub fn get_module_manifests(folder: &PathBuf, silent: bool) -> Vec<(ModuleType, PathBuf)> {
     let pb = get_progress_bar(silent);
     pb.enable_steady_tick(Duration::from_millis(100));

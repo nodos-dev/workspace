@@ -49,7 +49,7 @@ pub enum ModuleType {
     Subsystem,
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone, Default)]
 pub struct SemVer {
     #[serde(alias = "major", alias = "MAJOR", alias = "Major")]
     pub major: u32,
@@ -180,6 +180,9 @@ impl SemVer {
 		}
 		self.minor >= requested.minor
 	}
+    pub fn is_equal_excl_build_no(&self, other: &SemVer) -> bool {
+        self.major == other.major && self.minor == other.minor && self.patch == other.patch
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -211,6 +214,24 @@ pub struct PackageReleaseEntry {
 pub struct PackageReleases {
     pub(crate) name: String,
     pub(crate) releases: Vec<PackageReleaseEntry>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum VersionCheckStrategy {
+    None,
+    Strict, // If the version components major, minor & patch is the same, it is considered the same version
+    Loose, // If the version string is the same, it is considered the same version
+}
+
+impl VersionCheckStrategy {
+    pub fn from_str(s: &str) -> VersionCheckStrategy {
+        match s {
+            "none" => VersionCheckStrategy::None,
+            "strict" => VersionCheckStrategy::Strict,
+            "loose" => VersionCheckStrategy::Loose,
+            _ => VersionCheckStrategy::None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -308,7 +329,8 @@ impl Remote {
     pub fn fetch_add(&self, dry_run: bool, verbose: bool, workspace: &Workspace, name: &String,
                      vendor: Option<&String>, package_type: &PackageType,
                      release: PackageReleaseEntry, publisher_name: Option<&String>,
-                     publisher_email: Option<&String>) -> Result<String, String> {
+                     publisher_email: Option<&String>,
+                     version_check_strategy: &VersionCheckStrategy) -> Result<String, String> {
         let repo_dir = workspace.get_remote_repo_dir(&self);
         let mut package_list: Vec<PackageIndexEntry> = self.fetch(workspace)?;
         // If package does not exist, add it
@@ -381,10 +403,26 @@ impl Remote {
         let version = release.version.clone();
         let platform = release.platform.clone();
         // Check if target_platform exists for the same version in release_list
+        let sem_ver = SemVer::parse_from_string(&version).expect(format!("{} is not a valid semantic version", version).as_str());
         for existing_release in &release_list.releases {
-            if existing_release.platform.is_some() && release.platform.is_some() && existing_release.version == version {
-                if existing_release.platform == release.platform {
-                    return Err(format!("Release {}-{} for platform {} already exists!", name, version, &release.platform.unwrap()));
+            if existing_release.platform.is_some() && release.platform.is_some() {
+                if existing_release.platform != release.platform {
+                    continue;
+                }
+                let already_exists: bool = match version_check_strategy {
+                    VersionCheckStrategy::None => {
+                        false
+                    }
+                    VersionCheckStrategy::Strict => {
+                        let existing_release_sem_ver = SemVer::parse_from_string(&existing_release.version).unwrap_or_default();
+                        sem_ver.is_equal_excl_build_no(&existing_release_sem_ver)
+                    }
+                    VersionCheckStrategy::Loose => {
+                        existing_release.version == version
+                    }
+                };
+                if already_exists {
+                    return Err(format!("Release {}-{} for platform {} already exists!", name, existing_release.version, &release.platform.unwrap()));
                 }
             }
         }
