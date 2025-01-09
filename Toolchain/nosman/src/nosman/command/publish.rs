@@ -21,9 +21,8 @@ use chrono::{Utc};
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::constants;
-use crate::nosman::index::{PackageReleaseEntry, PackageType, SemVer};
-use crate::nosman::module::{load_module, PackageIdentifier};
-use crate::nosman::path::{get_plugin_manifest_file, get_subsystem_manifest_file};
+use crate::nosman::index::{ModuleType, PackageReleaseEntry, PackageType, SemVer, VersionCheckStrategy};
+use crate::nosman::module::{get_module_manifest_and_type, load_module, PackageIdentifier};
 use crate::nosman::platform::{get_host_platform, Platform};
 use crate::nosman::workspace::Workspace;
 
@@ -111,24 +110,13 @@ impl PublishCommand {
         // Should be lowercase alphanumeric, with only . and _ symbols are permitted
         name.chars().all(|c| c == '.' || c == '_' || c.is_numeric() || c.is_ascii_lowercase())
     }
-    pub fn run_publish(&self, workspace: &Workspace, dry_run: bool, verbose: bool, path: &PathBuf, mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
-                   mut package_type: Option<PackageType>, remote_name: &String, vendor: Option<&String>,
-                   publisher_name: Option<&String>, publisher_email: Option<&String>, release_tags: &Vec<String>, opt_target_platform: Option<&String>, release_notes: Option<&String>) -> CommandResult {
+    pub fn run_publish(&self, workspace: &Workspace, dry_run: bool, verbose: bool, path: &PathBuf, 
+                       mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
+                       version_check_strategy: &VersionCheckStrategy, mut package_type: Option<PackageType>, 
+                       remote_name: &String, vendor: Option<&String>, publisher_name: Option<&String>, publisher_email: Option<&String>, 
+                       release_tags: &Vec<String>, opt_target_platform: Option<&String>, release_notes: Option<&String>) -> CommandResult {
         // Check if git and gh is installed.
-        let git_installed = std::process::Command::new("git")
-            .arg("--version")
-            .output()
-            .is_ok();
-        if !git_installed {
-            return Err(Runtime { message: "git is not on PATH".to_string() });
-        }
-        let gh_installed = std::process::Command::new("gh")
-            .arg("--version")
-            .output()
-            .is_ok();
-        if !gh_installed {
-            return Err(Runtime { message: "GitHub CLI client 'gh' is not on PATH".to_string() });
-        }
+        Self::check_cli_tools()?;
 
         let target_platform = if opt_target_platform.is_none() {
             let current_platform = get_host_platform();
@@ -166,27 +154,17 @@ impl PublishCommand {
                 }
             }
 
-            let res = get_plugin_manifest_file(&abs_path);
+            let res = get_module_manifest_and_type(&abs_path);
             if res.is_err() {
-                return Err(InvalidArgument { message: res.err().unwrap() });
+                return Err(res.err().unwrap());
             }
-            let plugin_manifest_file = res.unwrap();
-            let res = get_subsystem_manifest_file(&abs_path);
-            if res.is_err() {
-                return Err(InvalidArgument { message: res.err().unwrap() });
+            if let Ok(Some((module_type, file))) = res {
+                manifest_file = Some(file);
+                package_type = Some(match module_type {
+                    ModuleType::Plugin => PackageType::Plugin,
+                    ModuleType::Subsystem => PackageType::Subsystem
+                });
             }
-            let subsystem_manifest_file = res.unwrap();
-            if plugin_manifest_file.is_some() && subsystem_manifest_file.is_some() {
-                return Err(InvalidArgument { message: format!("Multiple module manifest files found in {}", abs_path.display()) });
-            }
-
-            if plugin_manifest_file.is_some() {
-                package_type = Some(PackageType::Plugin);
-            } else if subsystem_manifest_file.is_some() {
-                package_type = Some(PackageType::Subsystem);
-            }
-
-            manifest_file = plugin_manifest_file.or(subsystem_manifest_file);
             if manifest_file.is_some() {
                 let package_type = package_type.as_ref().unwrap();
                 let manifest_file = manifest_file.as_ref().unwrap();
@@ -272,7 +250,7 @@ impl PublishCommand {
         if !Self::is_name_valid(&name) {
             return Err(InvalidArgument { message: format!("Name {} is not valid. It should match regex [a-z0-9._]", name) });
         }
-        if None == SemVer::parse_from_string(version.as_str()) {
+        if SemVer::parse_from_string(version.as_str()).is_none() {
             return Err(InvalidArgument { message: format!("Version should be semantic-versioning compatible: {}", version) });
         }
         let artifact_file_path;
@@ -399,7 +377,7 @@ impl PublishCommand {
         pb.finish_and_clear();
 
         println!("Adding package {} version {} release entry to remote {}", name, version, remote.name);
-        let res = remote.fetch_add(dry_run, verbose, &workspace, &name, vendor, &package_type, release, publisher_name, publisher_email);
+        let res = remote.fetch_add(dry_run, verbose, &workspace, &name, vendor, &package_type, release, publisher_name, publisher_email, &version_check_strategy);
         if res.is_err() {
             return Err(Runtime { message: res.err().unwrap() });
         }
@@ -413,6 +391,24 @@ impl PublishCommand {
             return Err(Runtime { message: res.err().unwrap() });
         }
         println!("{}", format!("Release {} on remote {} created successfully", format!("{}-{}", name, version), remote.name).as_str().green().to_string());
+        Ok(true)
+    }
+
+    fn check_cli_tools() -> CommandResult {
+        let git_installed = std::process::Command::new("git")
+            .arg("--version")
+            .output()
+            .is_ok();
+        if !git_installed {
+            return Err(Runtime { message: "git is not on PATH".to_string() });
+        }
+        let gh_installed = std::process::Command::new("gh")
+            .arg("--version")
+            .output()
+            .is_ok();
+        if !gh_installed {
+            return Err(Runtime { message: "GitHub CLI client 'gh' is not on PATH".to_string() });
+        }
         Ok(true)
     }
 }
@@ -439,7 +435,9 @@ impl Command for PublishCommand {
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
         let target_platform: Option<&String> = args.get_one::<String>("target_platform");
-        self.run_publish(workspace, *dry_run, *verbose, &path, name, version, version_suffix, package_type, &remote_name, vendor, publisher_name, publisher_email, &release_tags, target_platform, None)
+        let version_check_strategy = VersionCheckStrategy::from_str(args.get_one::<String>("version_check").unwrap().as_str());
+        self.run_publish(workspace, *dry_run, *verbose, &path, name, version, version_suffix, &version_check_strategy,
+                         package_type, &remote_name, vendor, publisher_name, publisher_email, &release_tags, target_platform, None)
     }
 
     fn needs_workspace(&self) -> bool {

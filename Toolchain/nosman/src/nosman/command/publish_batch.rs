@@ -10,6 +10,7 @@ use crate::nosman::constants;
 use crate::nosman::module::get_module_manifests;
 
 use path_slash::PathExt as _;
+use crate::nosman::index::VersionCheckStrategy;
 use crate::nosman::workspace::Workspace;
 
 pub struct PublishBatchCommand {
@@ -17,7 +18,7 @@ pub struct PublishBatchCommand {
 
 impl PublishBatchCommand {
     fn run_publish_batch(&self, workspace: &Workspace, dry_run: bool, verbose: bool, remote_name: &String, repo_path: &PathBuf, compare_with: Option<&String>,
-                        version_suffix: &String, vendor: Option<&String>, publisher_name: Option<&String>,
+                        version_suffix: &String, version_check_strategy: &VersionCheckStrategy, vendor: Option<&String>, publisher_name: Option<&String>,
                         publisher_email: Option<&String>, release_tags: &Vec<String>, target_platform: Option<&String>, release_notes: Option<&String>) -> CommandResult {
         if !repo_path.exists() {
             return Err(InvalidArgument { message: format!("Repo {} does not exist", repo_path.display()) });
@@ -103,7 +104,7 @@ impl PublishBatchCommand {
             return Ok(true);
         }
         for module_root in to_be_published {
-            PublishCommand {}.run_publish(workspace, dry_run, verbose, &module_root, None, None, version_suffix, None, remote_name, vendor, publisher_name, publisher_email, release_tags, target_platform, release_notes)?;
+            PublishCommand {}.run_publish(workspace, dry_run, verbose, &module_root, None, None, version_suffix, &version_check_strategy, None, remote_name, vendor, publisher_name, publisher_email, release_tags, target_platform, release_notes)?;
         }
 
         Ok(true)
@@ -134,7 +135,9 @@ impl Command for PublishBatchCommand {
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
         let target_platform = args.get_one::<String>("target_platform");
         let release_notes = args.get_one::<String>("release_notes");
-        self.run_publish_batch(workspace, *dry_run, *verbose, &remote_name, &repo_path, opt_compare_with, &version_suffix, vendor, publisher_name, publisher_email, &release_tags, target_platform, release_notes)
+        let version_check_strategy = VersionCheckStrategy::from_str(args.get_one::<String>("version_check").unwrap().as_str());
+        self.run_publish_batch(workspace, *dry_run, *verbose, &remote_name, &repo_path, opt_compare_with, &version_suffix, &version_check_strategy, 
+                               vendor, publisher_name, publisher_email, &release_tags, target_platform, release_notes)
     }
 
     fn needs_workspace(&self) -> bool {

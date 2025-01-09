@@ -11,3 +11,5 @@ pub(crate) static PUBLISH_OPTIONS_FILE_NAME: &str = ".nospub";
 
 pub(crate) static POSSIBLE_CAN_SHOW_AS: [&str; 7] = ["PROPERTY_ONLY", "INPUT_PIN_ONLY", "INPUT_PIN_OR_PROPERTY", "OUTPUT_PIN_OR_PROPERTY", "OUTPUT_PIN_ONLY", "INPUT_OUTPUT", "INPUT_OUTPUT_PROPERTY"];
 pub(crate) static POSSIBLE_SHOW_AS: [&str; 3] = ["INPUT_PIN", "OUTPUT_PIN", "PROPERTY"];
+
+pub(crate) static POSSIBLE_VERSION_CHECK_STRATEGY: [&str; 3] = ["none", "strict", "loose"];
