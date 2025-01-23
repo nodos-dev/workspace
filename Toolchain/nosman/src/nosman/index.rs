@@ -443,12 +443,14 @@ impl Remote {
         let commit_msg;
         if let Some(version) = version_opt {
             let mut found = false;
-            for i in 0..release_list.releases.len() {
-                if release_list.releases[i].version == *version {
-                    release_list.releases.remove(i);
+            release_list.releases.retain(|release| {
+                if release.version == *version {
                     found = true;
+                    false // Remove this element
+                } else {
+                    true // Keep this element
                 }
-            }
+            });
             if !found {
                 return Err(format!("No release found for package {} version {}", name, version));
             }
