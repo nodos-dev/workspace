@@ -129,10 +129,7 @@ impl GetCommand {
         let path = workspace.root.clone();
         if !workspace.ready() {
             println!("No workspace found, initializing one under {:?}", path);
-            let res = InitCommand{}.run_init(workspace);
-            if res.is_err() {
-                return res;
-            }
+            InitCommand{}.run_init(workspace)?;
         }
 
         let pb: ProgressBar = ProgressBar::new_spinner();
@@ -174,10 +171,7 @@ impl GetCommand {
         let tmpdir = tempfile::tempdir()?;
         let downloaded_path = tmpdir.path().to_path_buf();
         pb.println(format!("Downloading and extracting {}-{}", nodos_name, release.version));
-        let res = download_and_extract(&release.url, &downloaded_path);
-        if let Err(e) = res {
-            return Err(e);
-        }
+        download_and_extract(&release.url, &downloaded_path)?;
         pb.println(format!("Installing {}-{}", nodos_name, release.version));
 
         // Get current executable's absolute path
@@ -248,6 +242,7 @@ impl GetCommand {
                                         let eula_confirmed_path = cur_dst_path.parent().unwrap().join("EULA_CONFIRMED.json");
                                         let mut file = File::create(&eula_confirmed_path)?;
                                         file.write_all(eula_confirmed_contents.as_bytes())?;
+                                        leftovers.remove(&cur_dst_path);
                                         continue;
                                     }
                                 }
