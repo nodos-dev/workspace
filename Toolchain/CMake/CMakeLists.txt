@@ -75,17 +75,22 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 		add_library(${nos_plugin_sdk_target} INTERFACE)
 		target_compile_definitions(${nos_plugin_sdk_target} INTERFACE "-DNOMINMAX")
 		target_include_directories(${nos_plugin_sdk_target} INTERFACE ${nos_sdk_dir}/include)
-		target_sources(${nos_plugin_sdk_target} INTERFACE ${nos_sdk_dir}/nosSDKCommon.natvis)
-
+			
 		# Create nosSubsystemSDK target
 		add_library(${nos_subsystem_sdk_target} INTERFACE)
 		target_compile_definitions(${nos_subsystem_sdk_target} INTERFACE "-DNOMINMAX")
 		target_include_directories(${nos_subsystem_sdk_target} INTERFACE ${nos_sdk_dir}/include)
-		target_sources(${nos_plugin_sdk_target} INTERFACE ${nos_sdk_dir}/nosSDKCommon.natvis)
 	
 		# Exclude from all
 		set_target_properties(${nos_plugin_sdk_target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
 		set_target_properties(${nos_subsystem_sdk_target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+
+		# Add natvis
+		set(natvis_file "${nos_sdk_dir}/nosSDKCommon.natvis")
+		if(EXISTS ${natvis_file})
+			target_sources(${nos_plugin_sdk_target} INTERFACE ${natvis_file})
+			target_sources(${nos_subsystem_sdk_target} INTERFACE ${natvis_file})
+		endif()
 	
 		# If binaries folder exists, add a custom target for nosLauncher and nosEditor and VS_DEBUGGER options
 		set(nos_binaries_dir "${nos_sdk_dir}/../Binaries")
