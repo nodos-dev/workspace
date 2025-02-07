@@ -98,7 +98,7 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 			# Create nosLauncher target
 			set(nos_launcher_target nosLauncher_${version_target_suffix})
 			add_custom_target(${nos_launcher_target}
-				COMMAND ${nos_binaries_dir}/nosLauncher
+				COMMAND ${nos_binaries_dir}/nosLauncher${CMAKE_EXECUTABLE_SUFFIX}
 				WORKING_DIRECTORY ${nos_sdk_dir}/bin
 				DEPENDS ${nos_plugin_sdk_target} ${nos_subsystem_sdk_target}
 			)
@@ -106,7 +106,7 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 			# Create nosEditor target
 			set(nos_editor_target nosEditor_${version_target_suffix})
 			add_custom_target(${nos_editor_target}
-				COMMAND ${nos_binaries_dir}/nosEditor
+				COMMAND ${nos_binaries_dir}/nosEditor${CMAKE_EXECUTABLE_SUFFIX}
 				WORKING_DIRECTORY ${nos_sdk_dir}/bin
 				DEPENDS ${nos_plugin_sdk_target} ${nos_subsystem_sdk_target}
 			)
