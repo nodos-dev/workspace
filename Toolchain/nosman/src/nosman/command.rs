@@ -76,6 +76,7 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(node::NodeCommand {}),
         Box::new(dev::DevPullCommand {}),
         Box::new(dev::DevGenCommand {}),
+        Box::new(dev::DevStatusCommand {}),
         Box::new(launch::LaunchCommand {}),
         Box::new(extension::Extension {}),
         Box::new(depend::DependsCommands{}),

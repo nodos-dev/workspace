@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::Duration;
 use clap::{ArgMatches};
 use colored::Colorize;
@@ -9,8 +11,7 @@ use CommandError::InvalidArgument;
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::workspace::Workspace;
 
-pub struct DevPullCommand {
-}
+pub struct DevPullCommand {}
 
 impl DevPullCommand {
     fn run_pull(&self, dirs: Vec<PathBuf>) -> Result<bool, CommandError> {
@@ -117,8 +118,7 @@ impl Command for DevPullCommand {
 }
 
 
-pub struct DevGenCommand {
-}
+pub struct DevGenCommand {}
 
 impl DevGenCommand {
     fn run_gen(&self, lang_tool: &String, extra_args: Vec<String>) -> Result<bool, CommandError> {
@@ -158,6 +158,76 @@ impl Command for DevGenCommand {
             extra_args = args.split_whitespace().map(|s| s.to_string()).collect();
         }
         self.run_gen(lang_tool, extra_args)
+    }
+
+    fn needs_workspace(&self) -> bool {
+        false
+    }
+}
+
+pub struct DevStatusCommand {}
+
+
+impl DevStatusCommand {
+    fn run_status(&self, dirs: Vec<PathBuf>) -> Result<bool, CommandError> {
+        // Scan module folder for git repositories and run "git pull" on them
+        let pb = ProgressBar::new_spinner();
+        pb.enable_steady_tick(Duration::from_millis(100));
+        pb.set_message("Scanning for git repositories...");
+        let mut git_dirs = Vec::new();
+        for dir in dirs {
+            let mut stack = Vec::new();
+            stack.push(dir);
+            while let Some(dir) = stack.pop() {
+                if dir.join(".git").is_dir() {
+                    git_dirs.push(dir);
+                    continue;
+                }
+                for entry in std::fs::read_dir(dir).expect("Failed to read directory") {
+                    let entry = entry.expect("Failed to read entry");
+                    let path = entry.path();
+                    if path.is_dir() && path.join(".git").is_dir() {
+                        git_dirs.push(path);
+                    } else if path.is_dir() {
+                        stack.push(path);
+                    }
+                }
+            }
+        }
+        pb.set_message("Scanning...");
+        // Mutex locked mutable output map
+        let output_map_locked = Mutex::new(HashMap::<PathBuf, String>::new());
+        git_dirs.par_iter().for_each(|path| {
+            // Run git status
+            let status = std::process::Command::new("git")
+                .arg("status")
+                .current_dir(&path)
+                .output()
+                .expect("Failed to run git status");
+            let status_str = String::from_utf8_lossy(&status.stdout).to_string();
+            let mut output_map = output_map_locked.lock().unwrap();
+            output_map.insert(path.clone(), status_str);
+        });
+        pb.finish_and_clear();
+        for (path, status) in output_map_locked.into_inner().unwrap() {
+            println!("{}: {}", path.display().to_string().green(), status);
+        }
+        Ok(true)
+    }
+}
+
+impl Command for DevStatusCommand {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+        if let Some(subcommand) = args.subcommand_matches("dev") {
+            return subcommand.subcommand_matches("status");
+        }
+        None
+    }
+
+    fn run(&self, _workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+        let dirs: Vec<&String> = args.get_many::<String>("dir").unwrap_or_default().collect();
+        let dirs: Vec<PathBuf> = dirs.iter().map(|s| PathBuf::from(s)).collect();
+        self.run_status(dirs)
     }
 
     fn needs_workspace(&self) -> bool {

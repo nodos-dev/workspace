@@ -583,6 +583,17 @@ fn main() {
                     .help("Arguments to pass to the underlying tool when generating project files")
                 )
             )
+            .subcommand(Command::new("status")
+                .about("Shows the status of the git repositories under the workspace")
+                .arg(Arg::new("dir")
+                    .long("directory")
+                    .short('m')
+                    .help("Path to the directory to scan for git repositories")
+                    .action(ArgAction::Append)
+                    .num_args(1)
+                    .default_values(&[".", "Engine", "Module"])
+                )
+            )
         );
 
     let workspace_dir = get_workspace_dir_from_cmd(&cmd);
