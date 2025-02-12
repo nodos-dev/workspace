@@ -145,11 +145,8 @@ impl InstalledModule {
         }
         // Read module manifest file as JSON, and read node definition files
         let manifest_json = self.read_manifest().expect(format!("Failed to read module manifest file ({})", self.manifest_path.display()).as_str());
-        let node_defs_rel_paths = manifest_json["node_definitions"].as_array();
-        if node_defs_rel_paths.is_none() {
-            return None;
-        }
-        for node_defs_rel_path in node_defs_rel_paths? {
+        let node_defs_rel_paths = manifest_json["node_definitions"].as_array()?;
+        for node_defs_rel_path in node_defs_rel_paths {
             let node_defs_path = self.get_module_dir().join(node_defs_rel_path.as_str()?);
             let node_defs_file_content = fs::read_to_string(&node_defs_path);
             if let Err(e) = node_defs_file_content {
@@ -161,8 +158,7 @@ impl InstalledModule {
             let node_defs_file_content = node_defs_file_content.trim_start_matches('\u{FEFF}');
             let node_defs: serde_json::Value = serde_json::from_str(&node_defs_file_content).expect(format!("Failed to parse node definitions file: {}", node_defs_path.display()).as_str());
             let nodes_json_array = node_defs.get("nodes").expect("Missing 'nodes' field in node definitions file").as_array().expect("'nodes' field is not an array");
-            let mut index = 0;
-            for node_json in nodes_json_array {
+            for (index, node_json) in nodes_json_array.iter().enumerate() {
                 let mut curr_class_name = node_json["class_name"].as_str().expect(format!("Missing 'class_name' field in node definition in {}", node_defs_path.display()).as_str()).to_string();
                 // If class name is not prefixed with module name, prefix it
                 if !curr_class_name.starts_with(self.info.id.name.as_str()) {
@@ -177,7 +173,6 @@ impl InstalledModule {
                         owner: self.clone(),
                     });
                 }
-                index += 1;
             }
         }
         None
@@ -593,7 +588,7 @@ pub fn load_module(verbose: bool, manifest: serde_json::Value, manifest_file_par
         let dep_res = workspace.get_latest_installed_module_for_version(dep_name, dep_version);
         if let Ok(installed_module) = dep_res {
             let dep_manifest_file_path = workspace.root.join(&installed_module.manifest_path);
-            let dep_manifest_file_contents = std::fs::read_to_string(&dep_manifest_file_path).expect("Failed to read dependency manifest file");
+            let dep_manifest_file_contents = fs::read_to_string(&dep_manifest_file_path).expect("Failed to read dependency manifest file");
             let dep_manifest: serde_json::Value = serde_json::from_str(&dep_manifest_file_contents).expect("Failed to parse dependency manifest file");
             for path_str in dep_manifest["additional_search_paths"].as_array().unwrap_or(&vec![]) {
                 let module_dir = dep_manifest_file_path.parent().unwrap();
