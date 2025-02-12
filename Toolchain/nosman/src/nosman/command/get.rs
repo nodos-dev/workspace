@@ -1,7 +1,7 @@
 use std::{fs, io};
 use std::fs::File;
 use std::io::{Error, Read, Write};
-use std::path::{PathBuf};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use clap::{ArgMatches};
 use colored::Colorize;
@@ -18,6 +18,18 @@ use crate::nosman::{common};
 use crate::nosman::workspace::{Workspace};
 
 pub struct GetCommand {
+}
+
+enum EulaFileType {
+    Confirmed,
+    Unconfirmed
+}
+
+fn is_eula_file(relpath: &Path, f_type: EulaFileType) -> bool {
+    relpath.starts_with("Engine/") && relpath.ends_with(match f_type {
+        EulaFileType::Confirmed => {"EULA_CONFIRMED.json"}
+        EulaFileType::Unconfirmed => {"EULA_UNCONFIRMED.json"}
+    })
 }
 
 impl GetCommand {
@@ -190,7 +202,7 @@ impl GetCommand {
             prev_paths.insert(curr_path.clone());
             let relative_path = curr_path.strip_prefix(&dst_path).unwrap();
             // If file is Engine/*/EULA_CONFIRMED.json, save it and check if text changed.
-            eula_confirmed_opt = if relative_path.starts_with("Engine/") && relative_path.ends_with("EULA_CONFIRMED.json") {
+            eula_confirmed_opt = if is_eula_file(relative_path, EulaFileType::Confirmed) {
                 let mut file = File::open(&curr_path)?;
                 let mut contents = String::new();
                 file.read_to_string(&mut contents)?;
@@ -215,7 +227,7 @@ impl GetCommand {
             let relative_path = curr_file_path.strip_prefix(&downloaded_path).unwrap();
             let cur_dst_path = dst_path.join(&relative_path);
             if let Some(eula_confirmed_contents) = eula_confirmed_opt.as_ref() {
-                if relative_path.starts_with("Engine/") && relative_path.ends_with("EULA_UNCONFIRMED.json") {
+                if is_eula_file(relative_path, EulaFileType::Unconfirmed) {
                     // If 'text' field is same as EULA_CONFIRMED.json, remove EULA_UNCONFIRMED.json
                     let mut file = File::open(&curr_file_path)?;
                     let mut contents = String::new();
@@ -242,7 +254,8 @@ impl GetCommand {
                                         let eula_confirmed_path = cur_dst_path.parent().unwrap().join("EULA_CONFIRMED.json");
                                         let mut file = File::create(&eula_confirmed_path)?;
                                         file.write_all(eula_confirmed_contents.as_bytes())?;
-                                        leftovers.remove(&cur_dst_path);
+                                        leftovers.remove(&eula_confirmed_path);
+                                        prev_paths.remove(&eula_confirmed_path);
                                         continue;
                                     }
                                 }
