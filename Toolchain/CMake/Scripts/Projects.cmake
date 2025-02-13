@@ -210,10 +210,11 @@ function(nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS)
 	project(${NAME})
 	message(STATUS "Processing plugin ${NAME}")
 
-	set(source_folder "${CMAKE_CURRENT_SOURCE_DIR}/Source")
-	set(public_include_folder "${CMAKE_CURRENT_SOURCE_DIR}/Include")
-	set(config_folder "${CMAKE_CURRENT_SOURCE_DIR}/Config")
-	set(shaders_folder "${CMAKE_CURRENT_SOURCE_DIR}/Shaders")
+	set(module_root "${CMAKE_CURRENT_SOURCE_DIR}")
+	set(config_folder "${module_root}/Config")
+	set(source_folder "${module_root}/Source")
+	set(public_include_folder "${module_root}/Include")
+	set(shaders_folder "${module_root}/Shaders")
 	if (NOT EXISTS ${source_folder})
 		message(FATAL_ERROR "Nodos CMake helpers for adding a plugin requires a folder named 'Source' at the root. Either manually setup your CMake script or create the 'Source' folder.")
 	endif()
@@ -230,13 +231,13 @@ function(nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS)
 	set(config_file_types ".json")
 	nos_get_files_recursive(${config_folder} "${config_file_types}" CONFIG_FILES)
 	source_group("Config" FILES ${CONFIG_FILES})
-	nos_get_files_recursive(${config_folder} ".nosdef" NODE_DEFINITION_FILES)
+	nos_get_files_recursive(${module_root} ".nosdef" NODE_DEFINITION_FILES)
 	source_group("Node Definitions" FILES ${NODE_DEFINITION_FILES})
-	nos_get_files_recursive(${config_folder} ".fbs" DATA_TYPE_SCHEMA_FILES)
+	nos_get_files_recursive(${module_root} ".fbs" DATA_TYPE_SCHEMA_FILES)
 	source_group("Schemas" FILES ${DATA_TYPE_SCHEMA_FILES})
 
 	set(shader_file_types ".glsl" ".comp" ".frag" ".vert" ".hlsl")
-	nos_get_files_recursive(${source_folder} "${shader_file_types}" SHADERS)
+	nos_get_files_recursive(${module_root} "${shader_file_types}" SHADERS)
 	nos_get_files_recursive(${shaders_folder} "${shader_file_types}" SHADERS)
 	source_group("Shaders" FILES ${SHADERS})
 	set_source_files_properties(${SHADERS} PROPERTIES HEADER_FILE_ONLY TRUE)
@@ -246,28 +247,28 @@ function(nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS)
 	add_library(${NAME} MODULE ${INCLUDED_IN_PROJECT})
 	set_target_properties(${NAME} PROPERTIES
 		PREFIX ""
-		LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/Binaries"
-		LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/Binaries"
-		LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/Binaries"
-		LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/Binaries"
-		LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL "${CMAKE_CURRENT_SOURCE_DIR}/Binaries"
+		LIBRARY_OUTPUT_DIRECTORY "${module_root}/Binaries"
+		LIBRARY_OUTPUT_DIRECTORY_DEBUG "${module_root}/Binaries"
+		LIBRARY_OUTPUT_DIRECTORY_RELEASE "${module_root}/Binaries"
+		LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO "${module_root}/Binaries"
+		LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL "${module_root}/Binaries"
 	)
 
 	foreach(source IN LISTS SOURCE_FILES)
 		get_filename_component(source_path "${source}" PATH)
-		string(REPLACE "${CMAKE_CURRENT_SOURCE_DIR}" "" source_path_compact "${source_path}")
+		string(REPLACE "${module_root}" "" source_path_compact "${source_path}")
 		string(REPLACE "/" "\\" source_path_msvc "${source_path_compact}")
 		source_group("${source_path_msvc}" FILES "${source}")
 	endforeach()
 
 	foreach(header IN LISTS HEADER_FILES)
 		get_filename_component(header_path "${header}" PATH)
-		string(REPLACE "${CMAKE_CURRENT_SOURCE_DIR}" "" header_path_compact "${header_path}")
+		string(REPLACE "${module_root}" "" header_path_compact "${header_path}")
 		string(REPLACE "/" "\\" header_path_msvc "${header_path_compact}")
 		source_group("${header_path_msvc}" FILES "${header}")
 	endforeach()
 
-	target_include_directories(${NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${source_folder} ${public_include_folder} ${INCLUDE_FOLDERS})
+	target_include_directories(${NAME} PRIVATE ${module_root} ${source_folder} ${public_include_folder} ${INCLUDE_FOLDERS})
 
 	foreach(dependency IN LISTS DEPENDENCIES)
 		# If target "dependency" type is UTILITY then add it as a dependency
@@ -289,10 +290,11 @@ function(nos_add_subsystem NAME DEPENDENCIES INCLUDE_FOLDERS)
 	project(${NAME})
 	message(STATUS "Processing subsystem ${NAME}")
 
-	set(source_folder "${CMAKE_CURRENT_SOURCE_DIR}/Source")
-	set(public_include_folder "${CMAKE_CURRENT_SOURCE_DIR}/Include")
-	set(config_folder "${CMAKE_CURRENT_SOURCE_DIR}/Config")
-	set(shaders_folder "${CMAKE_CURRENT_SOURCE_DIR}/Shaders")
+	set(module_root "${CMAKE_CURRENT_SOURCE_DIR}")
+	set(config_folder "${module_root}/Config")
+	set(source_folder "${module_root}/Source")
+	set(public_include_folder "${module_root}/Include")
+	set(shaders_folder "${module_root}/Shaders")
 	if (NOT EXISTS ${source_folder})
 		message(FATAL_ERROR "Nodos CMake helpers for adding a subsystem requires a folder named 'Source' at the root. Either manually setup your CMake script or create the 'Source' folder.")
 	endif()
@@ -309,11 +311,11 @@ function(nos_add_subsystem NAME DEPENDENCIES INCLUDE_FOLDERS)
 	set(config_file_types ".json")
 	nos_get_files_recursive(${config_folder} "${config_file_types}" CONFIG_FILES)
 	source_group("Config" FILES ${CONFIG_FILES})
-	nos_get_files_recursive(${config_folder} ".fbs" DATA_TYPE_SCHEMA_FILES)
+	nos_get_files_recursive(${module_root} ".fbs" DATA_TYPE_SCHEMA_FILES)
 	source_group("Schemas" FILES ${DATA_TYPE_SCHEMA_FILES})
 
 	set(shader_file_types ".glsl" ".comp" ".frag" ".vert" ".hlsl")
-	nos_get_files_recursive(${source_folder} "${shader_file_types}" SHADERS)
+	nos_get_files_recursive(${module_root} "${shader_file_types}" SHADERS)
 	nos_get_files_recursive(${shaders_folder} "${shader_file_types}" SHADERS)
 	source_group("Shaders" FILES ${SHADERS})
 	set_source_files_properties(${SHADERS} PROPERTIES HEADER_FILE_ONLY TRUE)
@@ -324,28 +326,28 @@ function(nos_add_subsystem NAME DEPENDENCIES INCLUDE_FOLDERS)
 	add_library(${NAME} MODULE ${INCLUDED_IN_PROJECT})
 	set_target_properties(${NAME} PROPERTIES
 		PREFIX ""
-		LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/Binaries"
-		LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/Binaries"
-		LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/Binaries"
-		LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/Binaries"
-		LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL "${CMAKE_CURRENT_SOURCE_DIR}/Binaries"
+		LIBRARY_OUTPUT_DIRECTORY "${module_root}/Binaries"
+		LIBRARY_OUTPUT_DIRECTORY_DEBUG "${module_root}/Binaries"
+		LIBRARY_OUTPUT_DIRECTORY_RELEASE "${module_root}/Binaries"
+		LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO "${module_root}/Binaries"
+		LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL "${module_root}/Binaries"
 	)
 
 	foreach(source IN LISTS SOURCE_FILES)
 		get_filename_component(source_path "${source}" PATH)
-		string(REPLACE "${CMAKE_CURRENT_SOURCE_DIR}" "" source_path_compact "${source_path}")
+		string(REPLACE "${module_root}" "" source_path_compact "${source_path}")
 		string(REPLACE "/" "\\" source_path_msvc "${source_path_compact}")
 		source_group("${source_path_msvc}" FILES "${source}")
 	endforeach()
 
 	foreach(header IN LISTS HEADER_FILES)
 		get_filename_component(header_path "${header}" PATH)
-		string(REPLACE "${CMAKE_CURRENT_SOURCE_DIR}" "" header_path_compact "${header_path}")
+		string(REPLACE "${module_root}" "" header_path_compact "${header_path}")
 		string(REPLACE "/" "\\" header_path_msvc "${header_path_compact}")
 		source_group("${header_path_msvc}" FILES "${header}")
 	endforeach()
 
-	target_include_directories(${NAME} PRIVATE  ${CMAKE_CURRENT_SOURCE_DIR} ${source_folder} ${public_include_folder} ${INCLUDE_FOLDERS})
+	target_include_directories(${NAME} PRIVATE  ${module_root} ${source_folder} ${public_include_folder} ${INCLUDE_FOLDERS})
 
 	foreach(dependency IN LISTS DEPENDENCIES)
 		# If target "dependency" type is UTILITY then add it as a dependency
