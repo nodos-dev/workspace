@@ -11,6 +11,5 @@
     "binary_path": "./Binaries/<BINARY_NAME>",
     "node_definitions": [],
     "defaults": [],
-    "custom_types": [],
-    "associated_nodes": []
+    "custom_types": []
 }
