@@ -188,17 +188,6 @@ impl InstalledModule {
         // Write back to file
         let node_defs_file_content = serde_json::to_string_pretty(&node_def.node_defs_json).expect("Failed to serialize node definitions");
         fs::write(&node_def.defined_in, node_defs_file_content).expect("Failed to write node definitions file");
-
-        // Read manifest and remove from associated_nodes
-        let mut manifest_json = self.read_manifest().expect("Failed to read module manifest file");
-        let associated_nodes = manifest_json["associated_nodes"].as_array_mut().expect("Missing 'associated_nodes' field in module manifest file");
-        associated_nodes.retain(|node| {
-            let class_name = node["class_name"].as_str().expect("Missing 'class_name' field in associated node");
-            class_name != node_class_name
-        });
-        // Update manifest file
-        let manifest_str = serde_json::to_string_pretty(&manifest_json).expect("Failed to serialize manifest");
-        fs::write(&self.manifest_path, manifest_str).expect("Failed to write manifest file");
         true
     }
     pub fn add_node_definition(&self, node_class_name: &String, display_name: Option<String>, description: Option<String>, category: Option<String>, hide_in_context_menu: bool) -> Result<(), String> {
@@ -228,10 +217,17 @@ impl InstalledModule {
             "nodes": [
                 {
                     "class_name": node_class_name,
-                    "contents_type": "Job",
-                    "display_name": display_name,
-                    "description": description,
-                    "pins": []
+                    "menu_info": {
+                        "category": category,
+                        "display_name": display_name,
+                        "hide_in_context_menu": hide_in_context_menu,
+                    },
+                    "node": {
+                        "contents_type": "Job",
+                        "display_name": display_name,
+                        "description": description,
+                        "pins": []
+                    }   
                 }
             ]
         });
@@ -244,14 +240,6 @@ impl InstalledModule {
             out_node_defs_path
         };
         fs::write(&out_node_defs_path, node_defs_str).expect("Failed to write node definitions file");
-        // Write to associated_nodes in manifest
-        let associated_nodes = manifest_json["associated_nodes"].as_array_mut().expect("Missing 'associated_nodes' field in module manifest file");
-        associated_nodes.push(serde_json::json!({
-            "class_name": node_class_name,
-            "display_name": display_name,
-            "category": category,
-            "hide_in_context_menu": hide_in_context_menu,
-        }));
         // Update manifest file
         let manifest_str = serde_json::to_string_pretty(&manifest_json).expect("Failed to serialize manifest");
         fs::write(&self.manifest_path, manifest_str).expect("Failed to write manifest file");
