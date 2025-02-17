@@ -107,6 +107,18 @@ function(nos_get_module name version out_target_name)
 		message(FATAL_ERROR "NOSMAN_WORKSPACE_DIR is not defined. Set it to the path of the workspace where modules will be installed.")
 	endif()
 
+	string(REPLACE "." "_" target_name ${name})
+	string(REPLACE "." "_" version_str ${version})
+	string(APPEND target_name "-v${version_str}")
+	string(PREPEND target_name "__nos_gen__")
+
+	set(${out_target_name} ${target_name} PARENT_SCOPE)
+
+	if(TARGET ${target_name})
+		message(STATUS "Module ${name}-${version} already found in project. Using existing target.")
+		return()
+	endif()
+
 	message(STATUS "Searching/installing Nodos module ${name} ${version} in workspace")
 
 	# TODO: Download if not exists.
@@ -148,56 +160,40 @@ function(nos_get_module name version out_target_name)
 		)
 
 		if(nosman_result EQUAL 0)
-			string(REPLACE "." "_" target_name ${name})
-			string(REPLACE "." "_" version_str ${version})
-			string(APPEND target_name "-v${version_str}")
-			string(PREPEND target_name "__nos_gen__")
-
 			string(STRIP ${nosman_output} nosman_output)
 
-			set(${out_target_name} ${target_name} PARENT_SCOPE)
+			message(STATUS "Creating target ${target_name} for module ${name}-${version}")
+			add_library(${target_name} INTERFACE)
 
-			if(TARGET ${target_name})
-				message(STATUS "Module ${name}-${version} found in project. Using existing target.")
-				return()
+			# Get module path
+			string(JSON module_path GET "${nosman_output}" "manifest_path")
+			get_filename_component(module_path ${module_path} DIRECTORY)
+			cmake_path(SET module_path "${module_path}")
+
+			# Add fbs files to target
+			nos_get_files_recursive(${module_path} ".fbs" fbs_files)
+			list(LENGTH fbs_files fbs_count)
+			message(STATUS "Found ${fbs_count} schema files in module ${name}-${version}")
+			foreach(fbs_file ${fbs_files})
+				message(STATUS "${name}-${version} schema file: ${fbs_file}")
+			endforeach()
+			target_sources(${target_name} INTERFACE ${fbs_files})
+			source_group("Schemas" FILES ${fbs_files})
+			
+			# Optional: Get "public_include_folder" from JSON output
+			string(JSON nos_module_include_folder GET "${nosman_output}" "public_include_folder")
+			cmake_path(SET ${target_name}_INCLUDE_DIR "${nos_module_include_folder}")
+			message(STATUS "Found ${name} ${version} include folder: ${${target_name}_INCLUDE_DIR}")
+
+			if (${target_name}_INCLUDE_DIR STREQUAL "")
+				message(STATUS "No public header files found in module ${name}-${version}.")
+			else() 
+				message(STATUS "Found public header files in module ${name}-${version}. Adding to target.")
+				nos_get_files_recursive(${${target_name}_INCLUDE_DIR} ".h;.hpp;.hxx;.hh;.inl" include_files)
+				target_sources(${target_name} PUBLIC ${include_files})
+				target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
 			endif()
-
-			if (NOT TARGET ${target_name})
-				message(STATUS "Creating target ${target_name} for module ${name}-${version}")
-				add_library(${target_name} INTERFACE)
-	
-				# Get module path
-				string(JSON module_path GET "${nosman_output}" "manifest_path")
-				get_filename_component(module_path ${module_path} DIRECTORY)
-				cmake_path(SET module_path "${module_path}")
-
-				# Add fbs files to target
-				nos_get_files_recursive(${module_path} ".fbs" fbs_files)
-				list(LENGTH fbs_files fbs_count)
-				message(STATUS "Found ${fbs_count} schema files in module ${name}-${version}")
-				foreach(fbs_file ${fbs_files})
-					message(STATUS "${name}-${version} schema file: ${fbs_file}")
-				endforeach()
-				target_sources(${target_name} INTERFACE ${fbs_files})
-				source_group("Schemas" FILES ${fbs_files})
-				
-				# Optional: Get "public_include_folder" from JSON output
-				string(JSON nos_module_include_folder GET "${nosman_output}" "public_include_folder")
-				cmake_path(SET ${target_name}_INCLUDE_DIR "${nos_module_include_folder}")
-				message(STATUS "Found ${name} ${version} include folder: ${${target_name}_INCLUDE_DIR}")
-
-				if (${target_name}_INCLUDE_DIR STREQUAL "")
-					message(STATUS "No public header files found in module ${name}-${version}.")
-				else() 
-					message(STATUS "Found public header files in module ${name}-${version}. Adding to target.")
-					nos_get_files_recursive(${${target_name}_INCLUDE_DIR} ".h;.hpp;.hxx;.hh;.inl" include_files)
-					target_sources(${target_name} PUBLIC ${include_files})
-					target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
-				endif()
-				set_target_properties(${target_name} PROPERTIES FOLDER "nosman")
-			else()
-				message(STATUS "Module ${name}-${version} found in project. Using existing target.")
-			endif()
+			set_target_properties(${target_name} PROPERTIES FOLDER "nosman")
 		else()
 			message(FATAL_ERROR "Failed to find ${name} ${version} include folder")
 		endif()
