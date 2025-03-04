@@ -20,6 +20,6 @@ impl Command for RescanCommand {
         }
         workspace.rescan(flags)?;
         println!("{}", format!("Rescan completed in {:?}", std::time::Instant::now() - now).green());
-        Ok(true)
+        Ok(())
     }
 }

@@ -50,7 +50,7 @@ impl InstallCommand {
             println!("Installing {} with a version in range [{}, {})", package_name, version_start.to_string(), version_end.to_string());
             if let Some(installed_module) = workspace.get_latest_installed_module_within_range(package_name, &version_start, &version_end) {
                 println!("{}", format!("Found an already installed compatible version for {} version {}: {}", package_name, version, installed_module.info.id.version).as_str().yellow());
-                return Ok(true)
+                return Ok(())
             }
             else {
                 let latest_compatible_opt = workspace.index_cache.get_latest_compatible_release_within_range(package_name, &version_start, &version_end);
@@ -69,7 +69,7 @@ impl InstallCommand {
         if let Some(existing) = workspace.get_installed_module(package_name, version.as_str()) {
             if existing.get_module_dir().exists() {
                 println!("{}", format!("Module {} version {} is already installed", package_name, version).as_str().yellow());
-                return Ok(true);
+                return Ok(());
             }
             else {
                 replace_entry_in_index = true;
@@ -100,7 +100,7 @@ impl InstallCommand {
                 workspace.save()?;
             }
             println!("{}", format!("{}-{} installed successfully", package_name, version).as_str().green());
-            Ok(true)
+            Ok(())
         } else {
             Err(Runtime { message: format!("None of the remotes contain package {} version {}. You can try rescan command to update index.", package_name, version) })
         }

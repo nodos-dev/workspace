@@ -307,7 +307,7 @@ impl InstalledModule {
                 // Call the function and handle the result
                 let res = unsafe { fn_run_command(&c_run_command_params) };
                 if res == 0 {
-                    Ok(true)
+                    Ok(())
                 } else {
                     Err(Runtime { message: format!("Command {} returned with code {}", command_name, res) })
                 }

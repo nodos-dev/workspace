@@ -146,7 +146,7 @@ impl CreateCommand {
             workspace.save()?;
         }
 
-        Ok(true)
+        Ok(())
     }
 }
 

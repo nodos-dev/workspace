@@ -9,7 +9,7 @@ pub struct RemoteAddCommand {
 }
 
 impl RemoteAddCommand {
-    fn run_add_remote(&self, workspace: &mut Workspace, url: &str) -> Result<bool, CommandError> {
+    fn run_add_remote(&self, workspace: &mut Workspace, url: &str) -> CommandResult {
         if workspace.remotes.iter().any(|r| r.url == url) {
             return Err(CommandError::InvalidArgument { message: format!("Remote {} already exists", url) });
         }
@@ -21,7 +21,7 @@ impl RemoteAddCommand {
         workspace.save().map_err(|e| CommandError::IO { file: workspace.get_nosman_index_filepath().display().to_string(), message: format!("{}", e) })?;
 
         println!("Remote added: {}", url);
-        Ok(true)
+        Ok(())
     }
 }
 
@@ -46,16 +46,16 @@ pub struct RemoteListCommand {
 }
 
 impl RemoteListCommand {
-    fn run_list_remotes(&self, workspace: &Workspace) -> Result<bool, CommandError> {
+    fn run_list_remotes(&self, workspace: &Workspace) -> CommandResult {
         if workspace.remotes.is_empty() {
             println!("No remotes found");
-            return Ok(true);
+            return Ok(())
         }
         println!("{}", "Remotes".green());
         for remote in &workspace.remotes {
             println!("  {} - {}", remote.name, remote.url);
         }
-        Ok(true)
+        Ok(())
     }
 }
 

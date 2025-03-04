@@ -10,7 +10,7 @@ pub struct UnpublishCommand {
 }
 
 impl UnpublishCommand {
-    fn run_unpublish(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, remote_name: &String, package_name: &String, version: Option<&String>) -> CommandResult {
+    pub fn run_unpublish(&self, workspace: &Workspace, dry_run: bool, verbose: bool, remote_name: &String, package_name: &String, version: Option<&String>) -> CommandResult {
         let remote = workspace.find_remote(remote_name);
         if remote.is_none() {
             return Err(InvalidArgument { message: format!("Remote {} not found", remote_name) });
@@ -33,7 +33,7 @@ impl UnpublishCommand {
         else {
             println!("{}", format!("All releases of package {} are unpublished", package_name).yellow());
         }
-        Ok(true)
+        Ok(())
     }
 }
 

@@ -256,7 +256,7 @@ impl Workspace {
         }
         self.save()?;
         println!("{}", format!("Module {} version {} removed successfully", name, version).as_str().green());
-        Ok(true)
+        Ok(())
     }
     pub fn remove_all(&mut self) -> CommandResult {
         for (_name, versions) in self.installed_modules.iter() {
@@ -268,7 +268,7 @@ impl Workspace {
         self.installed_modules.clear();
         self.save()?;
         println!("{}", "All modules removed successfully".green());
-        Ok(true)
+        Ok(())
     }
     fn is_silent(&self) -> bool {
         self.runtime.output_mode == OutputMode::Silent
@@ -326,7 +326,7 @@ impl Workspace {
         }
         self.save()?;
         self.runtime.status = WorkspaceStatus::Ready;
-        Ok(true)
+        Ok(())
     }
     pub fn fetch_remotes(&mut self, add_default_remote: bool) -> Result<(), io::Error>{
         if self.remotes.is_empty() {

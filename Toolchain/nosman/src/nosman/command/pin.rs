@@ -133,7 +133,7 @@ impl PinCommand {
                 .expect("Failed to write node class definition file");
             println!("{}", format!("Pin '{}' added to node class '{}'", pin_name, node_class_name).green());
         }
-        Ok(true)
+        Ok(())
     }
 }
 

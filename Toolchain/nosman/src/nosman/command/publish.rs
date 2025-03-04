@@ -18,7 +18,7 @@ use tempfile::{tempdir};
 use zip::write::{SimpleFileOptions};
 use chrono::{Utc};
 
-use crate::nosman::command::{Command, CommandResult};
+use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::constants;
 use crate::nosman::index::{ModuleType, PackageReleaseEntry, PackageType, SemVer, VersionCheckStrategy};
@@ -110,11 +110,11 @@ impl PublishCommand {
         // Should be lowercase alphanumeric, with only . and _ symbols are permitted
         name.chars().all(|c| c == '.' || c == '_' || c.is_numeric() || c.is_ascii_lowercase())
     }
-    pub fn run_publish(&self, workspace: &Workspace, dry_run: bool, verbose: bool, path: &PathBuf, 
-                       mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
-                       version_check_strategy: &VersionCheckStrategy, mut package_type: Option<PackageType>, 
-                       remote_name: &String, vendor: Option<&String>, publisher_name: Option<&String>, publisher_email: Option<&String>, 
-                       release_tags: &Vec<String>, opt_target_platform: Option<&String>, release_notes: Option<&String>) -> CommandResult {
+    pub fn publish(&self, workspace: &Workspace, dry_run: bool, verbose: bool, path: &PathBuf,
+                   mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
+                   version_check_strategy: &VersionCheckStrategy, mut package_type: Option<PackageType>,
+                   remote_name: &String, vendor: Option<&String>, publisher_name: Option<&String>, publisher_email: Option<&String>,
+                   release_tags: &Vec<String>, opt_target_platform: Option<&String>, release_notes: Option<&String>) -> Result<PackageIdentifier, CommandError> {
         // Check if git and gh is installed.
         Self::check_cli_tools()?;
 
@@ -149,8 +149,7 @@ impl PublishCommand {
                 println!("{}", format!("No {} file found in {}. All files will be included in the release.", constants::PUBLISH_OPTIONS_FILE_NAME, abs_path.display()).as_str().yellow());
             } else if let Some(targets) = publish_options.target_platforms {
                 if !targets.contains(&target_platform.to_string()) {
-                    println!("{}", format!("Target platform {} is not in the list of target platforms in {}", target_platform.to_string(), constants::PUBLISH_OPTIONS_FILE_NAME).as_str().yellow());
-                    return Ok(false);
+                    return Err (InvalidArgument { message: format!("Target platform {} is not in the list of target platforms in {}", target_platform.to_string(), constants::PUBLISH_OPTIONS_FILE_NAME) });
                 }
             }
 
@@ -199,31 +198,31 @@ impl PublishCommand {
                         _ => panic!("Invalid package type")
                     };
                     unsafe
-                    {
-                        let get_api_version_func = lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>(get_api_version_func_name.as_bytes()).expect(format!("Failed to get symbol {}", get_api_version_func_name).as_str());
-                        let mut major = 0;
-                        let mut minor = 0;
-                        let mut patch = 0;
-                        get_api_version_func(&mut major, &mut minor, &mut patch);
-                        api_version_opt = Some(SemVer { major: (major as u32), minor: Some(minor as u32), patch: Some(patch as u32), build_number: None });
-                        println!("{}", format!("{} uses Nodos {:?} API version: {}.{}.{}", name.as_ref().unwrap(), &package_type, major, minor, patch).as_str().yellow());
-
                         {
-                            let get_min_required_minor_func_name = match package_type {
-                                PackageType::Plugin => "nosGetMinimumRequiredPluginAPIMinorVersion",
-                                PackageType::Subsystem => "nosGetMinimumRequiredPluginAPIMinorVersion",
-                                _ => panic!("Invalid package type")
-                            };
-                            if let Ok(get_min_required_minor_func) = lib.get::<Symbol<unsafe extern "C" fn(*mut i32)>>(get_min_required_minor_func_name.as_bytes()) {
-                                let mut min_required_minor: i32 = 0;
-                                get_min_required_minor_func(&mut min_required_minor);
-                                if min_required_minor > 0 {
-                                    api_version_opt.as_mut().unwrap().minor = Some(min_required_minor as u32);
-                                    println!("{}", format!("{} requires minimum Nodos {:?} API  minor version {}", name.as_ref().unwrap(), &package_type, min_required_minor).as_str().yellow());
+                            let get_api_version_func = lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>(get_api_version_func_name.as_bytes()).expect(format!("Failed to get symbol {}", get_api_version_func_name).as_str());
+                            let mut major = 0;
+                            let mut minor = 0;
+                            let mut patch = 0;
+                            get_api_version_func(&mut major, &mut minor, &mut patch);
+                            api_version_opt = Some(SemVer { major: (major as u32), minor: Some(minor as u32), patch: Some(patch as u32), build_number: None });
+                            println!("{}", format!("{} uses Nodos {:?} API version: {}.{}.{}", name.as_ref().unwrap(), &package_type, major, minor, patch).as_str().yellow());
+
+                            {
+                                let get_min_required_minor_func_name = match package_type {
+                                    PackageType::Plugin => "nosGetMinimumRequiredPluginAPIMinorVersion",
+                                    PackageType::Subsystem => "nosGetMinimumRequiredPluginAPIMinorVersion",
+                                    _ => panic!("Invalid package type")
+                                };
+                                if let Ok(get_min_required_minor_func) = lib.get::<Symbol<unsafe extern "C" fn(*mut i32)>>(get_min_required_minor_func_name.as_bytes()) {
+                                    let mut min_required_minor: i32 = 0;
+                                    get_min_required_minor_func(&mut min_required_minor);
+                                    if min_required_minor > 0 {
+                                        api_version_opt.as_mut().unwrap().minor = Some(min_required_minor as u32);
+                                        println!("{}", format!("{} requires minimum Nodos {:?} API  minor version {}", name.as_ref().unwrap(), &package_type, min_required_minor).as_str().yellow());
+                                    }
                                 }
                             }
                         }
-                    }
 
                 }
             }
@@ -299,14 +298,14 @@ impl PublishCommand {
             let archive_file_name = format!("{}.{}", tag, if host_platform.os == "windows" { "zip" } else { "tar.gz" });
             let archive_file_path = temp_dir.path().join(&archive_file_name);
             let archive_file = File::create(&archive_file_path).expect(format!("Failed to create file: {}", archive_file_path.display()).as_str());
-            
+
             #[cfg(target_os = "windows")]
             let mut writer = zip::ZipWriter::new(archive_file);
 
             #[cfg(target_os = "windows")]
             let options = SimpleFileOptions::default()
                 .compression_method(zip::CompressionMethod::Deflated);
-            
+
             #[cfg(unix)]
             let mut writer = tar::Builder::new(flate2::write::GzEncoder::new(archive_file, flate2::Compression::default()));
 
@@ -315,8 +314,8 @@ impl PublishCommand {
                 #[cfg(target_os = "windows")]
                 {
                     writer.start_file(file_path.strip_prefix(&abs_path)
-                            .expect(format!("Failed to strip prefix {} from {}", abs_path.display(), file_path.display()).as_str()).to_str()
-                            .expect("Failed to convert path to string"), options)
+                                          .expect(format!("Failed to strip prefix {} from {}", abs_path.display(), file_path.display()).as_str()).to_str()
+                                          .expect("Failed to convert path to string"), options)
                         .expect(format!("Failed to start file in zip: {}", file_path.display()).as_str());
                     writer.write_all(&buffer).expect(format!("Failed to write to zip: {}", file_path.display()).as_str());
                 }
@@ -391,7 +390,24 @@ impl PublishCommand {
             return Err(Runtime { message: res.err().unwrap() });
         }
         println!("{}", format!("Release {} on remote {} created successfully", format!("{}-{}", name, version), remote.name).as_str().green().to_string());
-        Ok(true)
+        Ok(PackageIdentifier { name, version })
+    }
+
+    pub fn run_publish(&self, workspace: &Workspace, dry_run: bool, verbose: bool, path: &PathBuf, 
+                       name: Option<String>, version: Option<String>, version_suffix: &String,
+                       version_check_strategy: &VersionCheckStrategy, package_type: Option<PackageType>, 
+                       remote_name: &String, vendor: Option<&String>, publisher_name: Option<&String>, publisher_email: Option<&String>, 
+                       release_tags: &Vec<String>, opt_target_platform: Option<&String>, release_notes: Option<&String>) -> CommandResult {
+        let res = self.publish(workspace, dry_run, verbose, 
+                               path, name, version, 
+                               version_suffix, version_check_strategy, package_type, 
+                               remote_name, vendor, publisher_name, 
+                               publisher_email, release_tags, opt_target_platform, 
+                               release_notes);
+        if res.is_err() {
+            return Err(res.err().unwrap());
+        }
+        Ok(())
     }
 
     fn check_cli_tools() -> CommandResult {
@@ -409,7 +425,7 @@ impl PublishCommand {
         if !gh_installed {
             return Err(Runtime { message: "GitHub CLI client 'gh' is not on PATH".to_string() });
         }
-        Ok(true)
+        Ok(())
     }
 }
 

@@ -22,7 +22,7 @@ impl DeinitCommand {
             }
             fs::remove_file(nosman_fpath)?;
             println!("{}", "Workspace removed".green());
-            Ok(true)
+            Ok(())
         } else {
             Err(CommandError::InvalidArgument { message: format!("No workspace found at {:?}", nosman_fpath) })
         }

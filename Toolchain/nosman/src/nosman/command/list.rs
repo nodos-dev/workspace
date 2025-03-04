@@ -49,7 +49,7 @@ impl ListCommand {
                 println!("  {} (latest: {})", name.to_string().green(), entry.version.to_string().yellow());
             }
         }
-        Ok(true)
+        Ok(())
     }
 }
 

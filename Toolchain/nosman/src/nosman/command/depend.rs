@@ -87,7 +87,7 @@ impl DependsCommands {
         }
         let manifest_str = serde_json::to_string_pretty(&manifest_json).expect("Failed to serialize manifest");
         fs::write(&module_manifest_path, manifest_str).expect("Failed to write manifest file");
-        Ok(true)
+        Ok(())
     }
 }
 

@@ -10,6 +10,7 @@ use crate::nosman::constants;
 use crate::nosman::module::get_module_manifests;
 
 use path_slash::PathExt as _;
+use crate::nosman::command::unpublish::UnpublishCommand;
 use crate::nosman::index::VersionCheckStrategy;
 use crate::nosman::workspace::Workspace;
 
@@ -101,13 +102,37 @@ impl PublishBatchCommand {
 
         if to_be_published.is_empty() {
             println!("{}", "No modules need publishing".yellow());
-            return Ok(true);
+            return Ok(());
         }
+        let mut published = Vec::new();
+        let mut rollback = false;
         for module_root in to_be_published {
-            PublishCommand {}.run_publish(workspace, dry_run, verbose, &module_root, None, None, version_suffix, &version_check_strategy, None, remote_name, vendor, publisher_name, publisher_email, release_tags, target_platform, release_notes)?;
+            let res = PublishCommand {}.publish(workspace, dry_run, verbose, 
+                                                    &module_root, None, None, 
+                                                    version_suffix, &version_check_strategy, None, 
+                                                    remote_name, vendor, publisher_name, 
+                                                    publisher_email, release_tags, target_platform, 
+                                                    release_notes);
+            if let Ok(id) = res {
+                published.push(id);
+            }
+            else {
+                rollback = true;
+                break;
+            }
+        }
+        if rollback {
+            println!("{}", "Rolling back published modules".red());
+            for id in published {
+                let res = UnpublishCommand {}.run_unpublish(&workspace, dry_run, verbose, remote_name, &id.name, Option::from(&id.version));
+                if res.is_err() {
+                    return res;
+                }
+            }
+            return Err(InvalidArgument { message: "Failed to publish all modules".to_string() });
         }
 
-        Ok(true)
+        Ok(())
     }
 }
 

@@ -355,7 +355,7 @@ impl GetCommand {
             workspace.recreate()?;
         }
 
-        Ok(true)
+        Ok(())
     }
 }
 

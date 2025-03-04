@@ -14,7 +14,7 @@ use crate::nosman::workspace::Workspace;
 pub struct DevPullCommand {}
 
 impl DevPullCommand {
-    fn run_pull(&self, dirs: Vec<PathBuf>) -> Result<bool, CommandError> {
+    fn run_pull(&self, dirs: Vec<PathBuf>) -> CommandResult {
         // Scan module folder for git repositories and run "git pull" on them
         let pb = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
@@ -94,7 +94,7 @@ impl DevPullCommand {
             pb.println(format!("{} ({}) ({}): {}", path.display().to_string().green(), branch.cyan(), remote_url, String::from_utf8_lossy(&output.stdout)));
         });
         pb.finish_and_clear();
-        Ok(true)
+        Ok(())
     }
 }
 
@@ -121,7 +121,7 @@ impl Command for DevPullCommand {
 pub struct DevGenCommand {}
 
 impl DevGenCommand {
-    fn run_gen(&self, lang_tool: &String, extra_args: Vec<String>) -> Result<bool, CommandError> {
+    fn run_gen(&self, lang_tool: &String, extra_args: Vec<String>) -> CommandResult {
         // Only cpp/cmake is supported for now
         if lang_tool != "cpp/cmake" {
             return Err(InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool) });
@@ -139,7 +139,7 @@ impl DevGenCommand {
         if !status.is_ok() {
             return Err(CommandError::Runtime { message: format!("Error during running '{:?}'. See output.", cmake_args)});
         }
-        Ok(true)
+        Ok(())
     }
 }
 
@@ -169,7 +169,7 @@ pub struct DevStatusCommand {}
 
 
 impl DevStatusCommand {
-    fn run_status(&self, dirs: Vec<PathBuf>) -> Result<bool, CommandError> {
+    fn run_status(&self, dirs: Vec<PathBuf>) -> CommandResult {
         // Scan module folder for git repositories and run "git pull" on them
         let pb = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
@@ -212,7 +212,7 @@ impl DevStatusCommand {
         for (path, status) in output_map_locked.into_inner().unwrap() {
             println!("{}: {}", path.display().to_string().green(), status);
         }
-        Ok(true)
+        Ok(())
     }
 }
 

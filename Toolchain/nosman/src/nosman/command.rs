@@ -44,7 +44,7 @@ impl From<io::Error> for CommandError {
     }
 }
 
-pub(crate) type CommandResult = Result<bool, CommandError>;
+pub(crate) type CommandResult = Result<(), CommandError>;
 
 pub trait Command {
     fn matched_args<'a, 'b>(&self, workspace: &'a Workspace, args : &'b ArgMatches) -> Option<&'b ArgMatches>;

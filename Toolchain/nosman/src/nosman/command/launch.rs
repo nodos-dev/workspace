@@ -76,7 +76,7 @@ pub fn launch_nodos(workspace_dir: &PathBuf, hide_output: bool) {
 impl LaunchCommand {
     fn launch_nodos(&self, workspace_dir: &PathBuf) -> CommandResult {
         launch_nodos(workspace_dir, true);
-        Ok(true)
+        Ok(())
     }
 }
 

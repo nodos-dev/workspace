@@ -35,7 +35,7 @@ impl NodeCommand {
             }
             println!("{}", format!("Node class {} added to plugin {}", node_class_name, plugin_name).green());
         }
-        Ok(true)
+        Ok(())
     }
 }
 

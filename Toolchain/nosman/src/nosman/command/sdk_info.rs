@@ -112,7 +112,7 @@ impl SdkInfoCommand {
         }
         if let Some(info) = found_sdk_info {
             println!("{}", serde_json::to_string_pretty(&info).expect("Failed to serialize SDK info"));
-            return Ok(true);
+            return Ok(());
         }
 
         Err(CommandError::InvalidArgument { message: format!("No SDK found for version {}", requested_version) })
