@@ -2,7 +2,8 @@ use std::path::{PathBuf};
 use crate::nosman::constants;
 
 pub fn get_rel_path_based_on(path: &PathBuf, base: &PathBuf) -> PathBuf {
-    pathdiff::diff_paths(dunce::canonicalize(path).unwrap(), base).unwrap()
+    pathdiff::diff_paths(dunce::canonicalize(path).unwrap_or_else(|_| { panic!("Failed to canonicalize path {}", path.display()) }),
+                         base).unwrap()
 }
 
 pub fn get_module_manifest_file(path: &PathBuf, extension: &str) -> Result<Option<PathBuf>, String> {
