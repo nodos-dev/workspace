@@ -130,7 +130,7 @@ impl PublishCommand {
             return Err(InvalidArgument { message: format!("Path {} does not exist", path.display()) });
         }
 
-        let abs_path = dunce::canonicalize(path).unwrap_or_else(|_| panic!("Failed to canonicalize path: {}", path.display()));
+        let abs_path = dunce::canonicalize(path).unwrap_or_else(|e| panic!("Failed to canonicalize path {}: {}", path.display(), e));
 
         let mut publish_options = PublishOptions::empty();
 

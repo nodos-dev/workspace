@@ -23,7 +23,7 @@ pub fn launch_nodos(workspace_dir: &PathBuf, hide_output: bool) {
     let mut opt_editor_path = None;
     let mut opt_engine_path = None;
     // For each folder in engines_dir, check if it has SDK/version.json
-    for entry in std::fs::read_dir(engines_dir).expect("Unable to read Engine directory") {
+    for entry in std::fs::read_dir(&engines_dir).unwrap_or_else(|e| panic!("Unable to read Engine directory {:?}: {}", engines_dir, e)) {
         let entry = entry.unwrap();
         let path = entry.path();
         if !path.is_dir() {
@@ -69,8 +69,8 @@ pub fn launch_nodos(workspace_dir: &PathBuf, hide_output: bool) {
         engine_cmd.stdout(std::process::Stdio::null());
         engine_cmd.stderr(std::process::Stdio::null());
     }
-    editor_cmd.spawn().expect("Failed to launch nosEditor");
-    engine_cmd.spawn().expect("Failed to launch nosLauncher");
+    editor_cmd.spawn().unwrap_or_else(|e| panic!("Failed to launch nosEditor: {}", e));
+    engine_cmd.spawn().unwrap_or_else(|e| panic!("Failed to launch nosLauncher: {}", e));
 }
 
 impl LaunchCommand {

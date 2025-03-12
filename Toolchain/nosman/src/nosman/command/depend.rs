@@ -16,19 +16,19 @@ impl DependsCommands {
         {
             let module = workspace.select_installed_module(module_name)?;
             module_manifest_path = module.manifest_path.clone();
-            manifest_json = module.read_manifest().expect("Failed to read module manifest file");
+            manifest_json = module.read_manifest().unwrap_or_else(|e| panic!("Failed to read module manifest file {}: {}", module.manifest_path.display(), e));
         }
 
         let manifest_info = manifest_json
             .get_mut("info")
             .and_then(Value::as_object_mut)
-            .expect("Missing 'info' field in module manifest file");
+            .unwrap_or_else(|| panic!("Missing 'info' field in module manifest file {}", module_manifest_path.display()));
 
         let manifest_deps = manifest_info
             .entry("dependencies")
             .or_insert_with(|| json!([])) // Ensure the field exists, defaulting to an empty array
             .as_array_mut()
-            .expect("Failed to access 'dependencies' as array");
+            .unwrap_or_else(|| panic!("Failed to access 'dependencies' as array: {}", module_manifest_path.display()));
 
         for dep_id in deps {
             let mut dep = PackageIdentifier {
@@ -85,8 +85,8 @@ impl DependsCommands {
                 manifest_deps.push(serde_json::json!({"name": dep.name, "version": dep.version}));
             }
         }
-        let manifest_str = serde_json::to_string_pretty(&manifest_json).expect("Failed to serialize manifest");
-        fs::write(&module_manifest_path, manifest_str).expect("Failed to write manifest file");
+        let manifest_str = serde_json::to_string_pretty(&manifest_json).unwrap_or_else(|e| panic!("Failed to serialize manifest {}: {}", module_manifest_path.display(), e));
+        fs::write(&module_manifest_path, manifest_str).unwrap_or_else(|e| panic!("Failed to write manifest file {}: {}", module_manifest_path.display(), e));
         Ok(())
     }
 }

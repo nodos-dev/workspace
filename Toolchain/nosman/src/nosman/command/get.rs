@@ -73,7 +73,7 @@ impl GetCommand {
     fn temp_remove(pb: &ProgressBar, src: &PathBuf, dst: &PathBuf, dont_ask: bool) -> bool {
         if let Some(parent) = dst.parent() {
             if !parent.exists() {
-                fs::create_dir_all(parent).expect(format!("Failed to create directory {:?}", parent).as_str());
+                fs::create_dir_all(parent).unwrap_or_else(|e| panic!("Failed to create directory {}: {}", parent.display(), e));
             }
         }
         let mut res = Self::move_file_or_dir(src, dst);
@@ -83,7 +83,7 @@ impl GetCommand {
                 while common::ask("Retry removing", false, dont_ask) {
                     res = Self::move_file_or_dir(src, dst);
                     if let Err(e) = res.as_ref() {
-                        println!("{}", format!("Unable to remove {}: {}", src.display(), e).red().to_string());
+                        println!("{}", format!("Unable to remove {}: {}", src.display(), e).red());
                         continue;
                     }
                     break;
@@ -159,7 +159,7 @@ impl GetCommand {
 
         let res;
         if let Some(version) = version {
-            let version_start = SemVer::parse_from_string(version).expect(format!("Invalid semantic version: {}", version).as_str());
+            let version_start = SemVer::parse_from_string(version).unwrap_or_else(|| panic!("Invalid semantic version: {}", version));
             if version_start.minor.is_none() {
                 return Err(InvalidArgument { message: "Please provide a minor version too!".to_string() });
             }

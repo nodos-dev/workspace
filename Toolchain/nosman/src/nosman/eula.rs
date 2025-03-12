@@ -10,7 +10,7 @@ pub fn silently_agree_eulas(workspace_dir: &std::path::PathBuf) {
     }
 
     // Find EULA_UNCONFIRMED files in each engine and confirm them
-    for entry in std::fs::read_dir(engines_dir).expect("Unable to read Engine directory") {
+    for entry in std::fs::read_dir(&engines_dir).unwrap_or_else(|_| panic!("Unable to read Engine directory at {}", engines_dir.display())) {
         let entry = entry.unwrap();
         let path = entry.path();
         if !path.is_dir() {
@@ -21,8 +21,8 @@ pub fn silently_agree_eulas(workspace_dir: &std::path::PathBuf) {
             println!("Nodos Engine EULA at {}: {}", path.display(), "Accepted".green());
             continue;
         }
-        let eula_str = std::fs::read_to_string(&eula_unconfirmed).expect("Failed to read EULA_UNCONFIRMED file");
-        let mut eula_json: serde_json::Value = serde_json::from_str(&eula_str).expect("Failed to parse EULA_UNCONFIRMED file");
+        let eula_str = std::fs::read_to_string(&eula_unconfirmed).unwrap_or_else(|_| panic!("Failed to read EULA_UNCONFIRMED file: {}", eula_unconfirmed.display()));
+        let mut eula_json: serde_json::Value = serde_json::from_str(&eula_str).unwrap_or_else(|_| panic!("Failed to parse EULA_UNCONFIRMED file: {}", eula_unconfirmed.display()));
         eula_json["accepted"] = serde_json::Value::Bool(true);
         eula_json["acceptation_date_iso"] = serde_json::Value::String(chrono::Utc::now().to_rfc3339());
         let hostname = get_hostname();
@@ -30,10 +30,10 @@ pub fn silently_agree_eulas(workspace_dir: &std::path::PathBuf) {
 
         eula_json["accepting_host_name"] = serde_json::Value::String(hostname);
         // Write back to the file
-        std::fs::write(&eula_unconfirmed, eula_json.to_string()).expect("Failed to write EULA_UNCONFIRMED file");
+        std::fs::write(&eula_unconfirmed, eula_json.to_string()).unwrap_or_else(|e| panic!("Failed to write EULA_UNCONFIRMED file {}: {}", eula_unconfirmed.display(), e));
         // Move the file to EULA_CONFIRMED.json
         let eula_confirmed = path.join("EULA_CONFIRMED.json");
-        std::fs::rename(&eula_unconfirmed, &eula_confirmed).expect("Failed to rename EULA_UNCONFIRMED file");
+        std::fs::rename(&eula_unconfirmed, &eula_confirmed).unwrap_or_else(|e| panic!("Failed to rename EULA_UNCONFIRMED file {}: {}", eula_unconfirmed.display(), e));
     }
     println!("{}", "All Nodos EULAs are accepted.".green());
 }

@@ -49,8 +49,9 @@ impl PinCommand {
             }
             if index.is_some() {
                 pins_json.remove(index.unwrap());
-                serde_json::to_writer_pretty(std::fs::File::create(node_def.defined_in.as_path()).expect("Failed to open node class definition file for writing"), &node_def.node_defs_json)
-                    .expect("Failed to write node class definition file");
+                serde_json::to_writer_pretty(std::fs::File::create(node_def.defined_in.as_path())
+                                                 .unwrap_or_else(|e| panic!("Failed to open node class definition file {:?} for writing: {}", node_def.defined_in, e)), &node_def.node_defs_json)
+                    .unwrap_or_else(|e| panic!("Failed to write node class definition file {:?}: {}", node_def.defined_in, e));
                 println!("{}", format!("Pin '{}' removed from node class '{}'", pin_name, node_class_name).green());
             } else {
                 return Err(InvalidArgument { message: format!("Pin '{}' not found in node class '{}'", pin_name, node_class_name) });
@@ -121,7 +122,7 @@ impl PinCommand {
             if type_name.is_none() {
                 type_name_in = Text::new("Enter type name for pin:")
                     .prompt()
-                    .expect("Failed to get type name for pin");
+                    .expect("You must enter a type name for the pin");
             }
             else {
                 type_name_in = type_name.unwrap().clone();
@@ -129,8 +130,9 @@ impl PinCommand {
             pin_json.insert("type_name".to_string(), serde_json::Value::String(type_name_in.clone()));
             pins_json.push(serde_json::Value::Object(pin_json));
 
-            serde_json::to_writer_pretty(std::fs::File::create(node_def.defined_in.as_path()).expect("Failed to open node class definition file for writing"), &node_def.node_defs_json)
-                .expect("Failed to write node class definition file");
+            serde_json::to_writer_pretty(std::fs::File::create(node_def.defined_in.as_path())
+                                             .unwrap_or_else(|e| panic!("Failed to open node class definition file {:?} for writing: {}", node_def.defined_in, e)), &node_def.node_defs_json)
+                .unwrap_or_else(|e| panic!("Failed to write node class definition file {:?}: {}", node_def.defined_in, e));
             println!("{}", format!("Pin '{}' added to node class '{}'", pin_name, node_class_name).green());
         }
         Ok(())

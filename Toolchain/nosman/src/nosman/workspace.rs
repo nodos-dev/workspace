@@ -134,8 +134,8 @@ impl Workspace {
                 Ok(workspace) => workspace,
                 Err(e) => {
                     println!("{}", format!("Failed to parse workspace file: {}. Rescanning...", e).red());
-                    workspace.rescan(RescanFlags::all()).expect("Failed to rescan workspace");
-                    workspace.save().expect("Failed to save workspace");
+                    workspace.rescan(RescanFlags::all()).unwrap_or_else(|e| panic!("Failed to rescan workspace: {}", e));
+                    workspace.save().unwrap_or_else(|e| panic!("Failed to save workspace: {}", e));
                     workspace
                 }
             };
@@ -278,7 +278,7 @@ impl Workspace {
     }
     pub fn scan_modules_in_folder(&mut self, folder: PathBuf, force_replace_in_registry: bool) {
         // Scan folders with .noscfg and .nossys files
-        let folder = dunce::canonicalize(folder).expect("Failed to canonicalize path");
+        let folder = dunce::canonicalize(&folder).unwrap_or_else(|e| panic!("Failed to canonicalize path {}: {}", folder.display(), e));
         let module_manifests = get_module_manifests(&folder, self.is_silent());
 
         let pb = get_progress_bar(self.is_silent());

@@ -1,6 +1,7 @@
+use std::path::Path;
 use clap::{ArgMatches};
 use serde::{Deserialize, Serialize};
-
+use serde_json::Value;
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::path::get_default_engines_dir;
 use crate::nosman::index::SemVer;
@@ -16,6 +17,13 @@ pub struct SdkInfo {
     plugin_sdk_version: String,
     subsystem_sdk_version: String,
     path: String,
+}
+
+fn get_string<'a>(json: &'a Value, field: &str, info_file: &Path) -> &'a str {
+    json.get(field)
+        .unwrap_or_else(|| panic!("{} field not found in {:?}", field, info_file))
+        .as_str()
+        .unwrap_or_else(|| panic!("{} field is not a string in {:?}", field, info_file))
 }
 
 pub fn get_engine_sdk_infos(workspace: &Workspace) -> Result<Vec<SdkInfo>, CommandError> {
@@ -41,12 +49,12 @@ pub fn get_engine_sdk_infos(workspace: &Workspace) -> Result<Vec<SdkInfo>, Comma
         if !info_file.exists() {
             continue;
         }
-        let info_str = std::fs::read_to_string(info_file).expect("Failed to read SDK info file");
-        let info_json: serde_json::Value = serde_json::from_str(&info_str).expect("Failed to parse SDK info file");
-        let version = info_json.get("version").expect("Version field not found").as_str().expect("Version field is not a string");
-        let process_sdk_version = info_json.get("process_sdk_version").expect("process_sdk_version field not found").as_str().expect("process_sdk_version field is not a string");
-        let plugin_sdk_version = info_json.get("plugin_sdk_version").expect("plugin_sdk_version field not found").as_str().expect("plugin_sdk_version field is not a string");
-        let subsystem_sdk_version = info_json.get("subsystem_sdk_version").expect("subsystem_sdk_version field not found").as_str().expect("subsystem_sdk_version field is not a string");
+        let info_str = std::fs::read_to_string(&info_file).unwrap_or_else(|e| panic!("Failed to read SDK info file {:?}: {}", info_file, e));
+        let info_json: serde_json::Value = serde_json::from_str(&info_str).unwrap_or_else(|e| panic!("Failed to parse SDK info file {:?}: {}", info_file, e));
+        let version = get_string(&info_json, "version", &info_file);
+        let process_sdk_version = get_string(&info_json, "process_sdk_version", &info_file);
+        let plugin_sdk_version = get_string(&info_json, "plugin_sdk_version", &info_file);
+        let subsystem_sdk_version = get_string(&info_json, "subsystem_sdk_version", &info_file);
         let bin_dir = sdk_dir.join("bin");
         let include_dir = sdk_dir.join("include");
         if bin_dir.exists() && include_dir.exists() {
@@ -91,8 +99,8 @@ impl SdkInfoCommand {
 
         // Sort the engines by version, latest first
         selected_versions.sort_by(|a, b| {
-            let a_sem_ver = SemVer::parse_from_string(&a.version).expect("Failed to parse SDK version");
-            let b_sem_ver = SemVer::parse_from_string(&b.version).expect("Failed to parse SDK version");
+            let a_sem_ver = SemVer::parse_from_string(&a.version).unwrap_or_else(|| panic!("Failed to parse SDK version {}: {}", a.version, a.path));
+            let b_sem_ver = SemVer::parse_from_string(&b.version).unwrap_or_else(|| panic!("Failed to parse SDK version {}: {}", b.version, b.path));
             b_sem_ver.cmp(&a_sem_ver)
         });
 
@@ -104,14 +112,14 @@ impl SdkInfoCommand {
         let mut found_sdk_info: Option<SdkInfoOutput> = None;
         // Determine the correct version key based on sdk_type
         for sdk_info in selected_versions {
-            let sdk_sem_ver = SemVer::parse_from_string(&sdk_info.version).expect("Failed to parse SDK version");
+            let sdk_sem_ver = SemVer::parse_from_string(&sdk_info.version).unwrap_or_else(|| panic!("Failed to parse SDK version {}: {}", sdk_info.version, sdk_info.path));
             if sdk_sem_ver.satisfies_requested_version(&requested_sem_ver) {
                 found_sdk_info = Some(sdk_info);
                 break;
             }
         }
         if let Some(info) = found_sdk_info {
-            println!("{}", serde_json::to_string_pretty(&info).expect("Failed to serialize SDK info"));
+            println!("{}", serde_json::to_string_pretty(&info).unwrap());
             return Ok(());
         }
 

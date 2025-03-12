@@ -28,8 +28,8 @@ impl DevPullCommand {
                     git_dirs.push(dir);
                     continue;
                 }
-                for entry in std::fs::read_dir(dir).expect("Failed to read directory") {
-                    let entry = entry.expect("Failed to read entry");
+                for entry in std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("Failed to read directory {}: {}", dir.display(), e)) {
+                    let entry = entry.unwrap_or_else(|e| panic!("Failed to get directory entry: {}", e));
                     let path = entry.path();
                     if path.is_dir() && path.join(".git").is_dir() {
                         git_dirs.push(path);
@@ -183,7 +183,7 @@ impl DevStatusCommand {
                     git_dirs.push(dir);
                     continue;
                 }
-                for entry in std::fs::read_dir(dir).expect("Failed to read directory") {
+                for entry in std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("Failed to read directory {}: {}", dir.display(), e)) {
                     let entry = entry.expect("Failed to read entry");
                     let path = entry.path();
                     if path.is_dir() && path.join(".git").is_dir() {

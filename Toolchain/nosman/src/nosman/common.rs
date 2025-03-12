@@ -15,7 +15,7 @@ pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandEr
     .unwrap_or_else(|_| panic!("Failed to fetch {}", url)).copy_to(&mut tmpfile)
     .unwrap_or_else(|_| panic!("Failed to write to {:?}", tmpfile));
 
-    tmpfile.seek(std::io::SeekFrom::Start(0)).expect("Failed to seek to start of file");
+    tmpfile.seek(std::io::SeekFrom::Start(0)).expect("Failed to seek to start of tempfile");
 
     // If tar.gz, use flate2 to extract
     if url.ends_with(".tar.gz") {
