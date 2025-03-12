@@ -1,4 +1,4 @@
-use std::{fs};
+use std::fs;
 use std::fs::File;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
@@ -7,13 +7,14 @@ use colored::Colorize;
 use indicatif::ProgressBar;
 use inquire::Confirm;
 use zip::ZipArchive;
+use serde_json::Value;
 use crate::nosman::command::CommandError;
 
 pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandError> {
     let mut tmpfile = tempfile::tempfile().expect("Failed to create tempfile");
     reqwest::blocking::get(url)
-    .unwrap_or_else(|_| panic!("Failed to fetch {}", url)).copy_to(&mut tmpfile)
-    .unwrap_or_else(|_| panic!("Failed to write to {:?}", tmpfile));
+    .unwrap_or_else(|e| panic!("Failed to fetch {}: {}", url, e)).copy_to(&mut tmpfile)
+    .unwrap_or_else(|e| panic!("Failed to write to {:?}: {}", tmpfile, e));
 
     tmpfile.seek(std::io::SeekFrom::Start(0)).expect("Failed to seek to start of tempfile");
 
@@ -54,8 +55,8 @@ pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandEr
 
 pub fn check_file_contents_same(path1: &PathBuf, path2: &PathBuf) -> bool {
     // Efficiently compare file contents
-    let mut file1 = File::open(path1).unwrap_or_else(|_| panic!("Failed to open {:?}", path1));
-    let mut file2 = File::open(path2).unwrap_or_else(|_| panic!("Failed to open {:?}", path2));
+    let mut file1 = File::open(path1).unwrap_or_else(|e| panic!("Failed to open {:?}: {}", path1, e));
+    let mut file2 = File::open(path2).unwrap_or_else(|e| panic!("Failed to open {:?}: {}", path2, e));
     let mut buf1 = [0; 1024];
     let mut buf2 = [0; 1024];
     let opt_f1_md = file1.metadata();
@@ -69,8 +70,8 @@ pub fn check_file_contents_same(path1: &PathBuf, path2: &PathBuf) -> bool {
         return false;
     }
     loop {
-        let n1 = file1.read(&mut buf1).unwrap_or_else(|_| panic!("Failed to read {}", path1.display()));
-        let n2 = file2.read(&mut buf2).unwrap_or_else(|_| panic!("Failed to read {}", path2.display()));
+        let n1 = file1.read(&mut buf1).unwrap_or_else(|e| panic!("Failed to read {:?}: {}", path1, e));
+        let n2 = file2.read(&mut buf2).unwrap_or_else(|e| panic!("Failed to read {:?}: {}", path2, e));
         if n1 != n2 || buf1 != buf2 {
             return false;
         }
@@ -128,4 +129,16 @@ pub fn get_progress_bar(silent: bool) -> ProgressBar{
     } else {
         ProgressBar::new_spinner()
     }
+}
+
+pub fn get_string<'a>(json: &'a Value, field: &str, file: &Path) -> &'a str {
+    json.get(field)
+        .unwrap_or_else(|| panic!("{} field not found in {:?}", field, file))
+        .as_str()
+        .unwrap_or_else(|| panic!("{} field is not a string in {:?}", field, file))
+}
+
+pub fn read_or_fail(file: &PathBuf, tag: &str) -> String {
+    fs::read_to_string(file)
+        .unwrap_or_else(|e| panic!("Failed to read {} file {:?}: {}", tag, file, e))
 }

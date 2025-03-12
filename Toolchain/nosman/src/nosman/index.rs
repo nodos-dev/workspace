@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
-use crate::nosman::constants;
+use crate::nosman::{common, constants};
 use crate::nosman::workspace::Workspace;
 use crate::nosman::common::{get_progress_bar, run_if_not};
 use crate::nosman::module::{PackageIdentifier};
@@ -398,7 +398,7 @@ impl Remote {
         }
         let mut release_list = PackageReleases{ name : name.clone(), releases: vec![] };
         if release_list_file.exists() {
-            release_list = serde_json::from_str(&fs::read_to_string(&release_list_file).unwrap()).unwrap();
+            release_list = serde_json::from_str(&common::read_or_fail(&release_list_file, "release list")).unwrap();
         }
         let version = release.version.clone();
         let platform = release.platform.clone();
@@ -439,7 +439,7 @@ impl Remote {
         if !release_list_file.exists() {
             return Err(format!("No releases found for package {}", name));
         }
-        let mut release_list: PackageReleases = serde_json::from_str(&fs::read_to_string(&release_list_file).unwrap()).unwrap();
+        let mut release_list: PackageReleases = serde_json::from_str(&common::read_or_fail(&release_list_file, "release list")).unwrap();
         let commit_msg;
         if let Some(version) = version_opt {
             let mut found = false;
@@ -470,7 +470,7 @@ impl Remote {
                 return Err(format!("Failed to remove remote package releases: {}", e));
             }
             let index_file = repo_dir.join(constants::PACKAGE_INDEX_ROOT_FILE);
-            let mut package_list: Vec<PackageIndexEntry> = serde_json::from_str(&fs::read_to_string(&index_file).unwrap()).unwrap();
+            let mut package_list: Vec<PackageIndexEntry> = serde_json::from_str(&common::read_or_fail(&index_file, "package index")).unwrap();
             let mut found = false;
             for i in 0..package_list.len() {
                 if package_list[i].name == *name {

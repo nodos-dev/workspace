@@ -1,8 +1,7 @@
-use std::path::Path;
-use clap::{ArgMatches};
+use clap::ArgMatches;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use crate::nosman::command::{Command, CommandError, CommandResult};
+use crate::nosman::common;
 use crate::nosman::path::get_default_engines_dir;
 use crate::nosman::index::SemVer;
 use crate::nosman::workspace::Workspace;
@@ -17,13 +16,6 @@ pub struct SdkInfo {
     plugin_sdk_version: String,
     subsystem_sdk_version: String,
     path: String,
-}
-
-fn get_string<'a>(json: &'a Value, field: &str, info_file: &Path) -> &'a str {
-    json.get(field)
-        .unwrap_or_else(|| panic!("{} field not found in {:?}", field, info_file))
-        .as_str()
-        .unwrap_or_else(|| panic!("{} field is not a string in {:?}", field, info_file))
 }
 
 pub fn get_engine_sdk_infos(workspace: &Workspace) -> Result<Vec<SdkInfo>, CommandError> {
@@ -51,10 +43,10 @@ pub fn get_engine_sdk_infos(workspace: &Workspace) -> Result<Vec<SdkInfo>, Comma
         }
         let info_str = std::fs::read_to_string(&info_file).unwrap_or_else(|e| panic!("Failed to read SDK info file {:?}: {}", info_file, e));
         let info_json: serde_json::Value = serde_json::from_str(&info_str).unwrap_or_else(|e| panic!("Failed to parse SDK info file {:?}: {}", info_file, e));
-        let version = get_string(&info_json, "version", &info_file);
-        let process_sdk_version = get_string(&info_json, "process_sdk_version", &info_file);
-        let plugin_sdk_version = get_string(&info_json, "plugin_sdk_version", &info_file);
-        let subsystem_sdk_version = get_string(&info_json, "subsystem_sdk_version", &info_file);
+        let version = common::get_string(&info_json, "version", &info_file);
+        let process_sdk_version = common::get_string(&info_json, "process_sdk_version", &info_file);
+        let plugin_sdk_version = common::get_string(&info_json, "plugin_sdk_version", &info_file);
+        let subsystem_sdk_version = common::get_string(&info_json, "subsystem_sdk_version", &info_file);
         let bin_dir = sdk_dir.join("bin");
         let include_dir = sdk_dir.join("include");
         if bin_dir.exists() && include_dir.exists() {

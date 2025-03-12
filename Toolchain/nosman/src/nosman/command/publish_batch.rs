@@ -25,7 +25,7 @@ impl PublishBatchCommand {
             return Err(InvalidArgument { message: format!("Repo {} does not exist", repo_path.display()) });
         }
 
-        let repo_path = dunce::canonicalize(repo_path).unwrap_or_else(|_| panic!("Failed to canonicalize repo path: {}", repo_path.display()));
+        let repo_path = dunce::canonicalize(repo_path).unwrap_or_else(|e| panic!("Failed to canonicalize repo path {:?}: {}", repo_path, e));
 
         let mut changed_files_opt: Option<Vec<PathBuf>> = None;
         if let Some(reference) = compare_with {

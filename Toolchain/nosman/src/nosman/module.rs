@@ -14,7 +14,7 @@ use inquire::Text;
 use libloading::Library;
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument, Runtime};
-use crate::nosman::{constants, extensions};
+use crate::nosman::{common, constants, extensions};
 use crate::nosman::common::get_progress_bar;
 use crate::nosman::extensions::{CNosArg, CNosCommand, CNosRunCommandParams, NosCommand, NosCommandDesc};
 use crate::nosman::index::{ModuleType};
@@ -105,7 +105,7 @@ impl InstalledModule {
             return Err(format!("Error parsing file {}: {}", path.display(), e).as_str().red().to_string());
         }
         let module = res.unwrap();
-        installed_module.info = serde_json::from_value(module["info"].clone()).unwrap_or_else(|_| panic!("Failed to parse module info from {}", path.display()));
+        installed_module.info = serde_json::from_value(module["info"].clone()).unwrap_or_else(|e| panic!("Failed to parse module info from {:?}: {}", path, e));
 
         // Check custom_types field
         if let Some(custom_types) = module["custom_types"].as_array() {
@@ -129,22 +129,20 @@ impl InstalledModule {
     pub fn get_module_dir(&self) -> PathBuf {
         self.manifest_path.parent().unwrap().to_path_buf()
     }
-    pub fn read_manifest(&self) -> Result<serde_json::Value, String> {
+    pub fn read_manifest(&self) -> serde_json::Value {
         // Read module manifest file as JSON, and read node definition files
-        let manifest_file = fs::File::open(&self.manifest_path);
-        if let Err(e) = manifest_file {
-            return Err(format!("Failed to open module manifest file ({}): {}", self.manifest_path.display(), e));
-        }
-        let manifest_file = manifest_file.unwrap();
-        let manifest_json: serde_json::Value = serde_json::from_reader(manifest_file).unwrap_or_else(|_| panic!("Failed to parse module manifest file: {}", self.manifest_path.display()));
-        Ok(manifest_json)
+        let manifest_file = fs::File::open(&self.manifest_path)
+            .unwrap_or_else(|e| panic!("Failed to open module manifest file {:?}: {}", self.manifest_path, e));
+        let manifest_json: serde_json::Value = serde_json::from_reader(manifest_file)
+            .unwrap_or_else(|e| panic!("Failed to parse module manifest file {:?}: {}", self.manifest_path, e));
+        manifest_json
     }
     pub fn get_node_definition(&self, class_name: &str) -> Option<NodeDefinition> {
         if self.module_type != ModuleType::Plugin {
             return None;
         }
         // Read module manifest file as JSON, and read node definition files
-        let manifest_json = self.read_manifest().unwrap_or_else(|_| panic!("Failed to read module manifest file ({})", self.manifest_path.display()));
+        let manifest_json = self.read_manifest();
         let node_defs_rel_paths = manifest_json["node_definitions"].as_array()?;
         for node_defs_rel_path in node_defs_rel_paths {
             let node_defs_path = self.get_module_dir().join(node_defs_rel_path.as_str()?);
@@ -156,11 +154,11 @@ impl InstalledModule {
             let node_defs_file_content = node_defs_file_content.unwrap();
             // Remove BOM
             let node_defs_file_content = node_defs_file_content.trim_start_matches('\u{FEFF}');
-            let node_defs: serde_json::Value = serde_json::from_str(node_defs_file_content).unwrap_or_else(|_| panic!("Failed to parse node definitions file: {}", node_defs_path.display()));
-            let nodes_json_array = node_defs.get("nodes").unwrap_or_else(|| panic!("Missing 'nodes' field in node definitions file: {}", node_defs_path.display()))
+            let node_defs: serde_json::Value = serde_json::from_str(node_defs_file_content).unwrap_or_else(|e| panic!("Failed to parse node definitions file {:?}: {}", node_defs_path, e));
+            let nodes_json_array = node_defs.get("nodes").unwrap_or_else(|| panic!("Missing 'nodes' field in node definitions file {:?}", node_defs_path))
                 .as_array().unwrap_or_else(|| panic!("'nodes' field is not an array: {}", node_defs_path.display()));
             for (index, node_json) in nodes_json_array.iter().enumerate() {
-                let mut curr_class_name = node_json["class_name"].as_str().unwrap_or_else(|| panic!("Missing 'class_name' field in node definition in {}", node_defs_path.display())).to_string();
+                let mut curr_class_name = node_json["class_name"].as_str().unwrap_or_else(|| panic!("Missing 'class_name' field in node definition in {:?}", node_defs_path)).to_string();
                 // If class name is not prefixed with module name, prefix it
                 if !curr_class_name.starts_with(self.info.id.name.as_str()) {
                     curr_class_name = format!("{}.{}", self.info.id.name, curr_class_name);
@@ -207,7 +205,7 @@ impl InstalledModule {
         let description = description.unwrap_or(Text::new("Description:").prompt().unwrap());
         let category = category.unwrap_or(Text::new("Category:").prompt().unwrap());
 
-        let mut manifest_json = self.read_manifest().unwrap_or_else(|e| panic!("Failed to read module manifest file {}: {}", self.manifest_path.display(), e));
+        let mut manifest_json = self.read_manifest();
         let node_defs_rel_paths = manifest_json["node_definitions"].as_array_mut().unwrap_or_else(|| panic!("Missing 'node_definitions' field in module manifest file {}", self.manifest_path.display()));
         let out_node_defs_file = Text::new("Node definitions file:")
             .with_default(format!("Config/{}", node_class_name.strip_prefix(format!("{}.", &self.info.id.name).as_str()).unwrap()).as_str()).prompt()
@@ -418,7 +416,7 @@ pub fn get_module_manifests(folder: &PathBuf, silent: bool) -> Vec<(ModuleType, 
     let walker = globwalk::GlobWalkerBuilder::from_patterns(folder, patterns)
         .file_type(globwalk::FileType::FILE)
         .build()
-        .unwrap_or_else(|_| panic!("Failed to glob dirs: {:?}", patterns));
+        .unwrap_or_else(|e| panic!("Failed to glob dirs: {:?}: {}", patterns, e));
     let mut module_manifest_files = vec![];
     for entry in walker {
         match entry {
@@ -434,7 +432,7 @@ pub fn get_module_manifests(folder: &PathBuf, silent: bool) -> Vec<(ModuleType, 
                 }
             }
             Err(e) => {
-                pb.println(format!("Error while walking: {}", e).to_string());
+                pb.println(format!("Error while walking: {}", e));
             }
         }
     }
@@ -527,7 +525,7 @@ pub fn load_module_with_search_paths(verbose: bool, binary_path: &OsString, addi
                 println!("{}", format!("Warning: DLL search path {} does not exist", lib_dir.display()).yellow().to_string());
                 continue;
             }
-            let lib_dir_canonical = dunce::canonicalize(&lib_dir).unwrap_or_else(|_| panic!("Failed to canonicalize path: {}", lib_dir.display()));
+            let lib_dir_canonical = dunce::canonicalize(&lib_dir).unwrap_or_else(|e| panic!("Failed to canonicalize path {:?}: {}", lib_dir, e));
             if verbose {
                 println!("\tAdding DLL search path: {}", lib_dir_canonical.display());
             }
@@ -552,7 +550,7 @@ pub fn load_module_with_search_paths(verbose: bool, binary_path: &OsString, addi
 
 pub fn load_installed_module(module: &InstalledModule, workspace: &Workspace) -> Result<Library, CommandError> {
     let path = module.get_abs_manifest_path(workspace);
-    let manifest_file_contents = fs::read_to_string(&path).unwrap_or_else(|e| panic!("Failed to read module manifest file {}: {}", path.display(), e));
+    let manifest_file_contents = common::read_or_fail(&path, "module manifest");
     let manifest: serde_json::Value = serde_json::from_str(&manifest_file_contents).unwrap_or_else(|e| panic!("Failed to parse module manifest file {}: {}", path.display(), e));
     load_module(false, manifest, module.get_abs_manifest_path(workspace).parent().unwrap().to_path_buf(), workspace)
 }
@@ -582,7 +580,7 @@ pub fn load_module(verbose: bool, manifest: serde_json::Value, manifest_file_par
         let dep_res = workspace.get_latest_installed_module_for_version(dep_name, dep_version);
         if let Ok(installed_module) = dep_res {
             let dep_manifest_file_path = workspace.root.join(&installed_module.manifest_path);
-            let dep_manifest_file_contents = fs::read_to_string(&dep_manifest_file_path).unwrap_or_else(|e| panic!("Failed to read dependency manifest file {}: {}", dep_manifest_file_path.display(), e));
+            let dep_manifest_file_contents = common::read_or_fail(&dep_manifest_file_path, "dependency manifest");
             let dep_manifest: serde_json::Value = serde_json::from_str(&dep_manifest_file_contents).unwrap_or_else(|e| panic!("Failed to parse dependency manifest file {}: {}", dep_manifest_file_path.display(), e));
             for path_str in dep_manifest["additional_search_paths"].as_array().unwrap_or(&vec![]) {
                 let module_dir = dep_manifest_file_path.parent().unwrap();

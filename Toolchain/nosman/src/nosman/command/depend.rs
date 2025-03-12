@@ -16,7 +16,7 @@ impl DependsCommands {
         {
             let module = workspace.select_installed_module(module_name)?;
             module_manifest_path = module.manifest_path.clone();
-            manifest_json = module.read_manifest().unwrap_or_else(|e| panic!("Failed to read module manifest file {}: {}", module.manifest_path.display(), e));
+            manifest_json = module.read_manifest();
         }
 
         let manifest_info = manifest_json

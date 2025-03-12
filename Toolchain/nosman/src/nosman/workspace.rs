@@ -123,7 +123,7 @@ impl Workspace {
     pub fn from_root(path: &PathBuf) -> Workspace {
         let index_filepath = get_nosman_index_filepath_for(&path);
         let exists = index_filepath.exists();
-        let mut workspace = Workspace::new_empty(dunce::canonicalize(path).unwrap_or_else(|_| panic!("Failed to canonicalize path: {}", path.display())));
+        let mut workspace = Workspace::new_empty(dunce::canonicalize(path).unwrap_or_else(|e| panic!("Failed to canonicalize path {:?}: {}", path, e)));
         if !exists {
             workspace.runtime.status = WorkspaceStatus::DoesNotExist;
             return workspace;
@@ -139,7 +139,7 @@ impl Workspace {
                     workspace
                 }
             };
-            parsed_ws.root = dunce::canonicalize(path).unwrap_or_else(|_| panic!("Failed to canonicalize path: {}", path.display()));
+            parsed_ws.root = dunce::canonicalize(path).unwrap_or_else(|e| panic!("Failed to canonicalize path {:?}: {}", path, e));
             parsed_ws.runtime.status = WorkspaceStatus::Ready;
             workspace = parsed_ws;
         } else {

@@ -20,7 +20,7 @@ use chrono::{Utc};
 
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
-use crate::nosman::constants;
+use crate::nosman::{common, constants};
 use crate::nosman::index::{ModuleType, PackageReleaseEntry, PackageType, SemVer, VersionCheckStrategy};
 use crate::nosman::module::{get_module_manifest_and_type, load_module, PackageIdentifier};
 use crate::nosman::platform::{get_host_platform, Platform};
@@ -62,7 +62,7 @@ impl PublishOptionsFileContent {
         let mut nospub = Self::empty();
         let found = nospub_file.exists();
         if found {
-            let contents = std::fs::read_to_string(&nospub_file).unwrap();
+            let contents = common::read_or_fail(nospub_file, "publish options");
             nospub = serde_json::from_str(&contents).unwrap();
         }
         (nospub, found)
@@ -199,7 +199,8 @@ impl PublishCommand {
                     };
                     unsafe
                         {
-                            let get_api_version_func = lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>(get_api_version_func_name.as_bytes()).unwrap_or_else(|_| panic!("Failed to get symbol {}", get_api_version_func_name));
+                            let get_api_version_func = lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>(get_api_version_func_name.as_bytes())
+                                .unwrap_or_else(|e| panic!("Failed to get symbol {}: {}", get_api_version_func_name, e));
                             let mut major = 0;
                             let mut minor = 0;
                             let mut patch = 0;
@@ -262,7 +263,7 @@ impl PublishCommand {
 
             let walker = globwalk::GlobWalkerBuilder::from_patterns(&abs_path, &publish_options.release_globs)
                 .build()
-                .unwrap_or_else(|_| panic!("Failed to glob dirs: {:?}", publish_options.release_globs));
+                .unwrap_or_else(|e| panic!("Failed to glob dirs {:?}: {}", publish_options.release_globs, e));
             for entry in walker {
                 let entry = entry.unwrap();
                 if entry.file_type().is_dir() {
@@ -280,9 +281,9 @@ impl PublishCommand {
 
             let mut file_buffer_pairs = vec![];
             for file_path in files_to_release.iter() {
-                let mut file = File::open(file_path).unwrap_or_else(|_| panic!("Failed to open file: {}", file_path.display()));
+                let mut file = File::open(file_path).unwrap_or_else(|e| panic!("Failed to open file {:?}: {}", file_path, e));
                 let mut buffer = Vec::new();
-                file.read_to_end(&mut buffer).unwrap_or_else(|_| panic!("Failed to read file: {}", file_path.display()));
+                file.read_to_end(&mut buffer).unwrap_or_else(|e| panic!("Failed to read file {:?}: {}", file_path, e));
                 // If this is the manifest file, update the version
                 if let Some(m) = &manifest_file {
                     if file_path == m {
@@ -297,7 +298,7 @@ impl PublishCommand {
 
             let archive_file_name = format!("{}.{}", tag, if host_platform.os == "windows" { "zip" } else { "tar.gz" });
             let archive_file_path = temp_dir.path().join(&archive_file_name);
-            let archive_file = File::create(&archive_file_path).unwrap_or_else(|_| panic!("Failed to create file: {}", archive_file_path.display()));
+            let archive_file = File::create(&archive_file_path).unwrap_or_else(|e| panic!("Failed to create file {:?}: {}", archive_file_path, e));
 
             #[cfg(target_os = "windows")]
             let mut writer = zip::ZipWriter::new(archive_file);
@@ -314,10 +315,10 @@ impl PublishCommand {
                 #[cfg(target_os = "windows")]
                 {
                     writer.start_file(file_path.strip_prefix(&abs_path)
-                                          .unwrap_or_else(|_| panic!("Failed to strip prefix {} from {}", abs_path.display(), file_path.display())).to_str()
+                                          .unwrap_or_else(|e| panic!("Failed to strip prefix {:?} from {:?}: {}", abs_path, file_path, e)).to_str()
                                           .expect("Failed to convert path to string"), options)
-                        .unwrap_or_else(|_| panic!("Failed to start file in zip: {}", file_path.display()));
-                    writer.write_all(&buffer).unwrap_or_else(|_| panic!("Failed to write to zip: {}", file_path.display()));
+                        .unwrap_or_else(|e| panic!("Failed to start file in zip {:?}: {}", file_path, e));
+                    writer.write_all(&buffer).unwrap_or_else(|e| panic!("Failed to write to zip {:?}: {}", file_path, e));
                 }
                 #[cfg(unix)]
                 {
@@ -337,7 +338,7 @@ impl PublishCommand {
                 }
             }
 
-            writer.finish().unwrap_or_else(|_| panic!("Failed to finish archive: {}", archive_file_path.display()));
+            writer.finish().unwrap_or_else(|e| panic!("Failed to finish archive {:?}: {}", archive_file_path, e));
             artifact_file_path = archive_file_path;
         } else {
             pb.set_message(format!("Creating a release: {}", abs_path.display()).as_str().to_string());
