@@ -10,10 +10,12 @@ pub struct InitCommand {
 }
 
 impl InitCommand {
-    pub(crate) fn run_init(&self, workspace: &mut Workspace) -> CommandResult {
+    pub(crate) fn run_init(&self, workspace: &mut Workspace, allow_nested: bool) -> CommandResult {
         let directory = &workspace.root;
-        if let Some(ws) = find_root_from(&directory.to_path_buf()) {
-            return Err(InvalidArgument { message: format!("Directory {} is already under a workspace: {}", directory.display(), ws.display())});
+        if !allow_nested {
+            if let Some(ws) = find_root_from(&directory.to_path_buf()) {
+                return Err(InvalidArgument { message: format!("Directory {} is already under a workspace: {}", directory.display(), ws.display())});
+            }   
         }
         println!("Creating a new workspace under {:?}", directory);
         workspace.recreate()?;
@@ -27,8 +29,9 @@ impl Command for InitCommand {
         args.subcommand_matches("init")
     }
 
-    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, _args: &ArgMatches) -> CommandResult {
-        self.run_init(workspace)
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+        let allow_nested = args.get_flag("allow-nested");
+        self.run_init(workspace, allow_nested)
     }
 
     fn needs_workspace(&self) -> bool {
