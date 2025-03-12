@@ -32,12 +32,12 @@ impl PinCommand {
         else {
             node_def = node_defs[0].clone();
         }
-        let nodes_json = node_def.node_defs_json.get_mut("nodes").expect(format!("Failed to get 'nodes' field in node class definition: {}", node_class_name).as_str())
-            .as_array_mut().expect(format!("Failed to parse 'nodes' field in node class definition: {}", node_class_name).as_str());
-        let node_json = nodes_json.get_mut(node_def.index).expect(format!("Failed to get node definition at index {} in node class definition: {}", node_def.index, node_class_name).as_str())
-            .as_object_mut().expect(format!("Failed to parse node definition at index {} in node class definition: {}", node_def.index, node_class_name).as_str());
-        let pins_json = node_json.get_mut("pins").expect(format!("Failed to get 'pins' field in node definition: {}", node_class_name).as_str())
-            .as_array_mut().expect(format!("Failed to parse 'pins' field in node definition: {}", node_class_name).as_str());
+        let nodes_json = node_def.node_defs_json.get_mut("nodes").unwrap_or_else(|| panic!("Failed to get 'nodes' field in node class definition: {}", node_class_name))
+            .as_array_mut().unwrap_or_else(|| panic!("Failed to parse 'nodes' field in node class definition: {}", node_class_name));
+        let node_json = nodes_json.get_mut(node_def.index).unwrap_or_else(|| panic!("Failed to get node definition at index {} in node class definition: {}", node_def.index, node_class_name))
+            .as_object_mut().unwrap_or_else(|| panic!("Failed to parse node definition at index {} in node class definition: {}", node_def.index, node_class_name));
+        let pins_json = node_json.get_mut("pins").unwrap_or_else(|| panic!("Failed to get 'pins' field in node definition: {}", node_class_name))
+            .as_array_mut().unwrap_or_else(|| panic!("Failed to parse 'pins' field in node definition: {}", node_class_name));
         // Remove pin with name
         if remove {
             let mut index = None;

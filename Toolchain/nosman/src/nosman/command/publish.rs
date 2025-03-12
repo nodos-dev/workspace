@@ -130,7 +130,7 @@ impl PublishCommand {
             return Err(InvalidArgument { message: format!("Path {} does not exist", path.display()) });
         }
 
-        let abs_path = dunce::canonicalize(path).expect(format!("Failed to canonicalize path: {}", path.display()).as_str());
+        let abs_path = dunce::canonicalize(path).unwrap_or_else(|_| panic!("Failed to canonicalize path: {}", path.display()));
 
         let mut publish_options = PublishOptions::empty();
 
@@ -169,8 +169,8 @@ impl PublishCommand {
                 let manifest_file = manifest_file.as_ref().unwrap();
                 let contents = std::fs::read_to_string(manifest_file)?;
                 let manifest: serde_json::Value = serde_json::from_str(&contents).unwrap();
-                name = Some(manifest["info"]["id"]["name"].as_str().expect(format!("Module manifest file {:?} must contain info.id.name field!", manifest_file).as_str()).to_string());
-                version = Some(manifest["info"]["id"]["version"].as_str().expect(format!("Module manifest file {:?} must contain info.id.version field!", manifest_file).as_str()).to_string());
+                name = Some(manifest["info"]["id"]["name"].as_str().unwrap_or_else(|| panic!("Module manifest file {:?} must contain info.id.name field!", manifest_file)).to_string());
+                version = Some(manifest["info"]["id"]["version"].as_str().unwrap_or_else(|| panic!("Module manifest file {:?} must contain info.id.version field!", manifest_file)).to_string());
                 let dependencies_json = manifest["info"]["dependencies"].as_array();
                 if dependencies_json.is_some() {
                     let mut deps = vec![];
@@ -199,7 +199,7 @@ impl PublishCommand {
                     };
                     unsafe
                         {
-                            let get_api_version_func = lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>(get_api_version_func_name.as_bytes()).expect(format!("Failed to get symbol {}", get_api_version_func_name).as_str());
+                            let get_api_version_func = lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>(get_api_version_func_name.as_bytes()).unwrap_or_else(|_| panic!("Failed to get symbol {}", get_api_version_func_name));
                             let mut major = 0;
                             let mut minor = 0;
                             let mut patch = 0;
@@ -262,7 +262,7 @@ impl PublishCommand {
 
             let walker = globwalk::GlobWalkerBuilder::from_patterns(&abs_path, &publish_options.release_globs)
                 .build()
-                .expect(format!("Failed to glob dirs: {:?}", publish_options.release_globs).as_str());
+                .unwrap_or_else(|_| panic!("Failed to glob dirs: {:?}", publish_options.release_globs));
             for entry in walker {
                 let entry = entry.unwrap();
                 if entry.file_type().is_dir() {
@@ -280,9 +280,9 @@ impl PublishCommand {
 
             let mut file_buffer_pairs = vec![];
             for file_path in files_to_release.iter() {
-                let mut file = File::open(file_path).expect(format!("Failed to open file: {}", file_path.display()).as_str());
+                let mut file = File::open(file_path).unwrap_or_else(|_| panic!("Failed to open file: {}", file_path.display()));
                 let mut buffer = Vec::new();
-                file.read_to_end(&mut buffer).expect(format!("Failed to read file: {}", file_path.display()).as_str());
+                file.read_to_end(&mut buffer).unwrap_or_else(|_| panic!("Failed to read file: {}", file_path.display()));
                 // If this is the manifest file, update the version
                 if let Some(m) = &manifest_file {
                     if file_path == m {
@@ -297,7 +297,7 @@ impl PublishCommand {
 
             let archive_file_name = format!("{}.{}", tag, if host_platform.os == "windows" { "zip" } else { "tar.gz" });
             let archive_file_path = temp_dir.path().join(&archive_file_name);
-            let archive_file = File::create(&archive_file_path).expect(format!("Failed to create file: {}", archive_file_path.display()).as_str());
+            let archive_file = File::create(&archive_file_path).unwrap_or_else(|_| panic!("Failed to create file: {}", archive_file_path.display()));
 
             #[cfg(target_os = "windows")]
             let mut writer = zip::ZipWriter::new(archive_file);
@@ -314,10 +314,10 @@ impl PublishCommand {
                 #[cfg(target_os = "windows")]
                 {
                     writer.start_file(file_path.strip_prefix(&abs_path)
-                                          .expect(format!("Failed to strip prefix {} from {}", abs_path.display(), file_path.display()).as_str()).to_str()
+                                          .unwrap_or_else(|_| panic!("Failed to strip prefix {} from {}", abs_path.display(), file_path.display())).to_str()
                                           .expect("Failed to convert path to string"), options)
-                        .expect(format!("Failed to start file in zip: {}", file_path.display()).as_str());
-                    writer.write_all(&buffer).expect(format!("Failed to write to zip: {}", file_path.display()).as_str());
+                        .unwrap_or_else(|_| panic!("Failed to start file in zip: {}", file_path.display()));
+                    writer.write_all(&buffer).unwrap_or_else(|_| panic!("Failed to write to zip: {}", file_path.display()));
                 }
                 #[cfg(unix)]
                 {
@@ -337,7 +337,7 @@ impl PublishCommand {
                 }
             }
 
-            writer.finish().expect(format!("Failed to finish archive: {}", archive_file_path.display()).as_str());
+            writer.finish().unwrap_or_else(|_| panic!("Failed to finish archive: {}", archive_file_path.display()));
             artifact_file_path = archive_file_path;
         } else {
             pb.set_message(format!("Creating a release: {}", abs_path.display()).as_str().to_string());

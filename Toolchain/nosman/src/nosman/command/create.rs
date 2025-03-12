@@ -187,8 +187,8 @@ impl Command for CreateCommand {
         }
         let mut deps_success = false;
         let deps = get_dependency_arguments(args, false, &mut deps_success);
-        if !deps_success{
-            return Err(InvalidArgument { message: format!("Invalid dependency format") });
+        if !deps_success {
+            return Err(InvalidArgument { message: "Invalid dependency format".to_string() });
         }
 
         let description = args.get_one::<String>("description").unwrap();

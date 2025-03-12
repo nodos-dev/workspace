@@ -105,7 +105,7 @@ impl InstalledModule {
             return Err(format!("Error parsing file {}: {}", path.display(), e).as_str().red().to_string());
         }
         let module = res.unwrap();
-        installed_module.info = serde_json::from_value(module["info"].clone()).expect(format!("Failed to parse module info from {}", path.display()).as_str());
+        installed_module.info = serde_json::from_value(module["info"].clone()).unwrap_or_else(|_| panic!("Failed to parse module info from {}", path.display()));
 
         // Check custom_types field
         if let Some(custom_types) = module["custom_types"].as_array() {
@@ -144,7 +144,7 @@ impl InstalledModule {
             return None;
         }
         // Read module manifest file as JSON, and read node definition files
-        let manifest_json = self.read_manifest().expect(format!("Failed to read module manifest file ({})", self.manifest_path.display()).as_str());
+        let manifest_json = self.read_manifest().unwrap_or_else(|_| panic!("Failed to read module manifest file ({})", self.manifest_path.display()));
         let node_defs_rel_paths = manifest_json["node_definitions"].as_array()?;
         for node_defs_rel_path in node_defs_rel_paths {
             let node_defs_path = self.get_module_dir().join(node_defs_rel_path.as_str()?);
@@ -156,10 +156,10 @@ impl InstalledModule {
             let node_defs_file_content = node_defs_file_content.unwrap();
             // Remove BOM
             let node_defs_file_content = node_defs_file_content.trim_start_matches('\u{FEFF}');
-            let node_defs: serde_json::Value = serde_json::from_str(&node_defs_file_content).expect(format!("Failed to parse node definitions file: {}", node_defs_path.display()).as_str());
+            let node_defs: serde_json::Value = serde_json::from_str(&node_defs_file_content).unwrap_or_else(|_| panic!("Failed to parse node definitions file: {}", node_defs_path.display()));
             let nodes_json_array = node_defs.get("nodes").expect("Missing 'nodes' field in node definitions file").as_array().expect("'nodes' field is not an array");
             for (index, node_json) in nodes_json_array.iter().enumerate() {
-                let mut curr_class_name = node_json["class_name"].as_str().expect(format!("Missing 'class_name' field in node definition in {}", node_defs_path.display()).as_str()).to_string();
+                let mut curr_class_name = node_json["class_name"].as_str().unwrap_or_else(|| panic!("Missing 'class_name' field in node definition in {}", node_defs_path.display())).to_string();
                 // If class name is not prefixed with module name, prefix it
                 if !curr_class_name.starts_with(self.info.id.name.as_str()) {
                     curr_class_name = format!("{}.{}", self.info.id.name, curr_class_name);
@@ -413,7 +413,7 @@ pub fn get_module_manifests(folder: &PathBuf, silent: bool) -> Vec<(ModuleType, 
     let walker = globwalk::GlobWalkerBuilder::from_patterns(folder, patterns)
         .file_type(globwalk::FileType::FILE)
         .build()
-        .expect(format!("Failed to glob dirs: {:?}", patterns).as_str());
+        .unwrap_or_else(|_| panic!("Failed to glob dirs: {:?}", patterns));
     let mut module_manifest_files = vec![];
     for entry in walker {
         match entry {
@@ -522,7 +522,7 @@ pub fn load_module_with_search_paths(verbose: bool, binary_path: &OsString, addi
                 println!("{}", format!("Warning: DLL search path {} does not exist", lib_dir.display()).yellow().to_string());
                 continue;
             }
-            let lib_dir_canonical = dunce::canonicalize(&lib_dir).expect(format!("Failed to canonicalize path: {}", lib_dir.display()).as_str());
+            let lib_dir_canonical = dunce::canonicalize(&lib_dir).unwrap_or_else(|_| panic!("Failed to canonicalize path: {}", lib_dir.display()));
             if verbose {
                 println!("\tAdding DLL search path: {}", lib_dir_canonical.display());
             }

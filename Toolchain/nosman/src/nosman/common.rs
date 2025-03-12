@@ -12,8 +12,8 @@ use crate::nosman::command::CommandError;
 pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandError> {
     let mut tmpfile = tempfile::tempfile().expect("Failed to create tempfile");
     reqwest::blocking::get(url)
-    .expect(format!("Failed to fetch {}", url).as_str()).copy_to(&mut tmpfile)
-    .expect(format!("Failed to write to {:?}", tmpfile).as_str());
+    .unwrap_or_else(|_| panic!("Failed to fetch {}", url)).copy_to(&mut tmpfile)
+    .unwrap_or_else(|_| panic!("Failed to write to {:?}", tmpfile));
 
     tmpfile.seek(std::io::SeekFrom::Start(0)).expect("Failed to seek to start of file");
 
@@ -54,8 +54,8 @@ pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandEr
 
 pub fn check_file_contents_same(path1: &PathBuf, path2: &PathBuf) -> bool {
     // Efficiently compare file contents
-    let mut file1 = File::open(path1).expect(format!("Failed to open {:?}", path1).as_str());
-    let mut file2 = File::open(path2).expect(format!("Failed to open {:?}", path2).as_str());
+    let mut file1 = File::open(path1).unwrap_or_else(|_| panic!("Failed to open {:?}", path1));
+    let mut file2 = File::open(path2).unwrap_or_else(|_| panic!("Failed to open {:?}", path2));
     let mut buf1 = [0; 1024];
     let mut buf2 = [0; 1024];
     let opt_f1_md = file1.metadata();
@@ -69,8 +69,8 @@ pub fn check_file_contents_same(path1: &PathBuf, path2: &PathBuf) -> bool {
         return false;
     }
     loop {
-        let n1 = file1.read(&mut buf1).expect(format!("Failed to read {}", path1.display()).as_str());
-        let n2 = file2.read(&mut buf2).expect(format!("Failed to read {}", path2.display()).as_str());
+        let n1 = file1.read(&mut buf1).unwrap_or_else(|_| panic!("Failed to read {}", path1.display()));
+        let n2 = file2.read(&mut buf2).unwrap_or_else(|_| panic!("Failed to read {}", path2.display()));
         if n1 != n2 || buf1 != buf2 {
             return false;
         }

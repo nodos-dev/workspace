@@ -403,7 +403,7 @@ impl Remote {
         let version = release.version.clone();
         let platform = release.platform.clone();
         // Check if target_platform exists for the same version in release_list
-        let sem_ver = SemVer::parse_from_string(&version).expect(format!("{} is not a valid semantic version", version).as_str());
+        let sem_ver = SemVer::parse_from_string(&version).unwrap_or_else(|| panic!("{} is not a valid semantic version", version));
         for existing_release in &release_list.releases {
             if existing_release.platform.is_some() && release.platform.is_some() {
                 if existing_release.platform != release.platform {
@@ -637,7 +637,7 @@ impl Index {
         let mut versions: Vec<&PackageReleaseEntry> = version_list.iter().collect();
         sort_version_list(&mut versions);
         versions.reverse();
-        if versions.len() == 0 {
+        if versions.is_empty() {
             return None;
         }
         let platform = get_host_platform().to_string();
