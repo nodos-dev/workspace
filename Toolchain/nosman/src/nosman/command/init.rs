@@ -30,7 +30,7 @@ impl Command for InitCommand {
     }
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
-        let allow_nested = args.get_flag("allow-nested");
+        let allow_nested = args.get_flag("allow_nested");
         self.run_init(workspace, allow_nested)
     }
 
