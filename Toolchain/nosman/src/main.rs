@@ -32,7 +32,7 @@ fn launched_from_file_explorer() -> bool {
             if let Some(parent_pid) = process.parent() {
                 if let Some(parent_process) = sys.process(parent_pid) {
                     #[cfg(target_os = "windows")]
-                    return parent_process.name().to_lowercase() == "explorer.exe";
+                    return parent_process.name().eq_ignore_ascii_case("explorer.exe");
                     #[cfg(target_os = "macos")]
                     return parent_process.name() == "Finder";
                     #[cfg(target_os = "linux")]
