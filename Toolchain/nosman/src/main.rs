@@ -34,11 +34,11 @@ fn launched_from_file_explorer() -> bool {
                     #[cfg(target_os = "windows")]
                     return parent_process.name().eq_ignore_ascii_case("explorer.exe");
                     #[cfg(target_os = "macos")]
-                    return parent_process.name() == "Finder";
+                    return parent_process.name().eq_ignore_ascii_case("finder");
                     #[cfg(target_os = "linux")]
                     return ["nautilus", "dolphin", "nemo", "thunar"]
                         .iter()
-                        .any(|&name| parent_process.name().to_lowercase() == name);
+                        .any(|&name| parent_process.name().eq_ignore_ascii_case(name));
                 }
             }
         }
