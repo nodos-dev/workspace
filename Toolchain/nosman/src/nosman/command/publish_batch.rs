@@ -124,10 +124,7 @@ impl PublishBatchCommand {
         if rollback {
             println!("{}", "Rolling back published modules".red());
             for id in published {
-                let res = UnpublishCommand {}.run_unpublish(&workspace, dry_run, verbose, remote_name, &id.name, Option::from(&id.version));
-                if res.is_err() {
-                    return res;
-                }
+                UnpublishCommand {}.run_unpublish(&workspace, dry_run, verbose, remote_name, &id.name, Option::from(&id.version))?
             }
             return Err(InvalidArgument { message: "Failed to publish all modules".to_string() });
         }

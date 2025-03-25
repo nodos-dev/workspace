@@ -280,6 +280,14 @@ function(nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS)
 			target_link_libraries(${NAME} PRIVATE ${dependency})
 		endif()
 	endforeach()
+
+	# Produce PDBs in release mode too
+	if (CMAKE_BUILD_TYPE STREQUAL "Release")
+		if (MSVC)
+			target_compile_options(${NAME} PRIVATE /Zi)
+			target_link_options(${NAME} PRIVATE /DEBUG /OPT:REF /OPT:ICF)
+		endif()
+	endif()
 endfunction()
 
 function(nos_add_subsystem NAME DEPENDENCIES INCLUDE_FOLDERS)
