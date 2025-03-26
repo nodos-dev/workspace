@@ -10,8 +10,6 @@ project(${PROJECT_NAME})
 
 # Includes
 include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Utils.cmake)
-include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/FindNodosSDK.cmake)
-include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Projects.cmake)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
@@ -38,39 +36,37 @@ endif()
 set(NOS_VERSIONS "")
 set(NOS_SDK_DIRS "")
 
+macro(_nos_process_engine_folder engine_folder binary_dir_index)
+	if(IS_DIRECTORY ${engine_folder})
+		# If engine directory does not contain a CMakeLists.txt, include SDK/cmake/VersionInfo.cmake.
+		if(NOT EXISTS "${engine_folder}/CMakeLists.txt")
+			message(STATUS "Including ${engine_folder}/SDK/cmake/VersionInfo.cmake")
+			include(${engine_folder}/SDK/cmake/VersionInfo.cmake)
+		else()
+			add_subdirectory(${engine_folder} "${CMAKE_CURRENT_BINARY_DIR}/EngineDir${binary_dir_index}")
+		endif()
+	else()
+		message(FATAL_ERROR "ENGINE_FOLDER is not a valid directory.")
+	endif()
+endmacro()
+
 if(NOT DEFINED ENGINE_FOLDER OR ENGINE_FOLDER STREQUAL "")
 	nos_colored_message(COLOR YELLOW "ENGINE_FOLDER not defined. Project will include Nodos engines in ${NODOS_WORKSPACE_DIR}/Engine")
 
 	set(NOS_ENGINE_FOLDER ${ENGINE_FOLDER})
 	file(GLOB NOS_ENGINE_DIRS "${NOS_ENGINE_FOLDER}/*")
-	
+
 	set(NOS_ENGINE_DIR_INDEX 0)
 	foreach(nos_engine_dir ${NOS_ENGINE_DIRS})
 		if(IS_DIRECTORY ${nos_engine_dir})
-			# If engine directory does not contain a CMakeLists.txt, include SDK/cmake/VersionInfo.cmake
-			if(NOT EXISTS "${nos_engine_dir}/CMakeLists.txt")
-				message(STATUS "Including ${nos_engine_dir}/SDK/cmake/VersionInfo.cmake")
-				include(${nos_engine_dir}/SDK/cmake/VersionInfo.cmake)
-			else()
-				add_subdirectory(${nos_engine_dir} "${CMAKE_CURRENT_BINARY_DIR}/EngineDir${NOS_ENGINE_DIR_INDEX}")
-				math(EXPR NOS_ENGINE_DIR_INDEX "${NOS_ENGINE_DIR_INDEX} + 1")
-			endif()
+			_nos_process_engine_folder(${nos_engine_dir} ${NOS_ENGINE_DIR_INDEX})
+			math(EXPR NOS_ENGINE_DIR_INDEX "${NOS_ENGINE_DIR_INDEX} + 1")
 		endif()
 	endforeach()
 else()
 	nos_colored_message(COLOR GREEN "Using Nodos SDK in ${ENGINE_FOLDER}...")
 	set(ENGINE_FOLDER ${NODOS_WORKSPACE_DIR}/${ENGINE_FOLDER})
-	if(IS_DIRECTORY ${ENGINE_FOLDER})
-		# If engine directory does not contain a CMakeLists.txt, include SDK/cmake/VersionInfo.cmake
-		if(NOT EXISTS "${ENGINE_FOLDER}/CMakeLists.txt")
-			message(STATUS "Including ${ENGINE_FOLDER}/SDK/cmake/VersionInfo.cmake")
-			include(${ENGINE_FOLDER}/SDK/cmake/VersionInfo.cmake)
-		else()
-			add_subdirectory(${ENGINE_FOLDER} "${CMAKE_CURRENT_BINARY_DIR}/EngineDir0")
-		endif()
-	else()
-		message(FATAL_ERROR "ENGINE_FOLDER is not a valid directory.")
-	endif()
+	_nos_process_engine_folder(${ENGINE_FOLDER} 0)
 endif()
 
 # Prepare targets
@@ -187,6 +183,10 @@ if (NOT EXISTS "${NOSMAN_WORKSPACE_DIR}/.nosman/index")
 		RESULT_VARIABLE NOSMAN_RESULT
 	)
 endif()
+
+# Includes for modules
+include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/FindNodosSDK.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Projects.cmake)
 
 if(NOT DEFINED MODULE_DIRS OR MODULE_DIRS STREQUAL "")
 	set(MODULE_DIRS "${NODOS_WORKSPACE_DIR}/Module" CACHE INTERNAL "Module directories" FORCE)
