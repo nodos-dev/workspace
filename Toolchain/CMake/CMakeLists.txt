@@ -8,6 +8,11 @@ endif()
 
 project(${PROJECT_NAME})
 
+# Includes
+include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Utils.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/FindNodosSDK.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Projects.cmake)
+
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -33,22 +38,40 @@ endif()
 set(NOS_VERSIONS "")
 set(NOS_SDK_DIRS "")
 
-set(NOS_ENGINE_FOLDER ${NODOS_WORKSPACE_DIR}/Engine)
-file(GLOB NOS_ENGINE_DIRS "${NOS_ENGINE_FOLDER}/*")
+if(NOT DEFINED ENGINE_FOLDER OR ENGINE_FOLDER STREQUAL "")
+	nos_colored_message(COLOR YELLOW "ENGINE_FOLDER not defined. Project will include Nodos engines in ${NODOS_WORKSPACE_DIR}/Engine")
 
-set(NOS_ENGINE_DIR_INDEX 0)
-foreach(nos_engine_dir ${NOS_ENGINE_DIRS})
-	if(IS_DIRECTORY ${nos_engine_dir})
-		# If engine directory does not contain a CMakeLists.txt, include SDK/cmake/VersionInfo.cmake
-		if(NOT EXISTS "${nos_engine_dir}/CMakeLists.txt")
-			message(STATUS "Including ${nos_engine_dir}/SDK/cmake/VersionInfo.cmake")
-			include(${nos_engine_dir}/SDK/cmake/VersionInfo.cmake)
-		else()
-			add_subdirectory(${nos_engine_dir} "${CMAKE_CURRENT_BINARY_DIR}/EngineDir${NOS_ENGINE_DIR_INDEX}")
-			math(EXPR NOS_ENGINE_DIR_INDEX "${NOS_ENGINE_DIR_INDEX} + 1")
+	set(NOS_ENGINE_FOLDER ${ENGINE_FOLDER})
+	file(GLOB NOS_ENGINE_DIRS "${NOS_ENGINE_FOLDER}/*")
+	
+	set(NOS_ENGINE_DIR_INDEX 0)
+	foreach(nos_engine_dir ${NOS_ENGINE_DIRS})
+		if(IS_DIRECTORY ${nos_engine_dir})
+			# If engine directory does not contain a CMakeLists.txt, include SDK/cmake/VersionInfo.cmake
+			if(NOT EXISTS "${nos_engine_dir}/CMakeLists.txt")
+				message(STATUS "Including ${nos_engine_dir}/SDK/cmake/VersionInfo.cmake")
+				include(${nos_engine_dir}/SDK/cmake/VersionInfo.cmake)
+			else()
+				add_subdirectory(${nos_engine_dir} "${CMAKE_CURRENT_BINARY_DIR}/EngineDir${NOS_ENGINE_DIR_INDEX}")
+				math(EXPR NOS_ENGINE_DIR_INDEX "${NOS_ENGINE_DIR_INDEX} + 1")
+			endif()
 		endif()
+	endforeach()
+else()
+	nos_colored_message(COLOR GREEN "Using Nodos SDK in ${ENGINE_FOLDER}...")
+	set(ENGINE_FOLDER ${NODOS_WORKSPACE_DIR}/${ENGINE_FOLDER})
+	if(IS_DIRECTORY ${ENGINE_FOLDER})
+		# If engine directory does not contain a CMakeLists.txt, include SDK/cmake/VersionInfo.cmake
+		if(NOT EXISTS "${ENGINE_FOLDER}/CMakeLists.txt")
+			message(STATUS "Including ${ENGINE_FOLDER}/SDK/cmake/VersionInfo.cmake")
+			include(${ENGINE_FOLDER}/SDK/cmake/VersionInfo.cmake)
+		else()
+			add_subdirectory(${ENGINE_FOLDER} "${CMAKE_CURRENT_BINARY_DIR}/EngineDir0")
+		endif()
+	else()
+		message(FATAL_ERROR "ENGINE_FOLDER is not a valid directory.")
 	endif()
-endforeach()
+endif()
 
 # Prepare targets
 list(LENGTH NOS_VERSIONS NOS_SDK_COUNT)
@@ -120,11 +143,6 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 		endif()
 	endforeach()
 endif()
-
-# Includes
-include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Utils.cmake)
-include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/FindNodosSDK.cmake)
-include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Projects.cmake)
 
 # If Toolchain/nosman/src exists, setup cargo build command that depends on .rs files to build and copy the executable to the root
 if ((NOT NOS_INVOKED_FROM_NOSMAN) AND (EXISTS "${NODOS_WORKSPACE_DIR}/Toolchain/nosman/src"))
