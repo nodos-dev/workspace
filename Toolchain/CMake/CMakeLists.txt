@@ -53,8 +53,7 @@ endmacro()
 if(NOT DEFINED ENGINE_FOLDER OR ENGINE_FOLDER STREQUAL "")
 	nos_colored_message(COLOR YELLOW "ENGINE_FOLDER not defined. Project will include Nodos engines in ${NODOS_WORKSPACE_DIR}/Engine")
 
-	set(NOS_ENGINE_FOLDER ${ENGINE_FOLDER})
-	file(GLOB NOS_ENGINE_DIRS "${NOS_ENGINE_FOLDER}/*")
+	file(GLOB NOS_ENGINE_DIRS "${NODOS_WORKSPACE_DIR}/Engine/*")
 
 	set(NOS_ENGINE_DIR_INDEX 0)
 	foreach(nos_engine_dir ${NOS_ENGINE_DIRS})
