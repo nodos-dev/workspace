@@ -308,11 +308,11 @@ function(_nos_add_module NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_
 endfunction()
 
 function(nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS)
-	_nos_add_module(${NAME} "${INCLUDE_FOLDERS}" ".noscfg" ".nosdef;Node Definitions")
+	_nos_add_module(${NAME} "${INCLUDE_FOLDERS}" "noscfg" ".nosdef;Node Definitions")
 endfunction()
 
 function(nos_add_subsystem NAME DEPENDENCIES INCLUDE_FOLDERS)
-	_nos_add_module(${NAME} "${INCLUDE_FOLDERS}" ".nossys" "")
+	_nos_add_module(${NAME} "${INCLUDE_FOLDERS}" "nossys" "")
 endfunction()
 
 macro(nos_get_targets targets dir)
