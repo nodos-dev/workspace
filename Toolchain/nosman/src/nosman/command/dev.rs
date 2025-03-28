@@ -121,12 +121,12 @@ impl Command for DevPullCommand {
 pub struct DevGenCommand {}
 
 impl DevGenCommand {
-    fn run_gen(&self, lang_tool: &String, extra_args: Vec<String>) -> CommandResult {
+    fn run_gen(&self, lang_tool: &String, project_folder: &String, extra_args: Vec<String>) -> CommandResult {
         // Only cpp/cmake is supported for now
         if lang_tool != "cpp/cmake" {
             return Err(InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool) });
         }
-        let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", "Project", "-DNOS_INVOKED_FROM_NOSMAN=ON"];
+        let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", project_folder, "-DNOS_INVOKED_FROM_NOSMAN=ON"];
         for arg in extra_args.iter() {
             cmake_args.push(arg);
         }
@@ -153,11 +153,12 @@ impl Command for DevGenCommand {
 
     fn run(&self, _workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let lang_tool = args.get_one::<String>("language/tool").unwrap();
+        let project_folder = args.get_one::<String>("project_folder").unwrap();
         let mut extra_args = Vec::new();
         if let Some(args) = args.get_one::<String>("extra_args") {
             extra_args = args.split_whitespace().map(|s| s.to_string()).collect();
         }
-        self.run_gen(lang_tool, extra_args)
+        self.run_gen(lang_tool, project_folder, extra_args)
     }
 
     fn needs_workspace(&self) -> bool {
