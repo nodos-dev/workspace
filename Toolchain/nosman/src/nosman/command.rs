@@ -1,6 +1,6 @@
 pub mod init;
 pub mod remote;
-mod install;
+pub(crate) mod install;
 mod info;
 mod remove;
 mod rescan;

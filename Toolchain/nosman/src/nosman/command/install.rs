@@ -11,6 +11,7 @@ use nosman::workspace::Workspace;
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::common::download_and_extract;
+use bitflags::bitflags;
 
 pub struct InstallCommand {
 }
@@ -21,10 +22,23 @@ impl From<ZipError> for CommandError {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct InstallFlags(u8);
+bitflags! {
+    impl InstallFlags: u8 {
+        const UpdatePackageIndex = 0b1;
+        const WithoutDependencies = 0b10;
+        const InstallExactVersion = 0b100;
+    }
+}
+
 impl InstallCommand {
-    pub(crate) fn run_install(&self, workspace: &mut Workspace, package_name: &str, version_opt: Option<&String>, exact: bool, output_dir: &PathBuf, prefix: Option<&String>, fetch_index: bool) -> CommandResult {
+    pub(crate) fn run_install(&self, workspace: &mut Workspace, package_name: &str, version_opt: Option<&String>, output_dir: &PathBuf, prefix: Option<&String>, flags : InstallFlags) -> CommandResult {
+        let mut subcall_flag = flags.clone();
+        subcall_flag.remove(InstallFlags::UpdatePackageIndex);
+        subcall_flag.insert(InstallFlags::InstallExactVersion);
         // Fetch remotes
-        if fetch_index {
+        if flags.contains(InstallFlags::UpdatePackageIndex) {
             println!("Fetching index...");
             workspace.fetch_package_releases(package_name);    
         }
@@ -36,11 +50,11 @@ impl InstallCommand {
             }
             version = latest.unwrap().1.version.clone();
             println!("Installing latest version {} of {}", version, package_name);
-            return self.run_install(workspace, package_name, Some(&version), true, output_dir, prefix, false);
+            return self.run_install(workspace, package_name, Some(&version), output_dir, prefix, subcall_flag);
         } else {
             version = version_opt.unwrap().to_string();
         }
-        if !exact {
+        if !flags.contains(InstallFlags::InstallExactVersion) {
             // Find or download a version such that 'a.b <= x < a.(b+1)'
             let version_start = SemVer::parse_from_string(version.as_str()).unwrap();
             if version_start.minor.is_none() {
@@ -62,7 +76,7 @@ impl InstallCommand {
                 } else {
                     return Err(InvalidArgument { message: format!("No remote contained a version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), package_name) });
                 };
-                return self.run_install(workspace, package_name, compatible_package.as_ref(), true, output_dir, prefix, false);
+                return self.run_install(workspace, package_name, compatible_package.as_ref(), output_dir, prefix, subcall_flag);
             }
         }
         let mut replace_entry_in_index = false;
@@ -95,7 +109,7 @@ impl InstallCommand {
             }
             println!("Extracted {} {} to {}", pkg_type_str, package_name, final_out_dir.display());
             if package_type.is_module() {
-                workspace.scan_modules_in_folder(final_out_dir, replace_entry_in_index);
+                workspace.scan_modules_in_folder(final_out_dir, replace_entry_in_index, !flags.contains(InstallFlags::WithoutDependencies));
                 println!("Adding to workspace file");
                 workspace.save()?;
             }
@@ -117,7 +131,13 @@ impl Command for InstallCommand {
         let version = args.get_one::<String>("version");
         let output_dir = args.get_one::<String>("out_dir").map(|p| PathBuf::from(p)).unwrap_or_else(|| PathBuf::from("."));
         let prefix = args.get_one::<String>("prefix");
-        let exact = args.get_one::<bool>("exact").unwrap().clone();
-        self.run_install(workspace, module_name, version, exact, &output_dir, prefix, true)
+        let mut flag : InstallFlags = InstallFlags::UpdatePackageIndex;
+        if args.get_one::<bool>("exact").unwrap().clone(){
+            flag.insert(InstallFlags::InstallExactVersion);
+        }
+        if args.get_one::<bool>("without-deps").unwrap().clone(){
+            flag.insert(InstallFlags::WithoutDependencies);
+        }
+        self.run_install(workspace, module_name, version, &output_dir, prefix, flag)
     }
 }

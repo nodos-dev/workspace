@@ -142,7 +142,7 @@ impl CreateCommand {
         println!("{:?} project created at {:?}", module_type, output_dir);
 
         if workspace.ready() {
-            workspace.scan_modules_in_folder(output_dir.clone(), true);
+            workspace.scan_modules_in_folder(output_dir.clone(), true, false);
             workspace.save()?;
         }
 

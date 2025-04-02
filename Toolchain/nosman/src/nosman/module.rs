@@ -15,7 +15,7 @@ use libloading::Library;
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument, Runtime};
 use crate::nosman::{common, constants, extensions};
-use crate::nosman::common::get_progress_bar;
+use crate::nosman::common::{get_progress_bar};
 use crate::nosman::extensions::{CNosArg, CNosCommand, CNosRunCommandParams, NosCommand, NosCommandDesc};
 use crate::nosman::index::{ModuleType};
 use crate::nosman::path::{get_plugin_manifest_file, get_rel_path_based_on, get_subsystem_manifest_file};
@@ -123,7 +123,6 @@ impl InstalledModule {
             installed_module.public_include_folder = Some(get_rel_path_based_on(&abs_path.parent().unwrap().join("Include").canonicalize().unwrap(), &workspace.root));
         }
         installed_module.module_type = get_module_type_from_manifest_file_path(&abs_path).unwrap();
-        installed_module.register_commands(&workspace);
         Ok(installed_module)
     }
     pub fn get_module_dir(&self) -> PathBuf {
