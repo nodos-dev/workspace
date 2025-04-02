@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{ArgMatches};
 use crate::nosman::command::{Command, CommandResult};
-use crate::nosman::command::install::InstallCommand;
+use crate::nosman::command::install::{InstallCommand, InstallFlags};
 use crate::nosman::workspace::Workspace;
 
 // Hashmap of sample names to package names
@@ -19,7 +19,7 @@ impl SampleCommand {
     fn run_get_sample(&self, workspace: &mut Workspace, name: &str, output_dir: &PathBuf) -> CommandResult {
         let opt_pkg_name = SAMPLES.get(name);
         if let Some(pkg_name) = opt_pkg_name {
-            InstallCommand{}.run_install(workspace, pkg_name, None, true, output_dir, None, true, false)
+            InstallCommand{}.run_install(workspace, pkg_name, None, output_dir, None, InstallFlags::UpdatePackageIndex | InstallFlags::InstallExactVersion)
         } else {
             Err (crate::nosman::command::CommandError::Runtime { message: format!("Sample {} not found", name) })
         }

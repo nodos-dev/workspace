@@ -13,7 +13,7 @@ use rayon::iter::IntoParallelRefIterator;
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::{constants};
-use crate::nosman::command::install::InstallCommand;
+use crate::nosman::command::install::{InstallCommand, InstallFlags};
 use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{Index, PackageIndexEntry, PackageReleaseEntry, PackageReleases, PackageType, Remote, SemVer};
 use crate::nosman::module::{InstalledModule, get_module_manifests, NodeDefinition};
@@ -311,7 +311,7 @@ impl Workspace {
                 pb.finish_with_message(format!("Installing dependencies for module: {}", installed_module.info.id));
                 for dep in installed_module.info.dependencies.as_ref().unwrap_or(&vec![]) {
                     println!("Installing dependency {}...", dep.name);
-                    let installed_dependency_result = InstallCommand {}.run_install(self, dep.name.as_str(), Some(&dep.version), false, &PathBuf::from("./Module/Downloaded"), None, true, false);
+                    let installed_dependency_result = InstallCommand {}.run_install(self, dep.name.as_str(), Some(&dep.version), &PathBuf::from("./Module/Downloaded"), None, InstallFlags::UpdatePackageIndex);
                     if let Err(ref e) = installed_dependency_result {
                         return println!("Error installing dependency {}: {}", dep.name, e);
                     }
