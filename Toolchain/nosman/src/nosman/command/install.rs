@@ -118,7 +118,7 @@ impl Command for InstallCommand {
         let output_dir = args.get_one::<String>("out_dir").map(|p| PathBuf::from(p)).unwrap_or_else(|| PathBuf::from("."));
         let prefix = args.get_one::<String>("prefix");
         let exact = args.get_one::<bool>("exact").unwrap().clone();
-        let no_dependency = args.get_one::<bool>("no_dependencies").unwrap().clone();
+        let no_dependency = args.get_one::<bool>("no-dependencies").unwrap().clone();
         self.run_install(workspace, module_name, version, exact, &output_dir, prefix, true, no_dependency)
     }
 }
