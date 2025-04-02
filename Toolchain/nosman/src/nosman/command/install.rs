@@ -22,7 +22,7 @@ impl From<ZipError> for CommandError {
 }
 
 impl InstallCommand {
-    pub(crate) fn run_install(&self, workspace: &mut Workspace, package_name: &str, version_opt: Option<&String>, exact: bool, output_dir: &PathBuf, prefix: Option<&String>, fetch_index: bool) -> CommandResult {
+    pub(crate) fn run_install(&self, workspace: &mut Workspace, package_name: &str, version_opt: Option<&String>, exact: bool, output_dir: &PathBuf, prefix: Option<&String>, fetch_index: bool, no_dependency: bool) -> CommandResult {
         // Fetch remotes
         if fetch_index {
             println!("Fetching index...");
@@ -36,7 +36,7 @@ impl InstallCommand {
             }
             version = latest.unwrap().1.version.clone();
             println!("Installing latest version {} of {}", version, package_name);
-            return self.run_install(workspace, package_name, Some(&version), true, output_dir, prefix, false);
+            return self.run_install(workspace, package_name, Some(&version), true, output_dir, prefix, false, no_dependency);
         } else {
             version = version_opt.unwrap().to_string();
         }
@@ -62,7 +62,7 @@ impl InstallCommand {
                 } else {
                     return Err(InvalidArgument { message: format!("No remote contained a version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), package_name) });
                 };
-                return self.run_install(workspace, package_name, compatible_package.as_ref(), true, output_dir, prefix, false);
+                return self.run_install(workspace, package_name, compatible_package.as_ref(), true, output_dir, prefix, false, no_dependency);
             }
         }
         let mut replace_entry_in_index = false;
@@ -95,7 +95,7 @@ impl InstallCommand {
             }
             println!("Extracted {} {} to {}", pkg_type_str, package_name, final_out_dir.display());
             if package_type.is_module() {
-                workspace.scan_modules_in_folder(final_out_dir, replace_entry_in_index);
+                workspace.scan_modules_in_folder(final_out_dir, replace_entry_in_index, !no_dependency);
                 println!("Adding to workspace file");
                 workspace.save()?;
             }
@@ -118,6 +118,7 @@ impl Command for InstallCommand {
         let output_dir = args.get_one::<String>("out_dir").map(|p| PathBuf::from(p)).unwrap_or_else(|| PathBuf::from("."));
         let prefix = args.get_one::<String>("prefix");
         let exact = args.get_one::<bool>("exact").unwrap().clone();
-        self.run_install(workspace, module_name, version, exact, &output_dir, prefix, true)
+        let no_dependency = args.get_one::<bool>("no_dependencies").unwrap().clone();
+        self.run_install(workspace, module_name, version, exact, &output_dir, prefix, true, no_dependency)
     }
 }

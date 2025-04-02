@@ -13,6 +13,7 @@ use rayon::iter::IntoParallelRefIterator;
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::{constants};
+use crate::nosman::command::install::InstallCommand;
 use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{Index, PackageIndexEntry, PackageReleaseEntry, PackageReleases, PackageType, Remote, SemVer};
 use crate::nosman::module::{InstalledModule, get_module_manifests, NodeDefinition};
@@ -58,6 +59,7 @@ bitflags! {
         const ScanModules = 0b1;
         const FetchPackageIndex = 0b10;
         const AddDefaultPackageIndexIfNoRemoteExists = 0b100;
+        const InstallDependencies = 0b1000;
     }
 }
 
@@ -276,7 +278,7 @@ impl Workspace {
     pub fn set_output_mode(&mut self, mode: OutputMode) {
         self.runtime.output_mode = mode;
     }
-    pub fn scan_modules_in_folder(&mut self, folder: PathBuf, force_replace_in_registry: bool) {
+    pub fn scan_modules_in_folder(&mut self, folder: PathBuf, force_replace_in_registry: bool, install_dependencies: bool) {
         // Scan folders with .noscfg and .nossys files
         let folder = dunce::canonicalize(&folder).unwrap_or_else(|e| panic!("Failed to canonicalize path {}: {}", folder.display(), e));
         let module_manifests = get_module_manifests(&folder, self.is_silent());
@@ -293,7 +295,7 @@ impl Workspace {
                 pb.println(format!("Error while scanning {}: {}", path.display(), msg).red().to_string());
                 continue;
             }
-            let installed_module = res.unwrap();
+            let mut installed_module = res.unwrap();
             let opt_found = self.get_installed_module(&installed_module.info.id.name, &installed_module.info.id.version);
             if opt_found.is_some() {
                 let found = opt_found.unwrap();
@@ -304,11 +306,27 @@ impl Workspace {
                     continue;
                 }
             }
+            // Install dependencies
+            if install_dependencies {
+                pb.finish_with_message(format!("Installing dependencies for module: {}", installed_module.info.id));
+                for dep in installed_module.info.dependencies.as_ref().unwrap_or(&vec![]) {
+                    println!("Installing dependency {}...", dep.name);
+                    let installed_dependency_result = InstallCommand {}.run_install(self, dep.name.as_str(), Some(&dep.version), false, &PathBuf::from("./Module/Downloaded"), None, true, false);
+                    if let Err(ref e) = installed_dependency_result {
+                        return println!("Error installing dependency {}: {}", dep.name, e);
+                    }
+                }
+                installed_module.dependencies_installed = true;
+            }
+            if installed_module.dependencies_installed {
+                installed_module.register_commands(&self);
+            }
+
             self.add(installed_module);
         }
     }
-    pub fn scan_modules(&mut self, force_replace_in_registry: bool) {
-       self.scan_modules_in_folder(self.root.clone(), force_replace_in_registry);
+    pub fn scan_modules(&mut self, force_replace_in_registry: bool, install_dependencies: bool) {
+       self.scan_modules_in_folder(self.root.clone(), force_replace_in_registry, install_dependencies);
     }
     pub fn recreate(&mut self) -> Result<(), CommandError> {
         self.rescan(RescanFlags::all())?;
@@ -322,7 +340,7 @@ impl Workspace {
         }
         if flags.contains(RescanFlags::ScanModules) {
             self.installed_modules.clear();
-            self.scan_modules(true);
+            self.scan_modules(true, flags.contains(RescanFlags::InstallDependencies));
         }
         self.save()?;
         self.runtime.status = WorkspaceStatus::Ready;

@@ -19,7 +19,7 @@ impl SampleCommand {
     fn run_get_sample(&self, workspace: &mut Workspace, name: &str, output_dir: &PathBuf) -> CommandResult {
         let opt_pkg_name = SAMPLES.get(name);
         if let Some(pkg_name) = opt_pkg_name {
-            InstallCommand{}.run_install(workspace, pkg_name, None, true, output_dir, None, true)
+            InstallCommand{}.run_install(workspace, pkg_name, None, true, output_dir, None, true, false)
         } else {
             Err (crate::nosman::command::CommandError::Runtime { message: format!("Sample {} not found", name) })
         }
