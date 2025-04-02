@@ -47,8 +47,7 @@ pub struct InstalledModule {
     pub type_schema_files: Vec<PathBuf>,
     pub module_type: ModuleType,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub commands: Vec<NosCommandDesc>,
-    pub dependencies_installed: bool // Whether the module has been loaded with all its static DLL dependencies
+    pub commands: Vec<NosCommandDesc>
 }
 
 impl Display for InstalledModule {
@@ -91,7 +90,6 @@ impl InstalledModule {
             type_schema_files: Vec::new(),
             module_type: ModuleType::Plugin,
             commands: Vec::new(),
-            dependencies_installed: false,
         };
 
         let abs_path = workspace.root.join(&path);

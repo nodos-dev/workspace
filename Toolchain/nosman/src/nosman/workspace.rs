@@ -316,9 +316,6 @@ impl Workspace {
                         return println!("Error installing dependency {}: {}", dep.name, e);
                     }
                 }
-                installed_module.dependencies_installed = true;
-            }
-            if installed_module.dependencies_installed {
                 installed_module.register_commands(&self);
             }
 
