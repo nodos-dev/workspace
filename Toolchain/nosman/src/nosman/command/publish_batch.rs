@@ -117,6 +117,7 @@ impl PublishBatchCommand {
                 published.push(id);
             }
             else {
+                println!("{}", format!("Failed to publish module at {:?}: {}", module_root, res.err().unwrap()).red());
                 rollback = true;
                 break;
             }
