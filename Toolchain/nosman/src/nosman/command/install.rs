@@ -9,9 +9,10 @@ use crate::nosman::command::{Command, CommandError, CommandResult};
 use zip::result::ZipError;
 use nosman::workspace::Workspace;
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
-use crate::nosman::index::{PackageType, SemVer};
+use crate::nosman::index::{PackageReleaseEntry, PackageType, SemVer};
 use crate::nosman::common::download_and_extract;
 use bitflags::bitflags;
+use crate::nosman::module::PackageIdentifier;
 
 pub struct InstallCommand {
 }
@@ -33,6 +34,25 @@ bitflags! {
 }
 
 impl InstallCommand {
+    pub fn get_absent_dependencies(&self, workspace: &Workspace, dependencies: &Vec<PackageIdentifier>) -> Vec<PackageIdentifier>{
+        let mut absent_packages = Vec::new();
+        for dep in dependencies{
+            let dep_name = dep.name.clone();
+            let dep_version = dep.version.clone();
+            let installed_module = workspace.get_installed_module(dep_name.as_str(), dep_version.as_str());
+            if installed_module.is_none(){
+                absent_packages.push(dep.clone());
+            }
+            if let Some((package_type, absent_package)) = workspace.index_cache.get_package(dep_name.as_str(), dep_version.as_str()){
+                if *package_type == PackageType::Nodos || *package_type == PackageType::Engine {
+                    return absent_packages;
+                }
+                let absent_sub_deps = self.get_absent_dependencies(workspace, absent_package.dependencies.as_ref().unwrap_or(&Vec::new()));
+                absent_packages.extend(absent_sub_deps.clone());
+            }
+        }
+        absent_packages
+    }
     pub(crate) fn run_install(&self, workspace: &mut Workspace, package_name: &str, version_opt: Option<&String>, output_dir: &PathBuf, prefix: Option<&String>, flags : InstallFlags) -> CommandResult {
         let mut subcall_flag = flags.clone();
         subcall_flag.remove(InstallFlags::UpdatePackageIndex);
@@ -89,6 +109,24 @@ impl InstallCommand {
                 replace_entry_in_index = true;
             }
         }
+        if !flags.contains(InstallFlags::WithoutDependencies){
+            if let Some((package_type, package)) = workspace.index_cache.get_package(package_name, version.as_str()) {
+                let dependencies = self.get_absent_dependencies(workspace, package.dependencies.as_ref().unwrap_or(&Vec::new()));
+                if dependencies.len() > 0 {
+                    println!("Installing dependencies for {} version {}", package_name, version);
+                    for dep in dependencies {
+                        let dep_name = dep.name.clone();
+                        let dep_version = dep.version.clone();
+                        println!("Installing dependency {}-{}", dep_name, dep_version);
+                        let installed_module = workspace.get_installed_module(dep_name.as_str(), dep_version.as_str());
+                        if installed_module.is_none(){
+                            self.run_install(workspace, dep_name.as_str(), Some(&dep_version), output_dir, prefix, InstallFlags::empty());
+                        }
+                    }
+                }
+            }
+        }
+        // Install the package
         if let Some((package_type, package)) = workspace.index_cache.get_package(package_name, version.as_str()) {
             let mut install_dir = output_dir.clone();
             if let Some(p) = prefix {
@@ -109,7 +147,7 @@ impl InstallCommand {
             }
             println!("Extracted {} {} to {}", pkg_type_str, package_name, final_out_dir.display());
             if package_type.is_module() {
-                workspace.scan_modules_in_folder(final_out_dir, replace_entry_in_index, !flags.contains(InstallFlags::WithoutDependencies));
+                workspace.scan_modules_in_folder(final_out_dir, replace_entry_in_index);
                 println!("Adding to workspace file");
                 workspace.save()?;
             }
