@@ -44,28 +44,25 @@ impl DependsCommands {
                 } else if let Some(remote_package) = workspace.index_cache.get_latest_release(&dep_id.name) {
                     dep.name = dep_id.name.clone();
                     dep.version = remote_package.1.version.clone();
-                    eprintln!("Found latest version {} for {}", dep.version, dep.name);
+                    println!("Found latest version {} for {}", dep.version, dep.name);
                 }
+            } else if let Ok(module) = workspace.get_latest_installed_module_for_version(&dep_id.name, &dep_id.version) {
+                dep = module.info.id.clone();
             } else {
-                if let Ok(module) = workspace.get_latest_installed_module_for_version(&dep_id.name, &dep_id.version) {
-                    dep = module.info.id.clone();
-                } else {
-                    // Convert the `Option` from `parse_from_string` to a `Result` so we can use `map_err`
-                    let version_start = SemVer::parse_from_string(&dep_id.version)
-                        .ok_or(InvalidArgument { message: "Invalid version format".to_string() })?;
+                // Convert the `Option` from `parse_from_string` to a `Result` so we can use `map_err`
+                let version_start = SemVer::parse_from_string(&dep_id.version)
+                    .ok_or(InvalidArgument { message: "Invalid version format".to_string() })?;
 
-                    if version_start.minor.is_none() {
-                        return Err(InvalidArgument { message: "Please provide a minor version too!".to_string() });
-                    }
-
-                    let version_end = version_start.get_one_up();
-                    if let Some(remote_package) = workspace.index_cache.get_latest_compatible_release_within_range(
-                        &dep_id.name, &version_start, &version_end
-                    ) {
-                        dep.name = dep_id.name.clone();
-                        dep.version = remote_package.1.version.clone();  // Assuming remote_package.1 has a `version` field
-                        eprintln!("Found latest version {} for {}", dep.version, dep.name);}
+                if version_start.minor.is_none() {
+                    return Err(InvalidArgument { message: "Please provide a minor version too!".to_string() });
                 }
+
+                let version_end = version_start.get_one_up();
+                if let Some(remote_package) = workspace.index_cache.get_latest_compatible_release_within_range(
+                    &dep_id.name, &version_start, &version_end) {
+                    dep.name = dep_id.name.clone();
+                    dep.version = remote_package.1.version.clone();  // Assuming remote_package.1 has a `version` field
+                    println!("Found latest version {} for {}", dep.version, dep.name);}
             }
 
             if dep.name.is_empty() {

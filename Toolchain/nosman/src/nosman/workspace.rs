@@ -13,7 +13,6 @@ use rayon::iter::IntoParallelRefIterator;
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::{constants};
-use crate::nosman::command::install::{InstallCommand, InstallFlags};
 use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{Index, PackageIndexEntry, PackageReleaseEntry, PackageReleases, PackageType, Remote, SemVer};
 use crate::nosman::module::{InstalledModule, get_module_manifests, NodeDefinition};
@@ -241,6 +240,24 @@ impl Workspace {
         }
         Ok(res.unwrap())
     }
+    pub fn get_latest_absent_release_for(&self, name: &str, requested_version: &str) -> Result<Option<(&PackageType, &PackageReleaseEntry)>, CommandError> {
+        // If the version is not a valid semantic version, return Error
+        let semver = SemVer::parse_from_string(requested_version);
+        if semver.is_none() {
+            return Err(InvalidArgument { message: format!("{} is not a valid semantic version", requested_version) });
+        }
+        let semver = semver.unwrap();
+        let version_end = semver.get_one_up();
+        let installed = self.get_latest_installed_module_within_range(name, &semver, &version_end);
+        if installed.is_some() {
+            return Ok(None);
+        }
+        let res = self.index_cache.get_latest_compatible_release_within_range(name, &semver, &version_end);
+        if res.is_none() {
+            return Err(InvalidArgument { message: format!("No releases found for module {} in range [{}, {})", name, semver.to_string(), version_end.to_string()) });
+        }
+        Ok(Some(res.unwrap()))
+    }
     pub fn add(&mut self, module: InstalledModule) {
         let versions = self.installed_modules.entry(module.info.id.name.clone()).or_insert(HashMap::new());
         versions.insert(module.info.id.version.clone(), module);
@@ -278,7 +295,7 @@ impl Workspace {
     pub fn set_output_mode(&mut self, mode: OutputMode) {
         self.runtime.output_mode = mode;
     }
-    pub fn scan_modules_in_folder(&mut self, folder: PathBuf, force_replace_in_registry: bool, install_dependencies: bool) {
+    pub fn scan_modules_in_folder(&mut self, folder: PathBuf, force_replace_in_registry: bool) {
         // Scan folders with .noscfg and .nossys files
         let folder = dunce::canonicalize(&folder).unwrap_or_else(|e| panic!("Failed to canonicalize path {}: {}", folder.display(), e));
         let module_manifests = get_module_manifests(&folder, self.is_silent());
@@ -295,7 +312,7 @@ impl Workspace {
                 pb.println(format!("Error while scanning {}: {}", path.display(), msg).red().to_string());
                 continue;
             }
-            let mut installed_module = res.unwrap();
+            let installed_module = res.unwrap();
             let opt_found = self.get_installed_module(&installed_module.info.id.name, &installed_module.info.id.version);
             if opt_found.is_some() {
                 let found = opt_found.unwrap();
@@ -306,24 +323,11 @@ impl Workspace {
                     continue;
                 }
             }
-            // Install dependencies
-            if install_dependencies {
-                pb.finish_with_message(format!("Installing dependencies for module: {}", installed_module.info.id));
-                for dep in installed_module.info.dependencies.as_ref().unwrap_or(&vec![]) {
-                    println!("Installing dependency {}...", dep.name);
-                    let installed_dependency_result = InstallCommand {}.run_install(self, dep.name.as_str(), Some(&dep.version), &PathBuf::from("./Module/Downloaded"), None, InstallFlags::UpdatePackageIndex);
-                    if let Err(ref e) = installed_dependency_result {
-                        return println!("Error installing dependency {}: {}", dep.name, e);
-                    }
-                }
-                installed_module.register_commands(&self);
-            }
-
             self.add(installed_module);
         }
     }
-    pub fn scan_modules(&mut self, force_replace_in_registry: bool, install_dependencies: bool) {
-       self.scan_modules_in_folder(self.root.clone(), force_replace_in_registry, install_dependencies);
+    pub fn scan_modules(&mut self, force_replace_in_registry: bool) {
+       self.scan_modules_in_folder(self.root.clone(), force_replace_in_registry);
     }
     pub fn recreate(&mut self) -> Result<(), CommandError> {
         self.rescan(RescanFlags::all())?;
@@ -337,7 +341,7 @@ impl Workspace {
         }
         if flags.contains(RescanFlags::ScanModules) {
             self.installed_modules.clear();
-            self.scan_modules(true, flags.contains(RescanFlags::InstallDependencies));
+            self.scan_modules(true);
         }
         self.save()?;
         self.runtime.status = WorkspaceStatus::Ready;
@@ -421,6 +425,13 @@ impl Workspace {
             eprintln!("Workspace required but not found in {}", self.root.display());
             std::process::exit(1);
         }
+    }
+    pub fn get_installed_module_count(&self) -> usize {
+        let mut count = 0;
+        for (_name, versions) in self.installed_modules.iter() {
+            count += versions.len();
+        }
+        count
     }
 }
 

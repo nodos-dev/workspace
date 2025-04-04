@@ -50,19 +50,13 @@ impl GetCommand {
             let mut source = res?;
             let res = File::create(&dst);
             let mut target = res?;
-            let res = std::io::copy(&mut source, &mut target);
-            if let Err(e) = res {
-                return Err(e);
-            }
+            std::io::copy(&mut source, &mut target)?;
             // Copy last access and modification times
             let metadata = fs::metadata(src);
             let metadata = metadata?;
             let atime = FileTime::from_last_access_time(&metadata);
             let mtime = FileTime::from_last_modification_time(&metadata);
-            let res = filetime::set_file_times(dst, atime, mtime);
-            if let Err(e) = res {
-                return Err(e);
-            }
+            filetime::set_file_times(dst, atime, mtime)?;
             let res = rm_rf::remove(src);
             if let Err(e) = res {
                 return Err(Error::new(io::ErrorKind::Other, e.to_string()));
@@ -165,8 +159,7 @@ impl GetCommand {
             }
             let version_end = version_start.get_one_up();
             res = workspace.index_cache.get_latest_compatible_release_within_range(nodos_name, &version_start, &version_end);
-        }
-        else {
+        } else {
             res = workspace.index_cache.get_latest_release(nodos_name);
         }
         if res.is_none() {

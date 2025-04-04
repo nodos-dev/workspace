@@ -185,7 +185,7 @@ impl SemVer {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PackageReleaseEntry {
     pub(crate) version: String,
     pub(crate) url: String,
@@ -630,6 +630,14 @@ impl Index {
             }
         }
         None
+    }
+    pub fn get_package_cpy(&self, name: &str, version: &str) -> Option<(PackageType, PackageReleaseEntry)> {
+        let res = self.get_package(name, version);
+        if res.is_none() {
+            return None;
+        }
+        let (package_type, pkg_release) = res.unwrap();
+        Some((package_type.clone(), pkg_release.clone()))
     }
     pub fn get_latest_release(&self, name: &str) -> Option<(&PackageType, &PackageReleaseEntry)> {
         let res = self.packages.get(name);
