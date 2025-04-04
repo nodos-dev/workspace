@@ -58,7 +58,16 @@ bitflags! {
         const ScanModules = 0b1;
         const FetchPackageIndex = 0b10;
         const AddDefaultPackageIndexIfNoRemoteExists = 0b100;
-        const InstallDependencies = 0b1000;
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct ScanModulesFlags(u8);
+
+bitflags! {
+    impl ScanModulesFlags: u8 {
+        const ForceReplaceInRegistry = 0b1;
+        const RegisterCommands = 0b10;
     }
 }
 
@@ -295,7 +304,7 @@ impl Workspace {
     pub fn set_output_mode(&mut self, mode: OutputMode) {
         self.runtime.output_mode = mode;
     }
-    pub fn scan_modules_in_folder(&mut self, folder: PathBuf, force_replace_in_registry: bool) {
+    pub fn scan_modules_in_folder(&mut self, folder: PathBuf, flags: ScanModulesFlags) {
         // Scan folders with .noscfg and .nossys files
         let folder = dunce::canonicalize(&folder).unwrap_or_else(|e| panic!("Failed to canonicalize path {}: {}", folder.display(), e));
         let module_manifests = get_module_manifests(&folder, self.is_silent());
@@ -307,7 +316,7 @@ impl Workspace {
 
         for (_ty, path) in module_manifests {
             pb.set_message(format!("Scanning module: {}", path.display()));
-            let res = InstalledModule::new(&self, get_rel_path_based_on(&path, &self.root));
+            let res = InstalledModule::new(&self, get_rel_path_based_on(&path, &self.root), flags.contains(ScanModulesFlags::RegisterCommands));
             if let Err(msg) = res {
                 pb.println(format!("Error while scanning {}: {}", path.display(), msg).red().to_string());
                 continue;
@@ -316,7 +325,7 @@ impl Workspace {
             let opt_found = self.get_installed_module(&installed_module.info.id.name, &installed_module.info.id.version);
             if opt_found.is_some() {
                 let found = opt_found.unwrap();
-                if force_replace_in_registry {
+                if flags.contains(ScanModulesFlags::ForceReplaceInRegistry) {
                     pb.println(format!("Updating module entry in registry: {}. {} <=> {}", installed_module.info.id, path.display(), found.manifest_path.display()));
                 } else {
                     pb.println(format!("Duplicate module found: {}. {} <=> {}, skipping.", installed_module.info.id, path.display(), found.manifest_path.display()));
@@ -326,8 +335,8 @@ impl Workspace {
             self.add(installed_module);
         }
     }
-    pub fn scan_modules(&mut self, force_replace_in_registry: bool) {
-       self.scan_modules_in_folder(self.root.clone(), force_replace_in_registry);
+    pub fn scan_modules(&mut self, flags: ScanModulesFlags) {
+       self.scan_modules_in_folder(self.root.clone(), flags);
     }
     pub fn recreate(&mut self) -> Result<(), CommandError> {
         self.rescan(RescanFlags::all())?;
@@ -341,7 +350,7 @@ impl Workspace {
         }
         if flags.contains(RescanFlags::ScanModules) {
             self.installed_modules.clear();
-            self.scan_modules(true);
+            self.scan_modules(ScanModulesFlags::ForceReplaceInRegistry | ScanModulesFlags::RegisterCommands);
         }
         self.save()?;
         self.runtime.status = WorkspaceStatus::Ready;

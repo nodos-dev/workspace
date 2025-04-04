@@ -72,7 +72,7 @@ impl Display for NodeDefinition {
 }
 
 impl InstalledModule {
-    pub fn new(workspace: &Workspace, path: PathBuf) -> Result<InstalledModule, String> {
+    pub fn new(workspace: &Workspace, path: PathBuf, register_commands: bool) -> Result<InstalledModule, String> {
         let mut installed_module = InstalledModule {
             info: ModuleInfo {
                 id: PackageIdentifier {
@@ -123,6 +123,9 @@ impl InstalledModule {
             installed_module.public_include_folder = Some(get_rel_path_based_on(&abs_path.parent().unwrap().join("Include").canonicalize().unwrap(), &workspace.root));
         }
         installed_module.module_type = get_module_type_from_manifest_file_path(&abs_path).unwrap();
+        if register_commands {
+            installed_module.register_commands(&workspace);
+        }
         Ok(installed_module)
     }
     pub fn get_module_dir(&self) -> PathBuf {
@@ -321,7 +324,7 @@ impl InstalledModule {
         if !workspace.root.join(&self.manifest_path).exists() {
             return true;
         }
-        let res = InstalledModule::new(workspace, self.manifest_path.clone());
+        let res = InstalledModule::new(workspace, self.manifest_path.clone(), false);
         if let Err(msg) = res {
             eprintln!("{}", msg);
             return true;

@@ -14,13 +14,9 @@ impl Command for RescanCommand {
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let now = std::time::Instant::now();
         let fetch_index = args.get_one::<bool>("fetch_index").unwrap();
-        let install_dependencies = *args.get_one::<bool>("install-dependencies").unwrap();
         let mut flags = RescanFlags::ScanModules;
         if *fetch_index {
             flags |= RescanFlags::FetchPackageIndex;
-        }
-        if install_dependencies {
-            flags |= RescanFlags::InstallDependencies;
         }
         workspace.rescan(flags)?;
         println!("{}", format!("Rescan completed in {:?}", std::time::Instant::now() - now).green());

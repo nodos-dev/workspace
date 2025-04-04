@@ -14,6 +14,7 @@ use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::common::download_and_extract;
 use bitflags::bitflags;
 use crate::nosman::module::PackageIdentifier;
+use crate::nosman::workspace::ScanModulesFlags;
 
 pub struct InstallCommand {
 }
@@ -96,7 +97,7 @@ impl InstallCommand {
         let Some((package_type, package)) = workspace.index_cache.get_package_cpy(package_name, version.as_str()) else {
             return Err(InvalidArgument { message: format!("None of the remotes contain package {} version {}. You can try rescan command to update index.", package_name, version) })
         };
-        
+
         // Now, we actually install this package.
         if install_with_deps {
             // Collect dependencies and install them
@@ -109,7 +110,7 @@ impl InstallCommand {
                 for dep in package.dependencies.as_ref().unwrap() {
                     let res = workspace.get_latest_absent_release_for(&dep.name, &dep.version);
                     if let Err(e) = res {
-                        return Err(Runtime { message: format!("\nUnable to satisfy dependency {}\n\tRequested version: {}\n\tRequired by: {}-{}\n\tReason: {}", 
+                        return Err(Runtime { message: format!("\nUnable to satisfy dependency {}\n\tRequested version: {}\n\tRequired by: {}-{}\n\tReason: {}",
                                                               dep.name, dep.version, rem_pkg_name, pkg.version, e) });
                     }
                     let opt_absent_release = res?;
@@ -160,7 +161,14 @@ impl InstallCommand {
 
         println!("Extracted {} {} to {}", pkg_type_str, package_name, final_out_dir.display());
         if package_type.is_module() {
-            workspace.scan_modules_in_folder(final_out_dir, replace_entry_in_index);
+            let mut scan_flags = ScanModulesFlags::empty();
+            if install_with_deps {
+                scan_flags.insert(ScanModulesFlags::RegisterCommands);
+            }
+            if replace_entry_in_index {
+                scan_flags.insert(ScanModulesFlags::ForceReplaceInRegistry);
+            }
+            workspace.scan_modules_in_folder(final_out_dir, scan_flags);
             println!("Adding to workspace file");
             workspace.save()?;
         }

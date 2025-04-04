@@ -9,7 +9,7 @@ use include_dir::{include_dir, Dir};
 use crate::nosman::command::sdk_info::get_engine_sdk_infos;
 use crate::nosman::constants;
 use crate::nosman::module::{get_dependency_arguments, PackageIdentifier};
-use crate::nosman::workspace::Workspace;
+use crate::nosman::workspace::{ScanModulesFlags, Workspace};
 
 pub struct CreateCommand {}
 
@@ -142,7 +142,7 @@ impl CreateCommand {
         println!("{:?} project created at {:?}", module_type, output_dir);
 
         if workspace.ready() {
-            workspace.scan_modules_in_folder(output_dir.clone(), true);
+            workspace.scan_modules_in_folder(output_dir.clone(), ScanModulesFlags::ForceReplaceInRegistry);
             workspace.save()?;
         }
 
