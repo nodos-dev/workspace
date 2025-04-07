@@ -90,10 +90,10 @@ pub fn ask(question: &str, default: bool, dont_ask: bool) -> bool {
         let res = Confirm::new(question)
             .with_default(default)
             .prompt();
-        if res.is_err() {
-            eprintln!("{}", res.err().unwrap());
-        } else {
-            return res.unwrap();
+        if let Ok(result) = res {
+            return result;
+        } else if let Err(e) = res {
+            eprintln!("{}", e);
         }
     }
 }
@@ -107,14 +107,12 @@ pub fn run_if_not(dry_run: bool, verbose: bool, cmd: &mut std::process::Command)
             println!("{}", format!("Running: {:?}", cmd).cyan());
         }
         let res = cmd.output();
-        if verbose {
-            if res.is_ok() {
-                let output = res.as_ref().unwrap();
-                println!("{}:\n{}", if output.status.success() { "stdout" } else { "stderr" },
-                         String::from_utf8_lossy(if output.status.success() { &output.stdout } else { &output.stderr }));
-            }
+        if verbose && res.is_ok() {
+            let output = res.as_ref().unwrap();
+            println!("{}:\n{}", if output.status.success() { "stdout" } else { "stderr" },
+                     String::from_utf8_lossy(if output.status.success() { &output.stdout } else { &output.stderr }));
         }
-        Some(res.expect(format!("Failed to run command {:?}", cmd).as_str()))
+        Some(res.unwrap_or_else(|_| panic!("Failed to run command {:?}", cmd)))
     }
 }
 

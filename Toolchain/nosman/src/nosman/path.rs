@@ -21,7 +21,7 @@ pub fn get_module_manifest_file(path: &PathBuf, extension: &str) -> Result<Optio
             }
         }
     }
-    if manifest_files.len() == 0 {
+    if manifest_files.is_empty() {
         return Ok(None);
     }
     if manifest_files.len() > 1 {

@@ -227,7 +227,7 @@ impl Command for DevStatusCommand {
 
     fn run(&self, _workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let dirs: Vec<&String> = args.get_many::<String>("dir").unwrap_or_default().collect();
-        let dirs: Vec<PathBuf> = dirs.iter().map(|s| PathBuf::from(s)).collect();
+        let dirs: Vec<PathBuf> = dirs.iter().map(PathBuf::from).collect();
         self.run_status(dirs)
     }
 

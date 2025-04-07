@@ -625,5 +625,5 @@ pub fn get_dependency_arguments(args: &ArgMatches, allow_any: bool, success: &mu
         });
     }
     *success = true;
-    return deps;
+    deps
 }

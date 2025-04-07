@@ -120,7 +120,7 @@ impl From<&CNosCommandDesc> for NosCommandDesc {
             unsafe {
                 std::slice::from_raw_parts(c_command_desc.args, c_command_desc.args_count)
                     .iter()
-                    .map(|arg_desc| NosArgDesc::from(arg_desc))
+                    .map(NosArgDesc::from)
                     .collect()
             }
         } else {
@@ -132,7 +132,7 @@ impl From<&CNosCommandDesc> for NosCommandDesc {
             unsafe {
                 std::slice::from_raw_parts(c_command_desc.sub_commands, c_command_desc.sub_commands_count)
                     .iter()
-                    .map(|sub_command_desc| NosCommandDesc::from(sub_command_desc))
+                    .map(NosCommandDesc::from)
                     .collect()
             }
         } else {
@@ -197,7 +197,7 @@ pub fn get_commands(lib: Library) -> Option<Vec<NosCommandDesc>> {
                 let command_descs = unsafe {
                     std::slice::from_raw_parts(commands, count)
                         .iter()
-                        .map(|command_desc| NosCommandDesc::from(command_desc))
+                        .map(NosCommandDesc::from)
                         .collect()
                 };
                 Some(command_descs)
@@ -214,7 +214,7 @@ pub fn add_extensions(workspace: &Workspace, mut cmd: clap::Command) -> clap::Co
     for module in modules {
         for command in &module.commands {
             let mut new_cmd = clap::Command::new(command.name.clone())
-                .about(format!("{} {}", format!("{}", module.info.id.name).italic().green(), command.description.as_str()));
+                .about(format!("{} {}", module.info.id.name.to_string().italic().green(), command.description.as_str()));
             for arg in &command.args {
                 let mut new_arg = clap::Arg::new(arg.name.clone())
                     .long(arg.name.clone())
@@ -270,7 +270,7 @@ mod tests {
         let desc = CString::new("Command description").unwrap();
 
         // Create CNosArgDesc array for arguments
-        let c_args = vec![CNosArgDesc {
+        let c_args = [CNosArgDesc {
             name: ptr::null(),
             description: ptr::null(),
             required: false,
@@ -278,7 +278,7 @@ mod tests {
         }];
 
         // Create CNosCommandDesc array for subcommands
-        let c_sub_commands = vec![CNosCommandDesc {
+        let c_sub_commands = [CNosCommandDesc {
             name: ptr::null(),
             description: ptr::null(),
             args_count: 0,
