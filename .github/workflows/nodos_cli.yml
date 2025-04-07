@@ -1,0 +1,201 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Nodos CLI
+
+# Controls when the workflow will run
+on:
+  push:
+    branches:
+      - "dev"        # Specific branch
+      - "[0-9]+.[0-9]+" # Version branches
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      clean:
+        type: boolean
+        description: 'Clean build'
+        required: true
+      sign:
+        type: boolean
+        description: 'Sign binaries'
+        required: true
+      linux:
+        description: 'Run for Linux'
+        required: true
+        default: true
+        type: boolean
+      windows:
+        description: 'Run for Windows'
+        required: true
+        default: true
+        type: boolean
+      publish_mode:
+        description: 'Publish Mode'
+        required: true
+        default: 'None'
+        type: choice
+        options:
+          - Publish
+          - None
+env:
+  BUILD_NUMBER: ${{ github.run_number }}
+  GH_USERNAME: "nodos-bot"
+  GIT_EMAIL: "bot@nodos.dev"
+
+# TODO: Support parallel runs
+concurrency:
+  group: ${{ github.ref_name }} # For now, allow 1 run at a time for each branch
+  cancel-in-progress: false # Queue up runs if one is already in progress.
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  prepare-strategy:
+    name: Prepare Strategy
+    runs-on: self-hosted
+    outputs:
+      runner-list: ${{ steps.prepare-step.outputs.runner-list }}
+    steps:
+      - name: Prepare Runner List
+        id: prepare-step
+        shell: bash
+        run: |
+          runner_list=$(python3 -c "$(wget -q -O - https://raw.githubusercontent.com/nodos-dev/actions/refs/heads/main/scripts/prep_runner_list.py)" \
+            --workflow-input-linux ${{ inputs.linux }} \
+            --workflow-input-windows ${{ inputs.windows }} \
+            --sign ${{ inputs.sign }} \
+            --ref-name ${{ github.ref_name }} \
+            --event-name ${{ github.event_name }} \
+            --push-event-defaults '{"linux": true, "windows": true, "sign": false}')
+          echo Runners: $runner_list
+          echo "runner-list=$runner_list" >> $GITHUB_OUTPUT
+
+  build_nosman:
+    strategy:
+      matrix:
+        runner: ${{ fromJson(needs.prepare-strategy.outputs.runner-list) }}
+      fail-fast: false
+    outputs:
+      version: ${{ steps.get.outputs.version }}
+    name: "Nodos CLI: ${{ github.ref_name }} - ${{ github.run_number }} (${{ matrix.runner[0] }})"
+    runs-on: ${{ matrix.runner }}
+    needs: prepare-strategy
+    steps:
+      - name: Update Git Credentials
+        shell: bash
+        run: |
+            if [ "${{ matrix.runner[0] }}" == "Linux" ]; then
+            export GPG_TTY=$(tty)
+            fi
+            git credential-manager github login --username ${{ env.GH_USERNAME }} --token ${{ secrets.CI_TOKEN }} --force
+
+      - name: Clean Build
+        shell: pwsh
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.clean == 'true' }}
+        run: |
+            if (Test-Path -Path ./nodos-cli-${{ github.ref_name }}) { Remove-Item -Path ./nodos-cli-${{ github.ref_name }} -Recurse -Force }
+
+      - name: Checkout Nodos Workspace
+        shell: pwsh
+        run: |
+            $ErrorActionPreference = 'Stop'
+            if (-not (Test-Path -Path ./nodos-cli-${{ github.ref_name }})) {
+            git clone --depth 1 https://github.com/${{ github.repository }}.git --recurse-submodule --shallow-submodules ./nodos-cli-${{ github.ref_name }}
+            }
+            cd ./nodos-cli-${{ github.ref_name }}
+            git fetch origin
+            git fetch --tags
+            git clean -ffd
+            git checkout ${{ github.sha }}
+            git reset --hard
+            git submodule update --force --recursive --init
+            git status
+
+      - name: Build Nodos CLI
+        shell: pwsh
+        run: |
+            cargo build --release
+        working-directory: ./nodos-cli-${{ github.ref_name }}/Toolchain/nosman
+
+      - name: Run Regression Tests
+        shell: pwsh
+        run: |
+            cargo test --release
+        working-directory: ./nodos-cli-${{ github.ref_name }}/Toolchain/nosman
+
+      - name: Get Version & File Names
+        shell: bash
+        id: get
+        run: |
+          set -e
+          version=$(./nosman --version | sed -nE 's/.*?([0-9]+\.[0-9]+\.[0-9]+).*/\1/p')
+          echo "Version: $version"
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+          file="nosman"
+          if [[ "${{ matrix.runner[0] }}" == "Windows" ]]; then
+            platform="windows"
+            platform_exe_suffix=".exe"
+          else
+            platform="linux"
+            platform_exe_suffix=""
+          fi
+
+          renamed_file="nosman-$platform$platform_exe_suffix"
+          original_file="$file$platform_exe_suffix"
+
+          cp -f "$original_file" "$renamed_file"
+
+          echo "file_to_release=$renamed_file" >> $GITHUB_OUTPUT
+          echo "original_file=$original_file" >> $GITHUB_OUTPUT
+        working-directory: ./nodos-cli-${{ github.ref_name }}/Toolchain/nosman/target/release
+
+      - name: Sign Binaries
+        if: ${{ inputs.publish_mode == 'Publish' && matrix.runner[0] == 'Windows' && inputs.sign == 'true' }}
+        run: |
+          cd $MEDIAZ_SCRIPTS_DIR
+          python sign_module.py "${{ github.workspace }}/nodos-cli-${{ github.ref_name }}/Toolchain/nosman/target/release"
+        shell: bash
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nosman-${{ matrix.runner[0] }}
+          path: nodos-cli-${{ github.ref_name }}/Toolchain/nosman/target/release/${{ steps.get.outputs.file_to_release }}
+
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: build_nosman
+    if: ${{ inputs.publish_mode == 'Publish' }}
+    steps:
+      - name: Download Release Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./release-artifacts
+
+      - name: Create or Update GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+      
+          VERSION="v0.2.0"
+          REPO="nodos-dev/nodos"
+
+          shopt -s globstar nullglob
+          FILES=()
+          for f in ./release-artifacts/**; do
+            [ -f "$f" ] && FILES+=("$f")
+          done
+
+          if ! gh release view "$VERSION" --repo "$REPO" > /dev/null 2>&1; then
+            gh release create "$VERSION" "${FILES[@]}" \
+              --repo "$REPO" \
+              --title "Release $VERSION" \
+              --generate-notes
+          else
+            gh release upload "$VERSION" "${FILES[@]}" \
+              --repo "$REPO" \
+              --clobber
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.CI_TOKEN }}
