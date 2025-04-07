@@ -92,6 +92,13 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
         .help("Language and tool to use")
         .value_parser(clap::builder::PossibleValuesParser::new(["cpp/cmake"]))
         .default_value("cpp/cmake");
+    
+    let version_check_arg = Arg::new("version_check")
+        .long("version-check")
+        .help("Check the version of the package against the index, to fail or continue with the release.")
+        .value_parser(clap::builder::PossibleValuesParser::new(constants::POSSIBLE_VERSION_CHECK_STRATEGY))
+        .default_value("strict")
+        .required(false);
 
     app.subcommand(clap::Command::new("init")
         .about("Initialize a directory as a Nodos workspace.")
@@ -375,13 +382,7 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
                 .help("Target architecture and operating system of the module to be published. If not provided, the current platform will be used.")
                 .required(false)
             )
-            .arg(Arg::new("version_check") // Strict, Loose, None
-                .long("version-check")
-                .help("Check the version of the package against the index, to fail or continue with the release.")
-                .value_parser(clap::builder::PossibleValuesParser::new(constants::POSSIBLE_VERSION_CHECK_STRATEGY))
-                .default_value("strict")
-                .required(false)
-            )
+            .arg(version_check_arg.clone())
         )
         .subcommand(clap::Command::new("publish-batch")
             .about("Publish all/changed modules under the git repository.")
@@ -455,13 +456,7 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
                 .help("Release notes for the release.")
                 .required(false)
             )
-            .arg(Arg::new("version_check")
-                .long("version-check")
-                .help("Check the version of the package against the index, to fail or continue with the release.")
-                .value_parser(clap::builder::PossibleValuesParser::new(constants::POSSIBLE_VERSION_CHECK_STRATEGY))
-                .default_value("strict")
-                .required(false)
-            )
+            .arg(version_check_arg)
         )
         .subcommand(clap::Command::new("unpublish")
             .alias("yank")
