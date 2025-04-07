@@ -435,6 +435,7 @@ impl Workspace {
             std::process::exit(1);
         }
     }
+    #[allow(dead_code)]
     pub fn get_installed_module_count(&self) -> usize {
         let mut count = 0;
         for (_name, versions) in self.installed_modules.iter() {
