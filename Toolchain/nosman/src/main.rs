@@ -9,8 +9,7 @@ use std::mem;
 use clap::builder::StyledStr;
 use colored::Colorize;
 use sysinfo::System;
-use crate::nosman::{command, constants};
-use crate::nosman::command::sample;
+use crate::nosman::{command};
 use crate::nosman::workspace::Workspace;
 
 mod nosman;
