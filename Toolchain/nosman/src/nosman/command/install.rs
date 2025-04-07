@@ -239,7 +239,7 @@ mod tests {
     fn install_no_deps() {
         let mut test = WorkspaceGuard::new_random();
         let package_name = "nos.sys.vulkan";
-        let version = String::from("6.20.0.b616");
+        let version = String::from("6.2.1.b612");
         InstallCommand{}.run_install(&mut test.workspace, package_name, Some(&version), &PathBuf::from("."), None, InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies)
             .unwrap_or_else(|_| panic!("Failed to install {}", package_name));
         let versions = test.workspace.get_installed_modules(package_name);
@@ -251,7 +251,7 @@ mod tests {
     fn install_brings_dependencies() {
         let mut test = WorkspaceGuard::new_random();
         let package_name = "nos.sys.vulkan";
-        let version = String::from("6.20.0.b616");
+        let version = String::from("6.2.1.b612");
         test.workspace.fetch_package_releases(package_name);
         let index_entry = test.workspace.index_cache.get_package(package_name, version.as_str());
         assert!(index_entry.is_some());

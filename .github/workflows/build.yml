@@ -141,10 +141,10 @@ jobs:
         id: create-release
         run: |
           $ErrorActionPreference = 'Stop'
-          $platform = if (${{ matrix.runner[0] }} -eq 'Windows') { 'windows' } else { 'linux' }
-          $file = if (${{ matrix.runner[0] }} -eq 'Windows') { './nosman.exe' } else { './nosman' }
-          $renamed_file = "./nosman-$platform"
-          Rename-Item -Path $file -NewName $renamed_file
+          $platform = if ('${{ matrix.runner[0] }}' -eq 'Windows') { 'windows' } else { 'linux' }
+          $platform_exe_suffix = if ('${{ matrix.runner[0] }}' -eq 'Windows') { '.exe' } else { '' }
+          $renamed_file = "./nosman-$platform$platform_exe_suffix"
+          Rename-Item -Path '$file$platform_exe_suffix' -NewName $renamed_file
           # Check if the release already exists
           $release_exists = gh release view v${{ steps.get-version.outputs.version }} > $null 2>&1
           if (-not $release_exists) {
@@ -159,6 +159,6 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $file = if (${{ matrix.runner[0] }} -eq 'Windows') { './nosman.exe' } else { './nosman' }
+          $file = if ('${{ matrix.runner[0] }}' -eq 'Windows') { './nosman.exe' } else { './nosman' }
           ./nosman publish --path $file --name "nosman" --version ${{ steps.get-version.outputs.version }} --type generic --vendor "Nodos" --verbose
         working-directory: ./nodos-workspace-${{ github.ref_name }}/Toolchain/nosman/target/release
