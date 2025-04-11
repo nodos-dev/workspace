@@ -56,21 +56,10 @@ function(nos_get_files_recursive folder file_suffixes out_files_var)
 	# Create a temporary variable to collect files in this call
 	set(local_files)
 
-	# Get the list of entries in the current folder
-	file(GLOB entries LIST_DIRECTORIES true CONFIGURE_DEPENDS "${folder}/*")
-
-	foreach(entry ${entries})
-		if(IS_DIRECTORY ${entry})
-			# Recursive call for subdirectory
-			nos_get_files_recursive("${entry}" "${file_suffixes}" sub_files)
-			list(APPEND local_files ${sub_files})
-		else()
-			foreach(suffix ${file_suffixes})
-				if(entry MATCHES ".*\\${suffix}$")
-					list(APPEND local_files ${entry})
-				endif()
-			endforeach()
-		endif()
+	foreach(suffix ${file_suffixes})
+		#find every file, not directories
+		file(GLOB_RECURSE entries CONFIGURE_DEPENDS "${folder}/*${suffix}")
+		list(APPEND local_files ${entries})
 	endforeach()
 
 	# Set the output variable
