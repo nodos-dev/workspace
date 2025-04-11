@@ -324,7 +324,9 @@ impl InstalledModule {
         if !workspace.root.join(&self.manifest_path).exists() {
             return true;
         }
-        let res = InstalledModule::new(workspace, self.manifest_path.clone(), false);
+        let res = InstalledModule::new(workspace, self.manifest_path.clone(), 
+                                       /* we might consider not loading CLI extensions here and discarding it from comparison at return */
+                                       true);
         if let Err(msg) = res {
             eprintln!("{}", msg);
             return true;
