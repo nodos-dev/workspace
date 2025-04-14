@@ -31,10 +31,15 @@ pub struct PackageIdentifier {
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub struct ModuleInfo {
     pub id: PackageIdentifier,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub dependencies: Option<Vec<PackageIdentifier>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
 }
 
@@ -43,7 +48,9 @@ pub struct InstalledModule {
     pub info: ModuleInfo,
     #[serde(alias = "config_path")]
     pub manifest_path: PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub public_include_folder: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub type_schema_files: Vec<PathBuf>,
     pub module_type: ModuleType,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
