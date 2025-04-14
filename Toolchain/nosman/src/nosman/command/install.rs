@@ -35,12 +35,37 @@ bitflags! {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallOp {
+    Installed,
+    Skipped,
+}
+
 impl InstallCommand {
-    pub(crate) fn run_install(&self, workspace: &mut Workspace, package_name: &str, version_opt: Option<&String>, output_dir: &PathBuf, prefix: Option<&String>, flags : InstallFlags) -> CommandResult {
+    pub(crate) fn run_install(&self, workspace: &mut Workspace, package_name: &str, version_opt: Option<&String>, output_dir: &PathBuf, prefix: Option<&String>, flags : InstallFlags) -> Result<InstallOp, CommandError> {
         let install_with_deps = !flags.contains(InstallFlags::WithoutDependencies);
         let mut exact_no_fetch = flags;
         exact_no_fetch.remove(InstallFlags::UpdatePackageIndex);
         exact_no_fetch.insert(InstallFlags::InstallExactVersion);
+        if version_opt.is_some() {
+            let version = version_opt.unwrap();
+            if !flags.contains(InstallFlags::InstallExactVersion) {
+                let version_start = SemVer::parse_from_string(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
+                if version_start.minor.is_none() {
+                    return Err(InvalidArgument { message: "Please provide a minor version too!".to_string() });
+                }
+                let version_end = version_start.get_one_up();
+                if let Some(installed_module) = workspace.get_latest_installed_module_within_range(package_name, &version_start, &version_end) {
+                    println!("{}", format!("Found an already installed compatible version for {} version {}: {}", package_name, version, installed_module.info.id.version).as_str().yellow());
+                    return Ok(InstallOp::Skipped)
+                }
+            } else if let Some(existing) = workspace.get_installed_module(package_name, version.as_str()) {
+                if existing.get_module_dir().exists() {
+                    println!("{}", format!("Module {} version {} is already installed", package_name, version).as_str().yellow());
+                    return Ok(InstallOp::Skipped);
+                }
+            }
+        }
         // Fetch remotes
         if flags.contains(InstallFlags::UpdatePackageIndex) {
             println!("Fetching index...");
@@ -69,10 +94,7 @@ impl InstallCommand {
             }
             let version_end = version_start.get_one_up();
             println!("Installing {} with a version in range [{}, {})", package_name, version_start.to_string(), version_end.to_string());
-            return if let Some(installed_module) = workspace.get_latest_installed_module_within_range(package_name, &version_start, &version_end) {
-                println!("{}", format!("Found an already installed compatible version for {} version {}: {}", package_name, version, installed_module.info.id.version).as_str().yellow());
-                Ok(())
-            } else {
+            return {
                 let latest_compatible_opt = workspace.index_cache.get_latest_compatible_release_within_range(package_name, &version_start, &version_end);
                 let compatible_package = if let Some((package_type, release)) = latest_compatible_opt {
                     if *package_type == PackageType::Nodos || *package_type == PackageType::Engine {
@@ -83,15 +105,6 @@ impl InstallCommand {
                     return Err(InvalidArgument { message: format!("No remote contained a version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), package_name) });
                 };
                 self.run_install(workspace, package_name, compatible_package.as_ref(), output_dir, prefix, exact_no_fetch)
-            }
-        }
-        let mut replace_entry_in_index = false;
-        if let Some(existing) = workspace.get_installed_module(package_name, version.as_str()) {
-            if existing.get_module_dir().exists() {
-                println!("{}", format!("Module {} version {} is already installed", package_name, version).as_str().yellow());
-                return Ok(());
-            } else {
-                replace_entry_in_index = true;
             }
         }
         let Some((package_type, package)) = workspace.index_cache.get_package_cpy(package_name, version.as_str()) else {
@@ -165,15 +178,13 @@ impl InstallCommand {
             if install_with_deps {
                 scan_flags.insert(ScanModulesFlags::RegisterCommands);
             }
-            if replace_entry_in_index {
-                scan_flags.insert(ScanModulesFlags::ForceReplaceInRegistry);
-            }
+            scan_flags.insert(ScanModulesFlags::ForceReplaceInRegistry);
             workspace.scan_modules_in_folder(final_out_dir, scan_flags);
             println!("Adding to workspace file");
             workspace.save()?;
         }
         println!("{}", format!("{}-{} installed successfully", package_name, version).as_str().green());
-        Ok(())
+        Ok(InstallOp::Installed)
     }
 }
 
@@ -194,7 +205,8 @@ impl Command for InstallCommand {
         if *args.get_one::<bool>("without-deps").unwrap() {
             flag.insert(InstallFlags::WithoutDependencies);
         }
-        self.run_install(workspace, module_name, version, &output_dir, prefix, flag)
+        self.run_install(workspace, module_name, version, &output_dir, prefix, flag)?;
+        Ok(())
     }
 }
 
@@ -273,5 +285,19 @@ mod tests {
             assert_eq!(installed.id.name, requested.name);
             assert!(installed_version.satisfies_requested_version(&requested_version));
         }
+    }
+
+    #[test]
+    fn install_skips_if_already_installed() {
+        let mut test = WorkspaceGuard::new_random();
+        let package_name = "nos.sys.vulkan";
+        let version = String::from("6.2.1.b612");
+        let op = InstallCommand{}.run_install(&mut test.workspace, package_name, Some(&version), &PathBuf::from("."), None, InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies)
+            .unwrap_or_else(|_| panic!("Failed to install {}", package_name));
+        assert!(op == InstallOp::Installed);
+        
+        let op_second = InstallCommand{}.run_install(&mut test.workspace, package_name, Some(&version), &PathBuf::from("."), None, InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies)
+            .unwrap_or_else(|_| panic!("Failed to install {}", package_name));
+        assert!(op_second == InstallOp::Skipped);
     }
 }
