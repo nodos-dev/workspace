@@ -34,6 +34,8 @@ else()
 endif()
 
 set(NOS_VERSIONS "")
+set(NOS_PLUGIN_SDK_VERSIONS "")
+set(NOS_SUBSYSTEM_SDK_VERSIONS "")
 set(NOS_SDK_DIRS "")
 
 macro(_nos_process_engine_folder engine_folder binary_dir_index)
@@ -45,8 +47,22 @@ macro(_nos_process_engine_folder engine_folder binary_dir_index)
 		else()
 			add_subdirectory(${engine_folder} "${CMAKE_CURRENT_BINARY_DIR}/EngineDir${binary_dir_index}")
 		endif()
+
+		list(LENGTH NOS_SDK_DIRS nos_sdk_count)
+		math(EXPR nos_sdk_end_range "${nos_sdk_count} - 1")
+		list(GET NOS_SDK_DIRS ${nos_sdk_end_range} cur_nos_sdk)
+
+		file(READ "${cur_nos_sdk}/info.json" nos_info_json)
+		string(JSON nos_plugin_sdk_version GET "${nos_info_json}" "plugin_sdk_version")
+		string(JSON nos_subsystem_sdk_version ERROR_VARIABLE err GET "${nos_info_json}" "subsystem_sdk_version")
+		if (err STREQUAL "NOTFOUND")
+			set(nos_subsystem_sdk_version ${nos_plugin_sdk_version})
+		endif()
+
+		set(NOS_PLUGIN_SDK_VERSIONS "${NOS_PLUGIN_SDK_VERSIONS};${nos_plugin_sdk_version}")
+		set(NOS_SUBSYSTEM_SDK_VERSIONS "${NOS_SUBSYSTEM_SDK_VERSIONS};${nos_subsystem_sdk_version}")
 	else()
-		message(FATAL_ERROR "ENGINE_FOLDER is not a valid directory.")
+		nos_fatal_error("ENGINE_FOLDER is not a valid directory.")
 	endif()
 endmacro()
 
@@ -77,17 +93,22 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 	foreach(val RANGE 1 ${NOS_SDK_END_RANGE})
 		list(GET NOS_VERSIONS ${val} nos_version)
 		list(GET NOS_SDK_DIRS ${val} nos_sdk_dir)
+		list(GET NOS_PLUGIN_SDK_VERSIONS ${val} nos_plugin_sdk_version)
+		list(GET NOS_SUBSYSTEM_SDK_VERSIONS ${val} nos_subsystem_sdk_version)
 	
-		message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} at ${nos_sdk_dir}")
+		message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version}(Plugin SDK version: ${nos_plugin_sdk_version}, Subsystem SDK version: ${nos_subsystem_sdk_version}) at ${nos_sdk_dir}")
 	
 		# Convert version 1.2.3 to 1_2_3
 		string(REPLACE "." "_" version_target_suffix "${nos_version}")
-	
-		set(nos_plugin_sdk_target nosPluginSDK_${version_target_suffix})
-		set(nos_subsystem_sdk_target nosSubsystemSDK_${version_target_suffix})
+		string(REPLACE "." "_" plugin_sdk_version_target_suffix "${nos_plugin_sdk_version}")
+		string(REPLACE "." "_" subsystem_sdk_target_suffix "${nos_subsystem_sdk_version}")
+
+
+		set(nos_plugin_sdk_target nosPluginSDK_${plugin_sdk_version_target_suffix})
+		set(nos_subsystem_sdk_target nosSubsystemSDK_${subsystem_sdk_target_suffix})
 		# Create nosPluginSDK target
 		if(TARGET ${nos_plugin_sdk_target})
-			message(FATAL_ERROR "Multiple Nodos SDKs with the same version found under Engine folder. This is not supported.")
+			nos_fatal_error("Multiple Nodos plugin SDKs with the same version found under Engine folder. This is not supported.")
 		endif()
 	
 		add_library(${nos_plugin_sdk_target} INTERFACE)
@@ -154,7 +175,7 @@ if ((NOT NOS_INVOKED_FROM_NOSMAN) AND (EXISTS "${NODOS_WORKSPACE_DIR}/Toolchain/
 		file(COPY "${NOSMAN_BUILD_DIR}/release/nosman${CMAKE_EXECUTABLE_SUFFIX}" DESTINATION "${NODOS_WORKSPACE_DIR}")
 		file(RENAME "${NODOS_WORKSPACE_DIR}/nosman${CMAKE_EXECUTABLE_SUFFIX}" "${NODOS_WORKSPACE_DIR}/nodos${CMAKE_EXECUTABLE_SUFFIX}")
 	else()
-		message(FATAL_ERROR "Failed to build nosman")
+		nos_fatal_error("Failed to build nosman")
 		return()
 	endif()
 endif()
@@ -170,7 +191,7 @@ if (NOT DEFINED NOSMAN_EXECUTABLE)
 	endif()
 endif()
 if (NOT EXISTS "${NOSMAN_EXECUTABLE}")
-	message(FATAL_ERROR "nosman executable not found. Please set NOSMAN_EXECUTABLE to the path of the nosman executable.")
+	nos_fatal_error("nosman executable not found. Please set NOSMAN_EXECUTABLE to the path of the nosman executable.")
 else()
 	message(STATUS "Found nosman at ${NOSMAN_EXECUTABLE}")
 endif()
