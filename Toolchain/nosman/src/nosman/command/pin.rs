@@ -13,31 +13,41 @@ impl PinCommand {
 
     fn run_pin(&self, workspace: &Workspace, node_class_name: &String, pin_name: &String, remove: bool,
                show_as: Option<&String>, can_show_as: Option<&String>, type_name: Option<&String>) -> CommandResult {
-        let mut node_def;
-        let node_defs = workspace.get_node_definitions(node_class_name);
-        if node_defs.len() == 0 {
+        let mut node_def_obj;
+        let node_def_objs = workspace.get_node_definitions(node_class_name);
+        if node_def_objs.len() == 0 {
             return Err(InvalidArgument { message: format!("Node class {} not found", node_class_name) });
         }
-        else if node_defs.len() > 1 {
+        else if node_def_objs.len() > 1 {
             // Interactive selection
-            let selection = Select::new(format!("Multiple node classes found with name {}. Please select one:", node_class_name).as_str(), node_defs)
+            let selection = Select::new(format!("Multiple node classes found with name {}. Please select one:", node_class_name).as_str(), node_def_objs)
                 .prompt();
             if let Err(e) = selection {
                 return Err(Runtime { message: format!("Failed to select node class: {}", e) });
             }
             else {
-                node_def = selection.unwrap().clone();
+                node_def_obj = selection.unwrap().clone();
             }
         }
         else {
-            node_def = node_defs[0].clone();
+            node_def_obj = node_def_objs[0].clone();
         }
-        let nodes_json = node_def.node_defs_json.get_mut("nodes").unwrap_or_else(|| panic!("Failed to get 'nodes' field in node class definition: {}", node_class_name))
-            .as_array_mut().unwrap_or_else(|| panic!("Failed to parse 'nodes' field in node class definition: {}", node_class_name));
-        let node_json = nodes_json.get_mut(node_def.index).unwrap_or_else(|| panic!("Failed to get node definition at index {} in node class definition: {}", node_def.index, node_class_name))
-            .as_object_mut().unwrap_or_else(|| panic!("Failed to parse node definition at index {} in node class definition: {}", node_def.index, node_class_name));
-        let pins_json = node_json.get_mut("pins").unwrap_or_else(|| panic!("Failed to get 'pins' field in node definition: {}", node_class_name))
-            .as_array_mut().unwrap_or_else(|| panic!("Failed to parse 'pins' field in node definition: {}", node_class_name));
+        let node_array_json = node_def_obj.json.get_mut("nodes")
+            .ok_or(Runtime { message: format!("Failed to get 'nodes' field in node class definition: {}", node_class_name) })?
+            .as_array_mut()
+            .ok_or(Runtime { message: format!("Failed to parse 'nodes' field in node class definition: {}", node_class_name) })?;
+        let node_def_json = node_array_json.get_mut(node_def_obj.index)
+            .ok_or(Runtime { message: format!("Failed to get node definition at index {} in node class definition: {}", node_def_obj.index, node_class_name) })?
+            .as_object_mut()
+            .ok_or(Runtime { message: format!("Failed to parse node definition at index {} in node class definition: {}", node_def_obj.index, node_class_name) })?;
+        let node_json = node_def_json.get_mut("node")
+            .ok_or(Runtime { message: format!("Failed to get 'node' field in node definition: {}", node_class_name) })?
+            .as_object_mut()
+            .ok_or(Runtime { message: format!("Failed to parse 'node' field in node definition: {}", node_class_name) })?;
+        let pins_json = node_json.get_mut("pins")
+            .ok_or(Runtime { message: format!("Failed to get 'pins' field in node definition: {}", node_class_name) })?
+            .as_array_mut()
+            .ok_or(Runtime { message: format!("Failed to parse 'pins' field in node definition: {}", node_class_name) })?;
         // Remove pin with name
         if remove {
             let mut index = None;
@@ -49,9 +59,10 @@ impl PinCommand {
             }
             if index.is_some() {
                 pins_json.remove(index.unwrap());
-                serde_json::to_writer_pretty(std::fs::File::create(node_def.defined_in.as_path())
-                                                 .unwrap_or_else(|e| panic!("Failed to open node class definition file {:?} for writing: {}", node_def.defined_in, e)), &node_def.node_defs_json)
-                    .unwrap_or_else(|e| panic!("Failed to write node class definition file {:?}: {}", node_def.defined_in, e));
+                let out_file = std::fs::File::create(node_def_obj.defined_in.as_path())
+                    .map_err(|e| Runtime { message: format!("Failed to open node class definition file {:?} for writing: {}", node_def_obj.defined_in, e) })?;
+                serde_json::to_writer_pretty(out_file, &node_def_obj.json)
+                    .map_err(|e| Runtime { message: format!("Failed to write node class definition file {:?}: {}", node_def_obj.defined_in, e)})?;
                 println!("{}", format!("Pin '{}' removed from node class '{}'", pin_name, node_class_name).green());
             } else {
                 return Err(InvalidArgument { message: format!("Pin '{}' not found in node class '{}'", pin_name, node_class_name) });
@@ -130,9 +141,10 @@ impl PinCommand {
             pin_json.insert("type_name".to_string(), serde_json::Value::String(type_name_in.clone()));
             pins_json.push(serde_json::Value::Object(pin_json));
 
-            serde_json::to_writer_pretty(std::fs::File::create(node_def.defined_in.as_path())
-                                             .unwrap_or_else(|e| panic!("Failed to open node class definition file {:?} for writing: {}", node_def.defined_in, e)), &node_def.node_defs_json)
-                .unwrap_or_else(|e| panic!("Failed to write node class definition file {:?}: {}", node_def.defined_in, e));
+            let out_file = std::fs::File::create(node_def_obj.defined_in.as_path())
+                .map_err(|e| Runtime { message: format!("Failed to open node class definition file {:?} for writing: {}", node_def_obj.defined_in, e) })?;
+            serde_json::to_writer_pretty(out_file, &node_def_obj.json)
+                .map_err(|e| Runtime { message: format!("Failed to write node class definition file {:?}: {}", node_def_obj.defined_in, e)})?;
             println!("{}", format!("Pin '{}' added to node class '{}'", pin_name, node_class_name).green());
         }
         Ok(())

@@ -1,10 +1,11 @@
 pub mod command;
-mod module;
-mod index;
-pub(crate) mod workspace;
-pub(crate) mod path;
+pub mod module;
+pub mod index;
+pub mod workspace;
+pub mod path;
 pub mod constants;
-mod common;
-pub(crate) mod eula;
+pub mod common;
+pub mod eula;
 mod platform;
-pub(crate) mod extensions;
+pub mod extensions;
+pub mod cli;

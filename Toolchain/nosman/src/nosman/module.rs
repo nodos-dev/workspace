@@ -68,7 +68,7 @@ pub struct NodeDefinition {
     pub class_name: String,
     pub defined_in: PathBuf,
     pub index: usize,
-    pub node_defs_json: serde_json::Value,
+    pub json: serde_json::Value,
     pub owner: InstalledModule,
 }
 
@@ -177,7 +177,7 @@ impl InstalledModule {
                         class_name: curr_class_name.to_string(),
                         defined_in: node_defs_path.clone(),
                         index,
-                        node_defs_json: node_defs.clone(),
+                        json: node_defs.clone(),
                         owner: self.clone(),
                     });
                 }
@@ -192,9 +192,9 @@ impl InstalledModule {
         }
         let mut node_def = node_def.unwrap();
         // Remove from defined_in
-        node_def.node_defs_json["nodes"].as_array_mut().unwrap().remove(node_def.index);
+        node_def.json["nodes"].as_array_mut().unwrap().remove(node_def.index);
         // Write back to file
-        let node_defs_file_content = serde_json::to_string_pretty(&node_def.node_defs_json).unwrap_or_else(|e| panic!("Failed to serialize node definitions at {}: {}", node_def.defined_in.display(), e));
+        let node_defs_file_content = serde_json::to_string_pretty(&node_def.json).unwrap_or_else(|e| panic!("Failed to serialize node definitions at {}: {}", node_def.defined_in.display(), e));
         fs::write(&node_def.defined_in, node_defs_file_content).unwrap_or_else(|e| panic!("Failed to write node definitions file {}: {}", node_def.defined_in.display(), e));
         true
     }
