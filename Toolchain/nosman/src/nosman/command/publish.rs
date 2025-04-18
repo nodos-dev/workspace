@@ -192,15 +192,13 @@ impl PublishCommand {
                     if verbose {
                         println!("Module {} loaded successfully. Checking Nodos {:?} API version...", name.as_ref().unwrap(), &package_type);
                     }
-                    let get_api_version_func_name = match package_type {
-                        PackageType::Plugin => "nosGetPluginAPIVersion",
-                        PackageType::Subsystem => "nosGetSubsystemAPIVersion",
-                        _ => panic!("Invalid package type")
-                    };
+                    let get_api_version_func_name = "nosGetPluginAPIVersion";
                     unsafe
                         {
                             let get_api_version_func = lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>(get_api_version_func_name.as_bytes())
-                                .unwrap_or_else(|e| panic!("Failed to get symbol {}: {}", get_api_version_func_name, e));
+                                .or_else(|_| {
+									lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>("nosGetSubsystemAPIVersion".as_bytes())
+								}).unwrap_or_else(|e| panic!("Failed to get symbol {}: {}", get_api_version_func_name, e));
                             let mut major = 0;
                             let mut minor = 0;
                             let mut patch = 0;
@@ -209,11 +207,7 @@ impl PublishCommand {
                             println!("{}", format!("{} uses Nodos {:?} API version: {}.{}.{}", name.as_ref().unwrap(), &package_type, major, minor, patch).as_str().yellow());
 
                             {
-                                let get_min_required_minor_func_name = match package_type {
-                                    PackageType::Plugin => "nosGetMinimumRequiredPluginAPIMinorVersion",
-                                    PackageType::Subsystem => "nosGetMinimumRequiredPluginAPIMinorVersion",
-                                    _ => panic!("Invalid package type")
-                                };
+                                let get_min_required_minor_func_name = "nosGetMinimumRequiredPluginAPIMinorVersion";
                                 if let Ok(get_min_required_minor_func) = lib.get::<Symbol<unsafe extern "C" fn(*mut i32)>>(get_min_required_minor_func_name.as_bytes()) {
                                     let mut min_required_minor: i32 = 0;
                                     get_min_required_minor_func(&mut min_required_minor);

@@ -67,3 +67,8 @@ function(nos_colored_message)
     __nos_color_format_text(${ARGN})
     message(${COLOR_FORMATTED_TEXT})
 endfunction()
+
+function(nos_fatal_error)
+	__nos_color_format_text(BOLD COLOR RED ${ARGN})
+	message(FATAL_ERROR ${COLOR_FORMATTED_TEXT})
+endfunction()

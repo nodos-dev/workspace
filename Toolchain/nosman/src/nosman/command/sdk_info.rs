@@ -46,7 +46,10 @@ pub fn get_engine_sdk_infos(workspace: &Workspace) -> Result<Vec<SdkInfo>, Comma
         let version = common::get_string(&info_json, "version", &info_file);
         let process_sdk_version = common::get_string(&info_json, "process_sdk_version", &info_file);
         let plugin_sdk_version = common::get_string(&info_json, "plugin_sdk_version", &info_file);
-        let subsystem_sdk_version = common::get_string(&info_json, "subsystem_sdk_version", &info_file);
+		// Try to get subsystem_sdk_version, if not found, return plugin_sdk_version since they are merged
+        let subsystem_sdk_version = info_json.get("subsystem_sdk_version")
+			.and_then(|v| v.as_str())
+			.unwrap_or_else(|| plugin_sdk_version);
         let bin_dir = sdk_dir.join("bin");
         let include_dir = sdk_dir.join("include");
         if bin_dir.exists() && include_dir.exists() {
