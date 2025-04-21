@@ -12,6 +12,7 @@ use crate::nosman::module::get_module_manifests;
 use path_slash::PathExt as _;
 use crate::nosman::command::unpublish::UnpublishCommand;
 use crate::nosman::index::VersionCheckStrategy;
+use crate::nosman::platform::{get_host_platform, Platform};
 use crate::nosman::workspace::Workspace;
 
 pub struct PublishBatchCommand {
@@ -20,10 +21,18 @@ pub struct PublishBatchCommand {
 impl PublishBatchCommand {
     fn run_publish_batch(&self, workspace: &Workspace, dry_run: bool, verbose: bool, remote_name: &String, repo_path: &PathBuf, compare_with: Option<&String>,
                         version_suffix: &String, version_check_strategy: &VersionCheckStrategy, vendor: Option<&String>, publisher_name: Option<&String>,
-                        publisher_email: Option<&String>, release_tags: &Vec<String>, target_platform: Option<&String>, release_notes: Option<&String>) -> CommandResult {
+                        publisher_email: Option<&String>, release_tags: &Vec<String>, opt_target_platform: Option<&String>, release_notes: Option<&String>) -> CommandResult {
         if !repo_path.exists() {
             return Err(InvalidArgument { message: format!("Repo {} does not exist", repo_path.display()) });
         }
+
+		let target_platform = if opt_target_platform.is_none() {
+            let current_platform = get_host_platform();
+            println!("{}", format!("Target platform is not provided. Using the current platform: {}", current_platform).yellow());
+            current_platform
+        } else {
+            Platform::from_str(opt_target_platform.unwrap()).expect("Invalid target platform")
+        };
 
         let repo_path = dunce::canonicalize(repo_path).unwrap_or_else(|e| panic!("Failed to canonicalize repo path {:?}: {}", repo_path, e));
 
@@ -63,6 +72,12 @@ impl PublishBatchCommand {
             if !found {
                 println!("{}", format!("Module at {} does not contain a {} file, skipping release", relative_path.display(), constants::PUBLISH_OPTIONS_FILE_NAME).dimmed());
                 continue;
+            }
+			if let Some(targets) = publish_options.target_platforms {
+                if !targets.contains(&target_platform.to_string()) {
+                    println!("{}", format!("Target platform {} is not in the list of target platforms in {} for Module at {}", target_platform.to_string(), constants::PUBLISH_OPTIONS_FILE_NAME, relative_path.display()));
+					continue;
+				}
             }
             // If nospub.globs contain any of the changed files, add parent to to_be_published
             if changed_files_opt.is_some() {
@@ -111,7 +126,7 @@ impl PublishBatchCommand {
                                                     &module_root, None, None, 
                                                     version_suffix, &version_check_strategy, None, 
                                                     remote_name, vendor, publisher_name, 
-                                                    publisher_email, release_tags, target_platform, 
+                                                    publisher_email, release_tags, Some(&target_platform.to_string()),
                                                     release_notes);
             if let Ok(id) = res {
                 published.push(id);
