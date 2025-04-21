@@ -50,7 +50,7 @@ macro(nos_find_sdk requested_version out_nos_plugin_sdk out_nos_subsystem_sdk ou
             endforeach()
         endif()
 
-        if(NOT found_version_idx EQUAL -1)
+        if(found_version_idx EQUAL -1)
             nos_fatal_error("No compatible version found.")
 		endif()
 		list(GET NOS_VERSIONS ${found_version_idx} found_version)
