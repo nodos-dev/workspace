@@ -195,7 +195,7 @@ function(nos_get_module name version out_target_name)
 	endif()
 endfunction()
 
-function(_nos_add_module NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_TYPES)
+function(_nos_add_module NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_TYPES ALTERNATIVE_MANIFEST_FILE_EXT)
 	project(${NAME})
 	nos_colored_message(COLOR CYAN "Processing plugin ${NAME}")
 
@@ -249,7 +249,8 @@ function(_nos_add_module NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_
 	set_source_files_properties(${shader_files} PROPERTIES HEADER_FILE_ONLY TRUE)
 
 	file(GLOB MODULE_MANIFEST_FILE CONFIGURE_DEPENDS "*.${MANIFEST_FILE_EXT}")
-	set(INCLUDED_IN_PROJECT ${source_files} ${header_files} ${config_files} ${NODE_DEFINITION_FILES} ${type_schema_files} ${shader_files} ${additional_files} ${MODULE_MANIFEST_FILE})
+	file(GLOB ALTERNATIVE_MODULE_MANIFEST_FILES CONFIGURE_DEPENDS "*.${ALTERNATIVE_MANIFEST_FILE_EXT}")
+	set(INCLUDED_IN_PROJECT ${source_files} ${header_files} ${config_files} ${NODE_DEFINITION_FILES} ${type_schema_files} ${shader_files} ${additional_files} ${MODULE_MANIFEST_FILE} ${ALTERNATIVE_MODULE_MANIFEST_FILES})
 	add_library(${NAME} MODULE ${INCLUDED_IN_PROJECT})
 	set_target_properties(${NAME} PROPERTIES
 		PREFIX ""
@@ -301,11 +302,11 @@ function(_nos_add_module NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_
 endfunction()
 
 function(nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS)
-	_nos_add_module(${NAME} "${INCLUDE_FOLDERS}" "noscfg" ".nosdef;Node Definitions")
+	_nos_add_module(${NAME} "${INCLUDE_FOLDERS}" "noscfg" ".nosdef;Node Definitions" "nossys")
 endfunction()
 
 function(nos_add_subsystem NAME DEPENDENCIES INCLUDE_FOLDERS)
-	_nos_add_module(${NAME} "${INCLUDE_FOLDERS}" "nossys" "")
+	_nos_add_module(${NAME} "${INCLUDE_FOLDERS}" "nossys" "" "")
 endfunction()
 
 macro(nos_get_targets targets dir)
