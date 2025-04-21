@@ -1413,7 +1413,7 @@ dependencies = [
 
 [[package]]
 name = "nosman"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "bitflags 2.5.0",

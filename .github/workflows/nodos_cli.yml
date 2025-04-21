@@ -178,7 +178,7 @@ jobs:
         run: |
           set -euo pipefail
       
-          VERSION="v0.2.0"
+          VERSION="v${{ needs.build_nosman.outputs.version }}"
           REPO="nodos-dev/nodos"
 
           shopt -s globstar nullglob
