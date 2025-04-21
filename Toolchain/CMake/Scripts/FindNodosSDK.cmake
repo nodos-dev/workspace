@@ -51,7 +51,7 @@ macro(nos_find_sdk requested_version out_nos_plugin_sdk out_nos_subsystem_sdk ou
         endif()
 
         if(found_version_idx EQUAL -1)
-            nos_fatal_error("No compatible version found.")
+            nos_fatal_error("No compatible version found for requested version ${requested_version}.")
 		endif()
 		list(GET NOS_VERSIONS ${found_version_idx} found_version)
 		list(GET NOS_SDK_DIRS ${found_version_idx} nos_sdk_dir)
@@ -85,7 +85,7 @@ macro(nos_find_plugin_sdk requested_plugin_sdk_version out_nos_plugin_sdk out_sd
 		ERROR_QUIET
 	)
 	if (NOT result_code EQUAL 0)
-		nos_fatal_error("Unable to find plugin SDK version ${requested_plugin_sdk_version}.")
+		nos_fatal_error("Unable to find compatible plugin SDK version for requested version ${requested_plugin_sdk_version}.")
 	endif()
 	# Parse the JSON output to extract the SDK directory
 	string(JSON sdk_plugin_version  ERROR_VARIABLE err GET "${sdk_info_json}" "version")

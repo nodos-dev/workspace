@@ -96,8 +96,11 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 		list(GET NOS_PLUGIN_SDK_VERSIONS ${val} nos_plugin_sdk_version)
 		list(GET NOS_SUBSYSTEM_SDK_VERSIONS ${val} nos_subsystem_sdk_version)
 	
-		message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version}(Plugin SDK version: ${nos_plugin_sdk_version}, Subsystem SDK version: ${nos_subsystem_sdk_version}) at ${nos_sdk_dir}")
-	
+		if (NOT nos_subsystem_sdk_version)
+		message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} (Plugin SDK: ${nos_plugin_sdk_version}) at ${nos_sdk_dir}")
+		else()
+		message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} (Plugin SDK: ${nos_plugin_sdk_version}, Subsystem SDK: ${nos_subsystem_sdk_version}) at ${nos_sdk_dir}")
+		endif()
 		# Convert version 1.2.3 to 1_2_3
 		string(REPLACE "." "_" version_target_suffix "${nos_version}")
 		string(REPLACE "." "_" plugin_sdk_version_target_suffix "${nos_plugin_sdk_version}")
