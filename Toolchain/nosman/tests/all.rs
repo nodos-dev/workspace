@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, io};
 use std::path::PathBuf;
 use log::{info, warn};
 use rand::{Rng, SeedableRng};
@@ -8,44 +8,55 @@ use nosman::nosman::index::SemVer;
 use nosman::nosman::module::PackageIdentifier;
 use nosman::nosman::workspace::Workspace;
 
+#[ctor::ctor]
+fn init() {
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info)
+        .init();
+    info!("Starting nosman tests");
+}
+
+#[ctor::dtor]
+fn cleanup() {
+    if let Err(e) = WorkspaceGen::clear_all() {
+        warn!("Failed to clear test workspaces: {}", e);
+    } else {
+        info!("Test workspaces cleared");
+    }
+}
+
 // Global random number generator
 lazy_static::lazy_static! {
     static ref RNG: std::sync::Mutex<StdRng> = std::sync::Mutex::new(StdRng::from_entropy());
 }
 
-pub struct WorkspaceGuard {
+pub struct WorkspaceGen {
     pub workspace: Workspace,
 }
 
-impl WorkspaceGuard {
+impl WorkspaceGen {
     fn new(path: &str) -> Self {
         let mut ws = Workspace::from_root(&PathBuf::from(format!("./test_workspaces/{}", path)));
         if !ws.ready() {
             ws.recreate().expect("Failed to create test workspace");
         }
-        WorkspaceGuard { workspace: ws }
+        WorkspaceGen { workspace: ws }
+    }
+    fn clear_all() -> io::Result<()> {
+        fs::remove_dir_all("./test_workspaces")
     }
     pub(crate) fn new_random() -> Self {
         let random_string: String = (0..8)
             .map(|_| RNG.lock().unwrap().gen_range(b'a'..=b'z'))
             .map(char::from)
             .collect();
-        WorkspaceGuard::new(random_string.as_str())
-    }
-}
-
-impl Drop for WorkspaceGuard {
-    fn drop(&mut self) {
-        info!("Cleaning up test workspace {}", self.workspace.root.display());
-        if let Err(e) = fs::remove_dir_all(&self.workspace.root) {
-            warn!("Failed to cleanup test workspace {}: {}", self.workspace.root.display(), e);
-        }
+        WorkspaceGen::new(random_string.as_str())
     }
 }
 
 #[test]
 fn install_no_deps() {
-    let mut test = WorkspaceGuard::new_random();
+    let mut test = WorkspaceGen::new_random();
     let package_name = "nos.sys.vulkan";
     let version = String::from("6.2.1.b612");
     InstallCommand{}.run_install(&mut test.workspace, package_name, Some(&version), &PathBuf::from("."), None, InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies)
@@ -56,7 +67,7 @@ fn install_no_deps() {
 
 #[test]
 fn install_brings_dependencies() {
-    let mut test = WorkspaceGuard::new_random();
+    let mut test = WorkspaceGen::new_random();
     let package_name = "nos.sys.vulkan";
     let version = String::from("6.2.1.b612");
     test.workspace.fetch_package_releases(package_name);
@@ -84,7 +95,7 @@ fn install_brings_dependencies() {
 
 #[test]
 fn install_skips_if_already_installed() {
-    let mut test = WorkspaceGuard::new_random();
+    let mut test = WorkspaceGen::new_random();
     let package_name = "nos.sys.vulkan";
     let version = String::from("6.2.1.b612");
     let op = InstallCommand{}.run_install(&mut test.workspace, package_name, Some(&version), &PathBuf::from("."), None, InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies)
