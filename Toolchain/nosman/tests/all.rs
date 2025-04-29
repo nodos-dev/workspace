@@ -1,11 +1,17 @@
 use std::fs;
 use std::path::PathBuf;
-use log::info;
-use rand::random;
+use log::{info, warn};
+use rand::{Rng, SeedableRng};
+use rand::rngs::StdRng;
 use nosman::nosman::command::install::{InstallCommand, InstallFlags, InstallOp};
 use nosman::nosman::index::SemVer;
 use nosman::nosman::module::PackageIdentifier;
 use nosman::nosman::workspace::Workspace;
+
+// Global random number generator
+lazy_static::lazy_static! {
+    static ref RNG: std::sync::Mutex<StdRng> = std::sync::Mutex::new(StdRng::from_entropy());
+}
 
 pub struct WorkspaceGuard {
     pub workspace: Workspace,
@@ -21,7 +27,7 @@ impl WorkspaceGuard {
     }
     pub(crate) fn new_random() -> Self {
         let random_string: String = (0..8)
-            .map(|_| random::<u8>() % 26 + b'a')
+            .map(|_| RNG.lock().unwrap().gen_range(b'a'..=b'z'))
             .map(char::from)
             .collect();
         WorkspaceGuard::new(random_string.as_str())
@@ -31,9 +37,12 @@ impl WorkspaceGuard {
 impl Drop for WorkspaceGuard {
     fn drop(&mut self) {
         info!("Cleaning up test workspace {}", self.workspace.root.display());
-        fs::remove_dir_all(&self.workspace.root).expect("Unable to remove test workspace");
+        if let Err(e) = fs::remove_dir_all(&self.workspace.root) {
+            warn!("Failed to cleanup test workspace {}: {}", self.workspace.root.display(), e);
+        }
     }
 }
+
 #[test]
 fn install_no_deps() {
     let mut test = WorkspaceGuard::new_random();

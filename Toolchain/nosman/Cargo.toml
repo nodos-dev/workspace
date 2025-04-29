@@ -1,6 +1,6 @@
 [package]
 name = "nosman"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2021"
 
 [profile.release]
@@ -45,6 +45,7 @@ thiserror = "2.0.9"
 [dev-dependencies]
 log = "0.4.21"
 rand = "0.8.5"
+lazy_static = "1.4.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["libloaderapi"] }
