@@ -95,20 +95,17 @@ jobs:
             if (Test-Path -Path ./nodos-cli-${{ github.ref_name }}) { Remove-Item -Path ./nodos-cli-${{ github.ref_name }} -Recurse -Force }
 
       - name: Checkout Nodos Workspace
-        shell: pwsh
+        shell: bash
         run: |
-            $ErrorActionPreference = 'Stop'
-            if (-not (Test-Path -Path ./nodos-cli-${{ github.ref_name }})) {
-            git clone --depth 1 https://github.com/${{ github.repository }}.git --recurse-submodule --shallow-submodules ./nodos-cli-${{ github.ref_name }}
-            }
-            cd ./nodos-cli-${{ github.ref_name }}
-            git fetch origin
-            git fetch --tags
-            git clean -ffd
-            git checkout ${{ github.sha }}
-            git reset --hard
-            git submodule update --force --recursive --init
-            git status
+          set -euo pipefail
+          if [ ! -d "./nodos-cli-${{ github.ref_name }}" ]; then
+            git clone --depth 1 "https://github.com/${{ github.repository }}.git" --recurse-submodules --shallow-submodules "./nodos-cli-${{ github.ref_name }}"
+          fi
+          cd "./nodos-cli-${{ github.ref_name }}"
+          git fetch origin --prune --force
+          git reset --hard "${{ github.sha }}"
+          git clean -fdx
+          git submodule update --init --recursive --remote --depth 1
 
       - name: Build Nodos CLI
         shell: pwsh
