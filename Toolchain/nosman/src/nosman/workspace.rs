@@ -45,6 +45,7 @@ pub struct Workspace {
     pub root: PathBuf,
     pub remotes: Vec<Remote>,
     pub installed_modules: HashMap<String, HashMap<String, InstalledModule>>,
+    #[serde(skip_serializing, skip_deserializing)]
     pub index_cache: Index,
     #[serde(skip_serializing, skip_deserializing)]
     runtime: WorkspaceRuntimeParams,
