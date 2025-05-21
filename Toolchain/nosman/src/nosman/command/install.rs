@@ -50,7 +50,7 @@ impl InstallCommand {
         if version_opt.is_some() {
             let version = version_opt.unwrap();
             if !flags.contains(InstallFlags::InstallExactVersion) {
-                let version_start = SemVer::parse_from_string(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
+                let version_start = SemVer::parse_from_str(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
                 if version_start.minor.is_none() {
                     return Err(InvalidArgument { message: "Please provide a minor version too!".to_string() });
                 }
@@ -88,7 +88,7 @@ impl InstallCommand {
         }
         if !flags.contains(InstallFlags::InstallExactVersion) {
             // Find or download a version such that 'a.b <= x < a.(b+1)'
-            let version_start = SemVer::parse_from_string(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
+            let version_start = SemVer::parse_from_str(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
             if version_start.minor.is_none() {
                 return Err(InvalidArgument { message: "Please provide a minor version too!".to_string() });
             }

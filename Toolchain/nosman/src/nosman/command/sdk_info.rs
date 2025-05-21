@@ -94,12 +94,12 @@ impl SdkInfoCommand {
 
         // Sort the engines by version, latest first
         selected_versions.sort_by(|a, b| {
-            let a_sem_ver = SemVer::parse_from_string(&a.version).unwrap_or_else(|| panic!("Failed to parse SDK version {}: {}", a.version, a.path));
-            let b_sem_ver = SemVer::parse_from_string(&b.version).unwrap_or_else(|| panic!("Failed to parse SDK version {}: {}", b.version, b.path));
+            let a_sem_ver = SemVer::parse_from_str(&a.version).unwrap_or_else(|| panic!("Failed to parse SDK version {}: {}", a.version, a.path));
+            let b_sem_ver = SemVer::parse_from_str(&b.version).unwrap_or_else(|| panic!("Failed to parse SDK version {}: {}", b.version, b.path));
             b_sem_ver.cmp(&a_sem_ver)
         });
 
-        let requested_sem_ver = match SemVer::parse_from_string(requested_version) {
+        let requested_sem_ver = match SemVer::parse_from_str(requested_version) {
             Some(semver) => semver,
             None => return Err(CommandError::InvalidArgument { message: format!("Invalid version: {}", requested_version) }),
         };
@@ -107,7 +107,7 @@ impl SdkInfoCommand {
         let mut found_sdk_info: Option<SdkInfoOutput> = None;
         // Determine the correct version key based on sdk_type
         for sdk_info in selected_versions {
-            let sdk_sem_ver = SemVer::parse_from_string(&sdk_info.version).unwrap_or_else(|| panic!("Failed to parse SDK version {}: {}", sdk_info.version, sdk_info.path));
+            let sdk_sem_ver = SemVer::parse_from_str(&sdk_info.version).unwrap_or_else(|| panic!("Failed to parse SDK version {}: {}", sdk_info.version, sdk_info.path));
             if sdk_sem_ver.satisfies_requested_version(&requested_sem_ver) {
                 found_sdk_info = Some(sdk_info);
                 break;

@@ -130,7 +130,7 @@ impl GetCommand {
         }
         Ok(())
     }
-    fn run_get(&self, workspace: &mut Workspace, nodos_name: &String, version: Option<&String>, fetch_index: bool, dont_ask: bool, clean_modules: bool) -> CommandResult {
+    pub fn run_get(&self, workspace: &mut Workspace, nodos_name: &String, version: Option<&String>, fetch_index: bool, dont_ask: bool, clean_modules: bool) -> CommandResult {
         // If not under a workspace, init
         let path = workspace.root.clone();
         if !workspace.ready() {
@@ -153,7 +153,7 @@ impl GetCommand {
 
         let res;
         if let Some(version) = version {
-            let version_start = SemVer::parse_from_string(version).unwrap_or_else(|| panic!("Invalid semantic version: {}", version));
+            let version_start = SemVer::parse_from_str(version).unwrap_or_else(|| panic!("Invalid semantic version: {}", version));
             if version_start.minor.is_none() {
                 return Err(InvalidArgument { message: "Please provide a minor version too!".to_string() });
             }

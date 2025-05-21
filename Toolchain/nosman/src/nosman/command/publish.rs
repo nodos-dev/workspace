@@ -244,7 +244,7 @@ impl PublishCommand {
         if !Self::is_name_valid(&name) {
             return Err(InvalidArgument { message: format!("Name {} is not valid. It should match regex [a-z0-9._]", name) });
         }
-        if SemVer::parse_from_string(version.as_str()).is_none() {
+        if SemVer::parse_from_str(version.as_str()).is_none() {
             return Err(InvalidArgument { message: format!("Version should be semantic-versioning compatible: {}", version) });
         }
         let artifact_file_path;

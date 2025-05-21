@@ -103,7 +103,15 @@ impl std::cmp::Ord for SemVer {
 }
 
 impl SemVer {
-    pub fn parse_from_string(s: &str) -> Option<SemVer> {
+    pub fn new(major: u32, minor: Option<u32>, patch: Option<u32>, build_number: Option<u32>) -> SemVer {
+        SemVer {
+            major,
+            minor,
+            patch,
+            build_number,
+        }
+    }
+    pub fn parse_from_str(s: &str) -> Option<SemVer> {
         // Parse 1.2.3.b4 -> (1, 2, 3, Some(4))
         // Parse 1.2.3.4 -> (1, 2, 3, Some(4))
         // Parse 1.2.3 -> (1, 2, 3, None)
@@ -403,7 +411,7 @@ impl Remote {
         let version = release.version.clone();
         let platform = release.platform.clone();
         // Check if target_platform exists for the same version in release_list
-        let sem_ver = SemVer::parse_from_string(&version).unwrap_or_else(|| panic!("{} is not a valid semantic version", version));
+        let sem_ver = SemVer::parse_from_str(&version).unwrap_or_else(|| panic!("{} is not a valid semantic version", version));
         for existing_release in &release_list.releases {
             if existing_release.platform.is_some() && release.platform.is_some() {
                 if existing_release.platform != release.platform {
@@ -414,7 +422,7 @@ impl Remote {
                         false
                     }
                     VersionCheckStrategy::Strict => {
-                        let existing_release_sem_ver = SemVer::parse_from_string(&existing_release.version).unwrap_or_default();
+                        let existing_release_sem_ver = SemVer::parse_from_str(&existing_release.version).unwrap_or_default();
                         sem_ver.is_equal_excl_build_no(&existing_release_sem_ver)
                     }
                     VersionCheckStrategy::Loose => {
@@ -588,8 +596,8 @@ pub struct Index {
 
 fn sort_version_list(versions: &mut Vec<&PackageReleaseEntry>) {
     versions.sort_by(|a, b| {
-        let semver_a = SemVer::parse_from_string(&a.version);
-        let semver_b = SemVer::parse_from_string(&b.version);
+        let semver_a = SemVer::parse_from_str(&a.version);
+        let semver_b = SemVer::parse_from_str(&b.version);
         if semver_a.is_none() || semver_b.is_none() {
             return std::cmp::Ordering::Equal;
         }
@@ -665,7 +673,7 @@ impl Index {
         versions.reverse();
         let platform = get_host_platform().to_string();
         for module in versions {
-            let semver = SemVer::parse_from_string(&module.version);
+            let semver = SemVer::parse_from_str(&module.version);
             if semver.is_none() {
                 continue;
             }

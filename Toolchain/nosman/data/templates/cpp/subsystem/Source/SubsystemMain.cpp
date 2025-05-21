@@ -1,6 +1,6 @@
 // Copyright Nodos AS. All Rights Reserved.
 #include <mySubsystem/PublicHeader.h>
-#include <Nodos/SubsystemAPI.h>
+#include <Nodos/PluginAPI.h>
 
 NOS_INIT()
 NOS_BEGIN_IMPORT_DEPS()
@@ -19,7 +19,7 @@ void __stdcall PrintHelloNodos()
 
 static std::unordered_map<uint32_t, MySubsystem*> GExported;
 
-nosResult OnRequest(uint32_t minor, void** outSubsystemCtx)
+nosResult ExportAPI(uint32_t minor, void** outSubsystemCtx)
 {
     auto it = GExported.find(minor);
     if (it == GExported.end())
@@ -51,10 +51,10 @@ nosResult NOSAPI_CALL OnPreUnloadSubsystem()
 
 extern "C"
 {
-NOSAPI_ATTR nosResult NOSAPI_CALL nosExportSubsystem(nosSubsystemFunctions* subsystemFunctions)
+NOSAPI_ATTR nosResult NOSAPI_CALL nosExportPlugin(nosPluginFunctions* subsystemFunctions)
 {
-    subsystemFunctions->OnRequest = OnRequest;
-    subsystemFunctions->OnPreUnloadSubsystem = OnPreUnloadSubsystem;
+    subsystemFunctions->OnRequestAPI = ExportAPI;
+    subsystemFunctions->OnPreUnloadPlugin = OnPreUnloadSubsystem;
     return NOS_RESULT_SUCCESS;
 }
 }

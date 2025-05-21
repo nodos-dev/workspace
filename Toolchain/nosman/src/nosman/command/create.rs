@@ -4,7 +4,7 @@ use clap::{ArgMatches};
 use colored::Colorize;
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::CommandError::InvalidArgument;
-use crate::nosman::index::ModuleType;
+use crate::nosman::index::{ModuleType, SemVer};
 use include_dir::{include_dir, Dir};
 use crate::nosman::command::sdk_info::get_engine_sdk_infos;
 use crate::nosman::constants;
@@ -14,7 +14,7 @@ use crate::nosman::workspace::{ScanModulesFlags, Workspace};
 pub struct CreateCommand {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum LangTool {
+pub enum LangTool {
     CppCMake,
 }
 
@@ -76,24 +76,32 @@ impl CreateCommand {
     }
 
     fn replace_tool_placeholders(workspace: &Workspace, content: &mut String, module_name: &str, deps: &Vec<PackageIdentifier>, tool: &str) {
-        let mut nos_version = "1.3.0".to_string();
+        let mut nos_version = None;
         if let Ok(engines) = get_engine_sdk_infos(workspace) {
-            if let Some(engine) = engines.first() {
-                nos_version = engine.version.to_string();
+            for engine in engines {
+                if let Some(cur_ver) = SemVer::parse_from_str(engine.version.as_str()) {
+                    if nos_version.is_none() || cur_ver > *nos_version.as_ref().unwrap() {
+                        nos_version = Some(cur_ver);   
+                    }
+                }
             }
         }
+        if nos_version.is_none() {
+            nos_version = Some(SemVer::new(1, Some(3), Some(0), None));
+        }
+        let nos_version = nos_version.unwrap();
         if tool == "cmake" {
             *content = content
                 .replace("<CMAKE_PROJECT_NAME>", module_name)
-                .replace("<CMAKE_LATEST_NOS_VERSION>", nos_version.as_str())
+                .replace("<CMAKE_LATEST_NOS_VERSION>", nos_version.to_string().as_str())
                 .replace("<CMAKE_MODULE_DEPENDENCIES>", &deps.iter().map(|dep| {
                     format!("\"{}-{}\"", dep.name, dep.version)
                 }).collect::<Vec<_>>().join(" "));
         }
     }
 
-    fn run_create(&self, workspace: &mut Workspace, module_name: &str, module_type: ModuleType, lang_tool: LangTool,
-                  output_dir: &PathBuf, deps: Vec<PackageIdentifier>, description: &str) -> CommandResult {
+    pub fn run_create(&self, workspace: &mut Workspace, module_name: &str, module_type: ModuleType, lang_tool: LangTool,
+                      output_dir: &PathBuf, deps: Vec<PackageIdentifier>, description: &str) -> CommandResult {
         println!("{}", format!("Creating a new Nodos module project of type '{:?}'", module_type).green());
 
         // Check module name contains at least one namespace

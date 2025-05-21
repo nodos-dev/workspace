@@ -222,7 +222,7 @@ impl Workspace {
         versions.sort_by(|a, b| a.0.cmp(b.0));
         versions.reverse();
         for (version, module) in versions {
-            let semver = SemVer::parse_from_string(version);
+            let semver = SemVer::parse_from_str(version);
             if semver.is_none() {
                 continue;
             }
@@ -235,7 +235,7 @@ impl Workspace {
         None
     }
     pub fn get_latest_installed_module_for_version(&self, module_name: &str, requested_version: &str) -> Result<&InstalledModule, String> {
-        let semver_res = SemVer::parse_from_string(requested_version);
+        let semver_res = SemVer::parse_from_str(requested_version);
         if semver_res.is_none() {
             return Err(format!("Invalid semantic version: {}.", requested_version));
         }
@@ -252,7 +252,7 @@ impl Workspace {
     }
     pub fn get_latest_absent_release_for(&self, name: &str, requested_version: &str) -> Result<Option<(&PackageType, &PackageReleaseEntry)>, CommandError> {
         // If the version is not a valid semantic version, return Error
-        let semver = SemVer::parse_from_string(requested_version);
+        let semver = SemVer::parse_from_str(requested_version);
         if semver.is_none() {
             return Err(InvalidArgument { message: format!("{} is not a valid semantic version", requested_version) });
         }
@@ -411,8 +411,8 @@ impl Workspace {
                     versions_map.insert(module_name.clone(), module);
                 } else {
                     let existing = versions_map.get(module_name).unwrap();
-                    let existing_semver = SemVer::parse_from_string(existing.info.id.version.as_str());
-                    let new_semver = SemVer::parse_from_string(version.as_str());
+                    let existing_semver = SemVer::parse_from_str(existing.info.id.version.as_str());
+                    let new_semver = SemVer::parse_from_str(version.as_str());
                     if existing_semver.is_none() || new_semver.is_none() {
                         continue;
                     }

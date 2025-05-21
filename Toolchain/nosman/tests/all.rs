@@ -4,9 +4,12 @@ use log::{info, warn};
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 use nosman::nosman::command::install::{InstallCommand, InstallFlags, InstallOp};
-use nosman::nosman::index::SemVer;
+use nosman::nosman::index::{ModuleType, SemVer};
 use nosman::nosman::module::PackageIdentifier;
 use nosman::nosman::workspace::Workspace;
+use nosman::nosman::command::create::{CreateCommand, LangTool};
+use nosman::nosman::command::get::GetCommand;
+use nosman::nosman::constants;
 
 #[ctor::ctor]
 fn init() {
@@ -86,8 +89,8 @@ fn install_brings_dependencies() {
         let installed = test.workspace.get_installed_modules(requested.name.as_str());
         assert_eq!(installed.len(), 1);
         let installed = installed[0].info.clone();
-        let requested_version = SemVer::parse_from_string(requested.version.as_str()).expect("Failed to parse semantic version");
-        let installed_version = SemVer::parse_from_string(installed.id.version.as_str()).expect("Failed to parse semantic version");
+        let requested_version = SemVer::parse_from_str(requested.version.as_str()).expect("Failed to parse semantic version");
+        let installed_version = SemVer::parse_from_str(installed.id.version.as_str()).expect("Failed to parse semantic version");
         assert_eq!(installed.id.name, requested.name);
         assert!(installed_version.satisfies_requested_version(&requested_version));
     }
@@ -105,4 +108,86 @@ fn install_skips_if_already_installed() {
     let op_second = InstallCommand{}.run_install(&mut test.workspace, package_name, Some(&version), &PathBuf::from("."), None, InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies)
         .unwrap_or_else(|_| panic!("Failed to install {}", package_name));
     assert_eq!(op_second, InstallOp::Skipped);
+}
+
+fn test_cmake_build(test: &WorkspaceGen) {
+    let res = std::process::Command::new("cmake")
+        .current_dir(&test.workspace.root)
+        .arg("-S")
+        .arg("Toolchain/CMake")
+        .arg("-B")
+        .arg("Project")
+        .output();
+    if let Err(e) = res {
+        panic!("Failed to generate project: {}", e);
+    }
+    let res = res.unwrap();
+    assert!(res.status.success(), "Failed to generate project: {}", String::from_utf8_lossy(&res.stdout));
+    let res = std::process::Command::new("cmake")
+        .current_dir(&test.workspace.root)
+        .arg("--build")
+        .arg("Project")
+        .output();
+    if let Err(e) = res {
+        panic!("Failed to build project: {}", e);
+    }
+    let res = res.unwrap();
+    assert!(res.status.success(), "Failed to build project: {}", String::from_utf8_lossy(&res.stdout));
+}
+
+fn test_create_module(module_name: &str, module_type: ModuleType, description: &str) {
+    let mut test = WorkspaceGen::new_random();
+
+    // Install nodos and verify cmake generation and build works correctly.
+    let res = GetCommand{}.run_get(&mut test.workspace, &"nodos".to_string(), Some(&"1.4".to_string()), true, true, false);
+    if let Err(e) = res {
+        panic!("Failed to install nodos: {}", e);
+    }
+
+    // Create the module
+    let module_dir = test.workspace.root.join("Module").join(module_name);
+    CreateCommand{}.run_create(
+        &mut test.workspace,
+        module_name,
+        module_type.clone(),
+        LangTool::CppCMake,
+        &module_dir,
+        Vec::new(), // No dependencies
+        description
+    ).expect(&format!("Failed to create {:?}", module_type));
+
+    // Verify the module was created correctly
+    assert!(module_dir.exists(), "{:?} directory was not created", module_type);
+
+    // Check manifest file exists with correct extension
+    let extension = match module_type {
+        ModuleType::Subsystem => constants::SUBSYSTEM_MANIFEST_FILE_EXT,
+        ModuleType::Plugin => constants::PLUGIN_MANIFEST_FILE_EXT,
+    };
+    let manifest_path = module_dir.join(format!("{}.{}", module_name, extension));
+    assert!(manifest_path.exists(), "{:?} manifest file was not created", module_type);
+
+    // Verify CMake files are present
+    let cmake_lists_path = module_dir.join("CMakeLists.txt");
+    assert!(cmake_lists_path.exists(), "CMakeLists.txt was not created");
+
+    test_cmake_build(&test);
+}
+
+#[test]
+fn create_subsystem() {
+    test_create_module(
+        "test.sys.example", 
+        ModuleType::Subsystem, 
+        "Test subsystem description"
+    );
+}
+
+#[test]
+fn create_plugin() {
+    test_create_module(
+        "test.example", 
+        ModuleType::Plugin, 
+        "Test plugin description"
+    );
 }

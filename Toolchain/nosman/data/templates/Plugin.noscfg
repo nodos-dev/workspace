@@ -8,7 +8,7 @@
         "description": "<DESCRIPTION>",
         "dependencies": <DEPENDENCY_LIST_JSON>
     },
-    "binary_path": "./Binaries/<BINARY_NAME>",
+    "binary_path": "Binaries/<BINARY_NAME>",
     "node_definitions": [],
     "defaults": [],
     "custom_types": []

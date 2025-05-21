@@ -50,7 +50,7 @@ impl DependsCommands {
                 dep = module.info.id.clone();
             } else {
                 // Convert the `Option` from `parse_from_string` to a `Result` so we can use `map_err`
-                let version_start = SemVer::parse_from_string(&dep_id.version)
+                let version_start = SemVer::parse_from_str(&dep_id.version)
                     .ok_or(InvalidArgument { message: "Invalid version format".to_string() })?;
 
                 if version_start.minor.is_none() {
