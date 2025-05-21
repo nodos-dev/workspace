@@ -2,6 +2,6 @@
 
 struct MySubsystem
 {
-    void (__stdcall *PrintHelloNodos)();
-    int (__stdcall *Add)(int a, int b);
+    void (*PrintHelloNodos)();
+    int (*Add)(int a, int b);
 };

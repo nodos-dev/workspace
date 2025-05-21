@@ -122,7 +122,10 @@ fn test_cmake_build(test: &WorkspaceGen) {
         panic!("Failed to generate project: {}", e);
     }
     let res = res.unwrap();
-    assert!(res.status.success(), "Failed to generate project: {}", String::from_utf8_lossy(&res.stdout));
+    if !res.status.success() {
+        print!("Output:\n{}", String::from_utf8_lossy(&res.stderr));
+        panic!("Failed to generate project");
+    }
     let res = std::process::Command::new("cmake")
         .current_dir(&test.workspace.root)
         .arg("--build")
@@ -132,7 +135,10 @@ fn test_cmake_build(test: &WorkspaceGen) {
         panic!("Failed to build project: {}", e);
     }
     let res = res.unwrap();
-    assert!(res.status.success(), "Failed to build project: {}", String::from_utf8_lossy(&res.stdout));
+    if !res.status.success() {
+        print!("Output:\n{}", String::from_utf8_lossy(&res.stderr));
+        panic!("Failed to build project");
+    }
 }
 
 fn test_create_module(module_name: &str, module_type: ModuleType, description: &str) {
@@ -143,6 +149,15 @@ fn test_create_module(module_name: &str, module_type: ModuleType, description: &
     if let Err(e) = res {
         panic!("Failed to install nodos: {}", e);
     }
+
+    // Copy self to the workspace
+    let nosman_path = std::env::current_exe().expect("Failed to get current executable path");
+    // Set the target executable name
+    let target_executable_name = format!("nodos{}", std::env::consts::EXE_SUFFIX);
+    std::fs::copy(
+        nosman_path,
+        &test.workspace.root.join(target_executable_name)
+    ).expect("Failed to copy nosman to workspace");
 
     // Create the module
     let module_dir = test.workspace.root.join("Module").join(module_name);

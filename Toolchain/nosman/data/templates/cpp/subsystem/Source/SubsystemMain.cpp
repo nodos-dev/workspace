@@ -6,13 +6,12 @@ NOS_INIT()
 NOS_BEGIN_IMPORT_DEPS()
 NOS_END_IMPORT_DEPS()
 
-template <typename T>
-T __stdcall Add(T a, T b)
+int AddInt(int a, int b)
 {
 	return a + b;
 }
 
-void __stdcall PrintHelloNodos()
+void PrintHelloNodos()
 {
 	nosEngine.LogI("Hello Nodos!");
 }
@@ -30,7 +29,7 @@ nosResult ExportAPI(uint32_t minor, void** outSubsystemCtx)
         {
             MySubsystem* subsystem = new MySubsystem();
             subsystem->PrintHelloNodos = PrintHelloNodos;
-            subsystem->Add = Add<int>;
+            subsystem->Add = AddInt;
             GExported[minor] = subsystem;
             *outSubsystemCtx = subsystem;
             return NOS_RESULT_SUCCESS;
