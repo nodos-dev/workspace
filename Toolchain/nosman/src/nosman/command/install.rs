@@ -166,7 +166,7 @@ impl InstallCommand {
 
         let pkg_type_str = if package_type.is_module() { "module" } else { "package" };
 
-        let final_out_dir = if install_dir.is_relative() && package_type.is_module() { workspace.root.join(install_dir) } else { install_dir };
+        let final_out_dir = if install_dir.is_relative() { workspace.root.join(install_dir) } else { install_dir };
         let module_name_version = format!("{}-{}", package_name, version);
         println!("Downloading {} {}", pkg_type_str, module_name_version);
 
