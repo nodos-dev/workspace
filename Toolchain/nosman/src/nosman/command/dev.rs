@@ -117,7 +117,6 @@ impl Command for DevPullCommand {
     }
 }
 
-
 pub struct DevGenCommand {}
 
 impl DevGenCommand {
@@ -167,7 +166,6 @@ impl Command for DevGenCommand {
 }
 
 pub struct DevStatusCommand {}
-
 
 impl DevStatusCommand {
     fn run_status(&self, dirs: Vec<PathBuf>) -> CommandResult {
@@ -229,6 +227,54 @@ impl Command for DevStatusCommand {
         let dirs: Vec<&String> = args.get_many::<String>("dir").unwrap_or_default().collect();
         let dirs: Vec<PathBuf> = dirs.iter().map(PathBuf::from).collect();
         self.run_status(dirs)
+    }
+
+    fn needs_workspace(&self) -> bool {
+        false
+    }
+}
+
+pub struct DevBuildCommand {}
+
+impl DevBuildCommand {
+    fn run_build(&self, lang_tool: &String, project_folder: &String, extra_args: Vec<String>) -> CommandResult {
+        // Only cpp/cmake is supported for now
+        if lang_tool != "cpp/cmake" {
+            return Err(CommandError::InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool) });
+        }
+        let mut build_args = vec!["--build", project_folder];
+        for arg in extra_args.iter() {
+            build_args.push(arg);
+        }
+        let mut cmd = std::process::Command::new("cmake");
+        let cmd_args_str = build_args.iter().map(|s| s.as_ref()).collect::<Vec<&std::ffi::OsStr>>().join(std::ffi::OsStr::new(" "));
+        println!("{}: {:?}", "Running cmake build with".green(), cmd_args_str);
+        let status = cmd
+            .args(&build_args)
+            .status();
+        if !status.is_ok() || !status.unwrap().success() {
+            return Err(CommandError::Runtime { message: format!("Error during running '{:?}'. See output.", build_args)});
+        }
+        Ok(())
+    }
+}
+
+impl Command for DevBuildCommand {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args: &'a clap::ArgMatches) -> Option<&'a clap::ArgMatches> {
+        if let Some(subcommand) = args.subcommand_matches("dev") {
+            return subcommand.subcommand_matches("build");
+        }
+        None
+    }
+
+    fn run(&self, _workspace: &mut Workspace, _command_name: Option<&str>, args: &clap::ArgMatches) -> CommandResult {
+        let lang_tool = args.get_one::<String>("language/tool").unwrap();
+        let project_folder = args.get_one::<String>("project_folder").unwrap();
+        let mut extra_args = Vec::new();
+        if let Some(args) = args.get_one::<String>("extra_args") {
+            extra_args = args.split_whitespace().map(|s| s.to_string()).collect();
+        }
+        self.run_build(lang_tool, project_folder, extra_args)
     }
 
     fn needs_workspace(&self) -> bool {

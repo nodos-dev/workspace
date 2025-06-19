@@ -78,6 +78,7 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(dev::DevPullCommand {}),
         Box::new(dev::DevGenCommand {}),
         Box::new(dev::DevStatusCommand {}),
+        Box::new(dev::DevBuildCommand {}),
         Box::new(launch::LaunchCommand {}),
         Box::new(extension::Extension {}),
         Box::new(depend::DependsCommands{}),
@@ -590,7 +591,7 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
             )
             .subcommand(clap::Command::new("gen")
                 .about("Generates project files for Nodos module development")
-                .arg(lang_tool_arg)
+                .arg(lang_tool_arg.clone())
                 .arg(Arg::new("project_folder")
                     .long("project-folder")
                     .short('p')
@@ -599,6 +600,19 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
                 .arg(Arg::new("extra_args")
                     .last(true)
                     .help("Arguments to pass to the underlying tool when generating project files")
+                )
+            )
+            .subcommand(clap::Command::new("build")
+                .about("Builds project files for Nodos module development")
+                .arg(lang_tool_arg)
+                .arg(Arg::new("project_folder")
+                    .long("project-folder")
+                    .short('p')
+                    .help("Path to the project folder to build")
+                    .default_value("Project"))
+                .arg(Arg::new("extra_args")
+                    .last(true)
+                    .help("Arguments to pass to the underlying tool when building project files")
                 )
             )
             .subcommand(clap::Command::new("status")
