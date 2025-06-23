@@ -202,7 +202,7 @@ impl Command for InstallCommand {
         if *args.get_one::<bool>("exact").unwrap() {
             flag.insert(InstallFlags::InstallExactVersion);
         }
-        if *args.get_one::<bool>("without-deps").unwrap() {
+        if *args.get_one::<bool>("without_deps").unwrap() {
             flag.insert(InstallFlags::WithoutDependencies);
         }
         self.run_install(workspace, module_name, version, &output_dir, prefix, flag)?;
