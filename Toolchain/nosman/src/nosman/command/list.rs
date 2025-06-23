@@ -43,7 +43,7 @@ impl ListCommand {
                     let b_version = SemVer::parse_from_str(b.1.as_str());
                     a_version.cmp(&b_version)
                 });
-                for (name, version, module) in installed_versions {
+                for (_name, version, module) in installed_versions {
                     println!("  {} ({})", format!("{}", version).green(), module.get_module_dir().display());
                 }
             }
