@@ -19,6 +19,7 @@ mod dev;
 pub(crate) mod launch;
 mod extension;
 mod depend;
+pub mod test;
 
 use std::io;
 
@@ -82,6 +83,7 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(launch::LaunchCommand {}),
         Box::new(extension::Extension {}),
         Box::new(depend::DependsCommands{}),
+        Box::new(test::TestCommand {}),
     ]
 }
 
@@ -624,6 +626,21 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
             .subcommand(clap::Command::new("status")
                 .about("Shows the status of the git repositories under the workspace")
                 .arg(git_dir_arg)
+            )
+        )
+        .subcommand(clap::Command::new("test")
+            .about("Enumerate modules in a folder, look under Tests folder of each module, and run nosLauncher with --load-graph for each graph file.")
+            .arg(clap::Arg::new("modules_folder")
+                .help("Path to the folder containing modules (default: workspace root)")
+                .long("modules-folder")
+                .short('m')
+                .required(false)
+            )
+            .arg(clap::Arg::new("engine_dir")
+                .help("Path to the engine directory to use for nosLauncher (default: auto-detect from workspace)")
+                .long("engine-dir")
+                .short('e')
+                .required(false)
             )
         )
 }
