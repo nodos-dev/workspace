@@ -2,22 +2,27 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use clap::ArgMatches;
 use colored::Colorize;
-use crate::nosman::command::{Command, CommandResult, CommandError};
+use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::workspace::Workspace;
 use crate::nosman::module;
+use std::fs::File;
+use crate::nosman::module::ModuleInfo;
+use std::time::Instant;
 
 pub struct TestCommand {}
 
 struct TestCase {
-    module_name: String,
+    module_name: String, // now the package name from manifest
     module_dir: PathBuf,
     test_graph: PathBuf,
 }
 
 struct TestResult {
     module_name: String,
+    module_dir: PathBuf,
     test_graph: PathBuf,
     exit_code: i32,
+    duration: std::time::Duration,
 }
 
 impl TestCommand {
@@ -26,11 +31,20 @@ impl TestCommand {
         let manifests = module::get_module_manifests(modules_folder, true);
         for (_module_type, manifest_path) in manifests {
             let module_dir = manifest_path.parent().unwrap().to_path_buf();
-            let module_name = module_dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| module_dir.display().to_string());
             let tests_dir = module_dir.join("Tests");
             if !tests_dir.exists() || !tests_dir.is_dir() {
                 continue;
             }
+            // Read manifest to get package name from 'info' field (ModuleInfo)
+            let package_name = match File::open(&manifest_path)
+                .ok()
+                .and_then(|f| serde_json::from_reader::<_, serde_json::Value>(f).ok())
+                .and_then(|json| json.get("info").cloned())
+                .and_then(|info_val| serde_json::from_value::<ModuleInfo>(info_val).ok())
+            {
+                Some(info) => info.id.name,
+                None => String::new(),
+            };
             let entries = match fs::read_dir(&tests_dir) {
                 Ok(e) => e,
                 Err(_) => continue,
@@ -40,7 +54,7 @@ impl TestCommand {
                     let path = entry.path();
                     if path.is_file() {
                         tests.push(TestCase {
-                            module_name: module_name.clone(),
+                            module_name: package_name.clone(),
                             module_dir: module_dir.clone(),
                             test_graph: path,
                         });
@@ -87,6 +101,7 @@ impl TestCommand {
         let status = std::process::Command::new(&engine_path)
             .arg("--load-graph")
             .arg(graph_path)
+            .arg("--load-graph-plugins")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
@@ -94,17 +109,37 @@ impl TestCommand {
         Ok(status.code().unwrap_or(-1))
     }
 
-    fn print_summary(results: &[TestResult]) {
-        println!("\nTest Summary:");
-        println!("{:<30} | {:<40} | {:<10} | {}", "Module", "Test Graph", "ExitCode", "Result");
-        println!("{}", "-".repeat(90));
+    fn print_summary(results: &[TestResult], workspace: &Workspace) {
+        use colored::*;
+        use std::collections::BTreeMap;
+        println!("\n{}", "Test Results".bold().underline());
+        // Group by module name and module_dir
+        let mut grouped: BTreeMap<(&str, &PathBuf), Vec<&TestResult>> = BTreeMap::new();
         for result in results {
-            let status = if result.exit_code == 0 { "PASS".green() } else { "FAIL".red() };
-            println!("{:<30} | {:<40} | {:<10} | {}", result.module_name, result.test_graph.file_name().unwrap().to_string_lossy(), result.exit_code, status);
+            grouped.entry((result.module_name.as_str(), &result.module_dir)).or_default().push(result);
+        }
+        for ((module, module_dir), tests) in grouped.iter() {
+            let rel_dir = pathdiff::diff_paths(module_dir, &workspace.root)
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "<unknown>".to_string());
+            println!("\n{} ({})", module.bold(), rel_dir.dimmed());
+            for result in tests {
+                let (icon, status) = if result.exit_code == 0 {
+                    ("✓".green(), "PASS".green())
+                } else {
+                    ("✗".red(), "FAIL".red())
+                };
+                let test = result.test_graph.file_name().unwrap().to_string_lossy().dimmed();
+                println!("  {} {}  {}  ({:?})", icon, status, test, result.duration);
+            }
         }
         let passed = results.iter().filter(|r| r.exit_code == 0).count();
         let total = results.len();
-        println!("\n{} of {} tests passed.", passed, total);
+        println!(
+            "\n{} of {} tests passed.",
+            passed.to_string().bold().green(),
+            total.to_string().bold()
+        );
     }
 }
 
@@ -127,6 +162,7 @@ impl Command for TestCommand {
         let mut results = Vec::new();
         for test in &tests {
             println!("{} {} (module: {})", "Running test graph:".green(), test.test_graph.display(), test.module_name);
+            let start = Instant::now();
             let exit_code = match Self::run_nodos_graph_test(workspace, engine_dir.as_deref(), &test.test_graph) {
                 Ok(code) => code,
                 Err(e) => {
@@ -134,13 +170,16 @@ impl Command for TestCommand {
                     -1
                 }
             };
+            let duration = start.elapsed();
             results.push(TestResult {
                 module_name: test.module_name.clone(),
+                module_dir: test.module_dir.clone(),
                 test_graph: test.test_graph.clone(),
                 exit_code,
+                duration,
             });
         }
-        Self::print_summary(&results);
+        Self::print_summary(&results, workspace);
         Ok(())
     }
 
