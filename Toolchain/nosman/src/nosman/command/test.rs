@@ -8,6 +8,7 @@ use crate::nosman::module;
 use std::fs::File;
 use crate::nosman::module::ModuleInfo;
 use std::time::Instant;
+use std::time::Duration;
 
 pub struct TestCommand {}
 
@@ -65,7 +66,7 @@ impl TestCommand {
         tests
     }
 
-    fn run_nodos_graph_test(workspace: &Workspace, engine_dir: Option<&Path>, graph_path: &Path) -> Result<i32, String> {
+    fn run_nodos_graph_test(workspace: &Workspace, engine_dir: Option<&Path>, graph_path: &Path, timeout: Duration) -> Result<i32, String> {
         let engine_path = if let Some(dir) = engine_dir {
             let mut engine_path = dir.join("Binaries").join("nosLauncher");
             if cfg!(target_os = "windows") {
@@ -98,15 +99,24 @@ impl TestCommand {
             }
             opt_engine_path.ok_or("No nosLauncher found in any engine Binaries folder.".to_string())?
         };
-        let status = std::process::Command::new(&engine_path)
+        use wait_timeout::ChildExt;
+        let mut child = std::process::Command::new(&engine_path)
             .arg("--load-graph")
             .arg(graph_path)
             .arg("--load-graph-plugins")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .status()
+            .spawn()
             .map_err(|e| e.to_string())?;
-        Ok(status.code().unwrap_or(-1))
+        match child.wait_timeout(timeout).map_err(|e| e.to_string())? {
+            Some(status) => Ok(status.code().unwrap_or(-1)),
+            None => {
+                // Timeout expired, kill the process
+                let _ = child.kill();
+                let _ = child.wait();
+                Err(format!("Test timed out after {:?}", timeout))
+            }
+        }
     }
 
     fn print_summary(results: &[TestResult], workspace: &Workspace) {
@@ -153,6 +163,8 @@ impl Command for TestCommand {
             .map(PathBuf::from)
             .unwrap_or_else(|| workspace.root.clone());
         let engine_dir = args.get_one::<String>("engine_dir").map(PathBuf::from);
+        let timeout_secs = args.get_one::<u64>("timeout").copied().unwrap_or(30);
+        let timeout = Duration::from_secs(timeout_secs);
         let tests = Self::collect_tests(&modules_folder);
         if tests.is_empty() {
             println!("{}", "No modules with tests found.".yellow());
@@ -161,12 +173,15 @@ impl Command for TestCommand {
         println!("Found {} test(s) in {} module(s).", tests.len(), tests.iter().map(|t| &t.module_name).collect::<std::collections::HashSet<_>>().len());
         let mut results = Vec::new();
         for test in &tests {
-            println!("{} {} (module: {})", "Running test graph:".green(), test.test_graph.display(), test.module_name);
+            let test_graph_relpath = test.test_graph
+                .strip_prefix(&modules_folder)
+                .unwrap_or(&test.test_graph);
+            println!("{} {} (module: {})", "Running test graph:".green(), test_graph_relpath.display(), test.module_name);
             let start = Instant::now();
-            let exit_code = match Self::run_nodos_graph_test(workspace, engine_dir.as_deref(), &test.test_graph) {
+            let exit_code = match Self::run_nodos_graph_test(workspace, engine_dir.as_deref(), &test.test_graph, timeout) {
                 Ok(code) => code,
                 Err(e) => {
-                    eprintln!("{} {}: {}", "Failed to run nosLauncher for".red(), test.test_graph.display(), e);
+                    eprintln!("{} {}: {}", "Error when running test graph".red(), test_graph_relpath.display(), e);
                     -1
                 }
             };

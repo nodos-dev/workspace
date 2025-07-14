@@ -642,5 +642,13 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
                 .short('e')
                 .required(false)
             )
+            .arg(clap::Arg::new("timeout")
+                .help("Timeout in seconds for each test")
+                .long("timeout")
+                .short('t')
+                .required(false)
+                .value_parser(clap::value_parser!(u64))
+                .default_value("30")
+            )
         )
 }
