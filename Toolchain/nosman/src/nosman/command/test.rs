@@ -195,6 +195,11 @@ impl Command for TestCommand {
             });
         }
         Self::print_summary(&results, workspace);
+        if results.iter().any(|r| r.exit_code != 0) {
+            return Err(crate::nosman::command::CommandError::Runtime {
+                message: format!("{} test(s) failed.", results.iter().filter(|r| r.exit_code != 0).count()),
+            });
+        }
         Ok(())
     }
 
