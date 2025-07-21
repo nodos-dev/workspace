@@ -8,7 +8,7 @@ use crate::nosman::workspace::{Workspace};
 pub struct NodeCommand {}
 
 impl NodeCommand {
-    fn run_node(&self, workspace: &mut Workspace, plugin_name: &String, node_class_name: &String,
+    pub fn run_node(&self, workspace: &mut Workspace, plugin_name: &String, node_class_name: &String,
                 remove: bool, display_name: Option<String>, description: Option<String>,
                 category: Option<String>, hide_in_context_menu: bool, nodos_version: Option<SemVer>) -> CommandResult {
         let module = workspace.select_installed_module(&plugin_name)?;

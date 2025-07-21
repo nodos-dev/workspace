@@ -1,6 +1,6 @@
 // Copyright Nodos AS. All Rights Reserved.
 #include <mySubsystem/PublicHeader.h>
-#include <Nodos/PluginAPI.h>
+#include <Nodos/SubsystemAPI.h>
 
 NOS_INIT()
 NOS_BEGIN_IMPORT_DEPS()
@@ -50,10 +50,10 @@ nosResult NOSAPI_CALL OnPreUnloadSubsystem()
 
 extern "C"
 {
-NOSAPI_ATTR nosResult NOSAPI_CALL nosExportPlugin(nosPluginFunctions* subsystemFunctions)
+NOSAPI_ATTR nosResult NOSAPI_CALL nosExportSubsystem(nosSubsystemFunctions* subsystemFunctions)
 {
-    subsystemFunctions->OnRequestAPI = ExportAPI;
-    subsystemFunctions->OnPreUnloadPlugin = OnPreUnloadSubsystem;
+    subsystemFunctions->OnRequest = ExportAPI;
+    subsystemFunctions->OnPreUnloadSubsystem = OnPreUnloadSubsystem;
     return NOS_RESULT_SUCCESS;
 }
 }

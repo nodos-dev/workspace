@@ -9,8 +9,7 @@ use crate::nosman::index::{ModuleType, SemVer};
 use include_dir::{include_dir, Dir};
 use crate::nosman::command::sdk_info::get_engine_sdk_infos;
 use crate::nosman::common::{DEFAULT_NODOS_VERSION_INDEX, SUPPORTED_NODOS_VERSIONS};
-use crate::nosman::constants;
-use crate::nosman::module::{get_dependency_arguments, PackageIdentifier};
+use crate::nosman::module::{get_dependency_arguments, get_manifest_file_ext, PackageIdentifier};
 use crate::nosman::workspace::{ScanModulesFlags, Workspace};
 
 pub struct CreateCommand {}
@@ -149,18 +148,13 @@ impl CreateCommand {
         let tool_template_dir = get_template_dir_for(lang_tool.tool(), &module_type, &version_str);
         let lang_template_dir = get_template_dir_for(lang_tool.lang(), &module_type, &version_str);
 
+        let manifest_path_ext = get_manifest_file_ext(selected_version.as_ref(), &module_type);
+
         // Copy .noscfg if plugin or .nossys
         let manifest_template_file = if module_type == ModuleType::Plugin {
-            DATA_DIR.get_file(format!("templates/nodos-{}/Plugin.{}", version_str, constants::LEGACY_PLUGIN_MANIFEST_FILE_EXT)).unwrap()
+            DATA_DIR.get_file(format!("templates/nodos-{}/Plugin.{}", version_str, manifest_path_ext)).unwrap()
         } else {
-            DATA_DIR.get_file(format!("templates/nodos-{}/Subsystem.{}", version_str, constants::LEGACY_SUBSYSTEM_MANIFEST_FILE_EXT)).unwrap()
-        };
-        let manifest_path_ext = if selected_version.is_some() && selected_version.unwrap() >= *SUPPORTED_NODOS_VERSIONS[DEFAULT_NODOS_VERSION_INDEX] {
-            constants::PLUGIN_MANIFEST_FILE_EXT
-        } else if module_type == ModuleType::Plugin {
-            constants::LEGACY_PLUGIN_MANIFEST_FILE_EXT
-        } else {
-            constants::LEGACY_SUBSYSTEM_MANIFEST_FILE_EXT
+            DATA_DIR.get_file(format!("templates/nodos-{}/Subsystem.{}", version_str, manifest_path_ext)).unwrap()
         };
         let output_manifest_path = output_dir.join(format!("{}.{}", module_name, manifest_path_ext));
 

@@ -5,11 +5,12 @@ use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 use nosman::nosman::command::install::{InstallCommand, InstallFlags, InstallOp};
 use nosman::nosman::index::{ModuleType, SemVer};
-use nosman::nosman::module::PackageIdentifier;
+use nosman::nosman::module::{get_manifest_file_ext, PackageIdentifier};
 use nosman::nosman::workspace::Workspace;
 use nosman::nosman::command::create::{CreateCommand, LangTool};
 use nosman::nosman::command::get::GetCommand;
-use nosman::nosman::constants;
+use nosman::nosman::command::node::NodeCommand;
+use nosman::nosman::command::pin::PinCommand;
 
 #[ctor::ctor]
 fn init() {
@@ -136,16 +137,16 @@ fn test_cmake_build(test: &WorkspaceGen) {
     }
     let res = res.unwrap();
     if !res.status.success() {
-        print!("Output:\n{}", String::from_utf8_lossy(&res.stderr));
+        print!("Output:\n{}", String::from_utf8_lossy(&res.stdout));
         panic!("Failed to build project");
     }
 }
 
-fn test_create_module(module_name: &str, module_type: ModuleType, description: &str) {
+fn test_create_module(module_name: &str, module_type: ModuleType, description: &str, nodos_version: &str) {
     let mut test = WorkspaceGen::new_random();
 
     // Install nodos and verify cmake generation and build works correctly.
-    let res = GetCommand{}.run_get(&mut test.workspace, &"nodos".to_string(), Some(&"1.3".to_string()), true, true, false);
+    let res = GetCommand{}.run_get(&mut test.workspace, &"nodos".to_string(), Some(&nodos_version.to_string()), true, true, false);
     if let Err(e) = res {
         panic!("Failed to install nodos: {}", e);
     }
@@ -161,6 +162,7 @@ fn test_create_module(module_name: &str, module_type: ModuleType, description: &
 
     // Create the module
     let module_dir = test.workspace.root.join("Module").join(module_name);
+    let nodos_version = SemVer::parse_from_str(nodos_version);
     CreateCommand{}.run_create(
         &mut test.workspace,
         module_name,
@@ -169,17 +171,14 @@ fn test_create_module(module_name: &str, module_type: ModuleType, description: &
         &module_dir,
         Vec::new(), // No dependencies
         description,
-        Some(SemVer::new(1, Some(3), None, None)),
+        nodos_version.clone(),
     ).expect(&format!("Failed to create {:?}", module_type));
 
     // Verify the module was created correctly
     assert!(module_dir.exists(), "{:?} directory was not created", module_type);
 
     // Check manifest file exists with correct extension
-    let extension = match module_type {
-        ModuleType::Subsystem => constants::LEGACY_SUBSYSTEM_MANIFEST_FILE_EXT,
-        ModuleType::Plugin => constants::LEGACY_PLUGIN_MANIFEST_FILE_EXT,
-    };
+    let extension = get_manifest_file_ext(Option::from(&nodos_version), &module_type);
     let manifest_path = module_dir.join(format!("{}.{}", module_name, extension));
     assert!(manifest_path.exists(), "{:?} manifest file was not created", module_type);
 
@@ -191,19 +190,186 @@ fn test_create_module(module_name: &str, module_type: ModuleType, description: &
 }
 
 #[test]
-fn create_subsystem() {
+fn create_plugin_1_3() {
     test_create_module(
-        "test.sys.example", 
-        ModuleType::Subsystem, 
-        "Test subsystem description"
+        "test.example",
+        ModuleType::Plugin,
+        "Test plugin description",
+        "1.3"
     );
 }
 
 #[test]
-fn create_plugin() {
+fn create_subsystem_1_3() {
     test_create_module(
-        "test.example", 
-        ModuleType::Plugin, 
-        "Test plugin description"
+        "test.sys.example",
+        ModuleType::Subsystem,
+        "Test subsystem description",
+        "1.3"
     );
+}
+
+#[test]
+fn create_plugin_1_4() {
+    test_create_module(
+        "test.example",
+        ModuleType::Plugin,
+        "Test plugin description",
+        "1.4"
+    );
+}
+
+#[test]
+fn create_subsystem_1_4() {
+    test_create_module(
+        "test.sys.example",
+        ModuleType::Subsystem,
+        "Test subsystem description",
+        "1.4"
+    );
+}
+
+// Helper to read node definition JSON
+fn read_node_def_json(node_def_path: &PathBuf) -> serde_json::Value {
+    let content = std::fs::read_to_string(node_def_path).expect("Failed to read node definition file");
+    serde_json::from_str(&content).expect("Failed to parse node definition JSON")
+}
+
+fn test_node_add_remove(version: SemVer) {
+    let mut test = WorkspaceGen::new_random();
+    let module_name = format!("test{}.plugin", version.major);
+    let module_dir = test.workspace.root.join("Module").join(&module_name);
+    // Create plugin
+    CreateCommand{}.run_create(
+        &mut test.workspace,
+        &module_name,
+        ModuleType::Plugin,
+        LangTool::CppCMake,
+        &module_dir,
+        Vec::new(),
+        "Node test plugin",
+        Some(version.clone()),
+    ).expect("Failed to create plugin");
+    // Add node
+    let node_class = "MyNode";
+    NodeCommand{}.run_node(
+        &mut test.workspace,
+        &module_name,
+        &node_class.to_string(),
+        false,
+        Some("My Node".to_string()),
+        Some("A test node".to_string()),
+        Some("TestCategory".to_string()),
+        false,
+        Some(version.clone()),
+    ).expect("Failed to add node");
+    // Find node definition file
+    let plugin = test.workspace.select_installed_module(&module_name).unwrap();
+    let manifest = plugin.read_manifest();
+    let node_defs = manifest["node_definitions"].as_array().expect("No node_definitions");
+    assert!(!node_defs.is_empty());
+    let node_def_path = plugin.get_module_dir().join(node_defs[0].as_str().unwrap());
+    assert!(node_def_path.exists());
+    let json = read_node_def_json(&node_def_path);
+    let nodes = json["nodes"].as_array().unwrap();
+    assert_eq!(nodes[0]["class_name"], format!("{}.{}", module_name, node_class));
+    // Remove node
+    NodeCommand{}.run_node(
+        &mut test.workspace,
+        &module_name,
+        &node_class.to_string(),
+        true,
+        None,
+        None,
+        None,
+        false,
+        Some(version.clone()),
+    ).expect("Failed to remove node");
+    // Node file should be gone
+    assert!(!node_def_path.exists());
+}
+
+#[test]
+fn node_add_remove_1_3() {
+    test_node_add_remove(SemVer::new(1, Some(3), None, None));
+}
+
+#[test]
+fn node_add_remove_1_4() {
+    test_node_add_remove(SemVer::new(1, Some(4), None, None));
+}
+
+fn test_pin_add_remove(version: SemVer) {
+    let mut test = WorkspaceGen::new_random();
+    let module_name = format!("test{}.plugin", version.major);
+    let module_dir = test.workspace.root.join("Module").join(&module_name);
+    // Create plugin
+    CreateCommand{}.run_create(
+        &mut test.workspace,
+        &module_name,
+        ModuleType::Plugin,
+        LangTool::CppCMake,
+        &module_dir,
+        Vec::new(),
+        "Pin test plugin",
+        Some(version.clone()),
+    ).expect("Failed to create plugin");
+    // Add node
+    let node_class = "PinNode";
+    NodeCommand{}.run_node(
+        &mut test.workspace,
+        &module_name,
+        &node_class.to_string(),
+        false,
+        Some("Pin Node".to_string()),
+        Some("A node for pin test".to_string()),
+        Some("PinCategory".to_string()),
+        false,
+        Some(version.clone()),
+    ).expect("Failed to add node");
+    // Find node definition file
+    let plugin = test.workspace.select_installed_module(&module_name).unwrap();
+    let manifest = plugin.read_manifest();
+    let node_defs = manifest["node_definitions"].as_array().expect("No node_definitions");
+    let node_def_path = plugin.get_module_dir().join(node_defs[0].as_str().unwrap());
+    // Add pin
+    PinCommand{}.run_pin(
+        &test.workspace,
+        &format!("{}.{}", module_name, node_class),
+        &"myPin".to_string(),
+        false,
+        Some(&"INPUT_PIN".to_string()),
+        Some(&"INPUT_PIN_ONLY".to_string()),
+        Some(&"float".to_string()),
+        Some(version.clone()),
+    ).expect("Failed to add pin");
+    // Verify pin exists
+    let json = read_node_def_json(&node_def_path);
+    let pins = json["nodes"][0]["node"]["pins"].as_array().unwrap();
+    assert!(pins.iter().any(|p| p["name"] == "myPin"));
+    // Remove pin
+    PinCommand{}.run_pin(
+        &test.workspace,
+        &format!("{}.{}", module_name, node_class),
+        &"myPin".to_string(),
+        true,
+        None,
+        None,
+        None,
+        Some(version.clone()),
+    ).expect("Failed to remove pin");
+    // Verify pin is gone
+    let json = read_node_def_json(&node_def_path);
+    let pins = json["nodes"][0]["node"]["pins"].as_array().unwrap();
+    assert!(!pins.iter().any(|p| p["name"] == "myPin"));
+}
+
+#[test]
+fn pin_add_remove_1_3() {
+    test_pin_add_remove(SemVer::new(1, Some(3), None, None));
+}
+
+#[test]
+fn pin_add_remove_1_4() {
+    test_pin_add_remove(SemVer::new(1, Some(4), None, None));
 }

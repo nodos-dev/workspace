@@ -706,3 +706,14 @@ pub fn get_dependency_arguments(args: &ArgMatches, allow_any: bool, success: &mu
     *success = true;
     deps
 }
+
+pub fn get_manifest_file_ext(nodos_version: Option<&SemVer>, module_type: &ModuleType) -> &'static str {
+    let ext = if nodos_version.is_some() && *nodos_version.unwrap() >= NODOS_1_4 {
+        constants::PLUGIN_MANIFEST_FILE_EXT
+    } else if *module_type == ModuleType::Plugin {
+        constants::LEGACY_PLUGIN_MANIFEST_FILE_EXT
+    } else {
+        constants::LEGACY_SUBSYSTEM_MANIFEST_FILE_EXT
+    };
+    ext
+}

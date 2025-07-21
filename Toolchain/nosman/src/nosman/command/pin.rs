@@ -12,7 +12,7 @@ pub struct PinCommand {
 
 impl PinCommand {
 
-    fn run_pin(&self, workspace: &Workspace, node_class_name: &String, pin_name: &String, remove: bool,
+    pub fn run_pin(&self, workspace: &Workspace, node_class_name: &String, pin_name: &String, remove: bool,
                show_as: Option<&String>, can_show_as: Option<&String>, type_name: Option<&String>, nodos_version: Option<SemVer>) -> CommandResult {
         let mut node_def_obj;
         let node_def_objs = workspace.get_node_definitions(node_class_name, &nodos_version);
