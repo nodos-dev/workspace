@@ -3,9 +3,11 @@ pub static DEFAULT_PACKAGE_INDEX_REPO: &str = "https://github.com/nodos-dev/inde
 
 pub static PACKAGE_INDEX_ROOT_FILE: &str = "index";
 
-pub static PLUGIN_MANIFEST_FILE_EXT: &str = "noscfg";
-pub static SUBSYSTEM_MANIFEST_FILE_EXT: &str = "nossys";
-pub static NODE_DEF_FILE_EXT: &str = "nosdef";
+pub static LEGACY_PLUGIN_MANIFEST_FILE_EXT: &str = "noscfg";
+pub static PLUGIN_MANIFEST_FILE_EXT: &str = "nosplugin";
+pub static LEGACY_SUBSYSTEM_MANIFEST_FILE_EXT: &str = "nossys";
+pub static LEGACY_NODE_DEFINITION_FILE_EXT: &str = "nosdef";
+pub static NODE_DEFINITION_FILE_EXT: &str = "nosnode";
 
 pub static PUBLISH_OPTIONS_FILE_NAME: &str = ".nospub";
 

@@ -145,7 +145,7 @@ fn test_create_module(module_name: &str, module_type: ModuleType, description: &
     let mut test = WorkspaceGen::new_random();
 
     // Install nodos and verify cmake generation and build works correctly.
-    let res = GetCommand{}.run_get(&mut test.workspace, &"nodos".to_string(), Some(&"1.4".to_string()), true, true, false);
+    let res = GetCommand{}.run_get(&mut test.workspace, &"nodos".to_string(), Some(&"1.3".to_string()), true, true, false);
     if let Err(e) = res {
         panic!("Failed to install nodos: {}", e);
     }
@@ -168,7 +168,8 @@ fn test_create_module(module_name: &str, module_type: ModuleType, description: &
         LangTool::CppCMake,
         &module_dir,
         Vec::new(), // No dependencies
-        description
+        description,
+        Some(SemVer::new(1, Some(3), None, None)),
     ).expect(&format!("Failed to create {:?}", module_type));
 
     // Verify the module was created correctly
@@ -176,8 +177,8 @@ fn test_create_module(module_name: &str, module_type: ModuleType, description: &
 
     // Check manifest file exists with correct extension
     let extension = match module_type {
-        ModuleType::Subsystem => constants::SUBSYSTEM_MANIFEST_FILE_EXT,
-        ModuleType::Plugin => constants::PLUGIN_MANIFEST_FILE_EXT,
+        ModuleType::Subsystem => constants::LEGACY_SUBSYSTEM_MANIFEST_FILE_EXT,
+        ModuleType::Plugin => constants::LEGACY_PLUGIN_MANIFEST_FILE_EXT,
     };
     let manifest_path = module_dir.join(format!("{}.{}", module_name, extension));
     assert!(manifest_path.exists(), "{:?} manifest file was not created", module_type);

@@ -228,7 +228,6 @@ impl Workspace {
             }
             let semver = semver?;
             if semver >= *version_start && semver < *version_end {
-                
                 return Some(module);
             }
         }
@@ -392,11 +391,11 @@ impl Workspace {
         }
         res
     }
-    pub fn get_node_definitions(&self, node_class_name: &String) -> Vec<NodeDefinition> {
+    pub fn get_node_definitions(&self, node_class_name: &String, nodos_version: &Option<SemVer>) -> Vec<NodeDefinition> {
         let mut res = Vec::new();
         for versions in self.installed_modules.values() {
             for module in versions.values() {
-                if let Some(found) = module.get_node_definition(node_class_name) {
+                if let Some(found) = module.get_node_definition(node_class_name, nodos_version) {
                     res.push(found);
                 }
             }

@@ -1,32 +1,35 @@
-pub mod init;
-pub mod remote;
-pub mod install;
-mod info;
-mod remove;
-mod rescan;
-mod deinit;
 pub mod create;
-mod sdk_info;
+mod deinit;
+mod depend;
+mod dev;
+mod extension;
+pub mod get;
+mod info;
+pub mod init;
+pub mod install;
+pub(crate) mod launch;
 mod list;
+mod node;
+mod pin;
 mod publish;
 mod publish_batch;
-pub mod get;
+pub mod remote;
+mod remove;
+mod rescan;
 pub mod sample;
-mod unpublish;
-mod pin;
-mod node;
-mod dev;
-pub(crate) mod launch;
-mod extension;
-mod depend;
+pub mod sdk_info;
 pub mod test;
+mod unpublish;
 
 use std::io;
 
-use clap::{Arg, ArgAction, ArgMatches};
-use thiserror::Error;
 use crate::nosman::constants;
 use crate::nosman::workspace::Workspace;
+use clap::{Arg, ArgAction, ArgMatches};
+use thiserror::Error;
+use crate::nosman::command::create::CreateCommand;
+use crate::nosman::command::node::NodeCommand;
+use crate::nosman::command::pin::PinCommand;
 
 #[derive(Error, Debug)]
 pub enum CommandError {
@@ -42,15 +45,27 @@ pub enum CommandError {
 
 impl From<io::Error> for CommandError {
     fn from(err: io::Error) -> Self {
-        CommandError::IO { file: "Unknown".to_string(), message: format!("{}", err) }
+        CommandError::IO {
+            file: "Unknown".to_string(),
+            message: format!("{}", err),
+        }
     }
 }
 
 pub(crate) type CommandResult = Result<(), CommandError>;
 
 pub trait Command {
-    fn matched_args<'a, 'b>(&self, workspace: &'a Workspace, args : &'b ArgMatches) -> Option<&'b ArgMatches>;
-    fn run(&self, workspace: &mut Workspace, command_name: Option<&str>, args: &ArgMatches) -> CommandResult;
+    fn matched_args<'a, 'b>(
+        &self,
+        workspace: &'a Workspace,
+        args: &'b ArgMatches,
+    ) -> Option<&'b ArgMatches>;
+    fn run(
+        &self,
+        workspace: &mut Workspace,
+        command_name: Option<&str>,
+        args: &ArgMatches,
+    ) -> CommandResult;
     fn needs_workspace(&self) -> bool {
         true
     }
@@ -82,27 +97,28 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(dev::DevBuildCommand {}),
         Box::new(launch::LaunchCommand {}),
         Box::new(extension::Extension {}),
-        Box::new(depend::DependsCommands{}),
+        Box::new(depend::DependsCommands {}),
         Box::new(test::TestCommand {}),
     ]
 }
 
-pub fn register_cli(app: clap::Command) -> clap::Command {
-
-    let lang_tool_arg = Arg::new("language/tool")
+pub fn get_lang_tool_arg() -> Arg {
+    Arg::new("language/tool")
         .long("language-tool")
         .short('l')
         .help("Language and tool to use")
         .value_parser(clap::builder::PossibleValuesParser::new(["cpp/cmake"]))
-        .default_value("cpp/cmake");
-    
+        .default_value("cpp/cmake")
+}
+
+pub fn register_cli(app: clap::Command) -> clap::Command {
     let version_check_arg = Arg::new("version_check")
         .long("version-check")
         .help("Check the version of the package against the index, to fail or continue with the release.")
         .value_parser(clap::builder::PossibleValuesParser::new(constants::POSSIBLE_VERSION_CHECK_STRATEGY))
         .default_value("strict")
         .required(false);
-    
+
     let git_dir_arg = Arg::new("dir")
         .long("directory")
         .short('m')
@@ -112,15 +128,15 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
         .default_values(&[".", "Engine", "Module"]);
 
     app.subcommand(clap::Command::new("init")
-        .about("Initialize a directory as a Nodos workspace.")
-        .arg(Arg::new("allow_nested")
-            .action(ArgAction::SetTrue)
-            .long("allow-nested")
-            .help("Allow creating a workspace even if the folder is already inside another workspace. This also allows to recreate an existing workspace.")
-            .num_args(0)
-            .required(false)
+            .about("Initialize a directory as a Nodos workspace.")
+            .arg(Arg::new("allow_nested")
+                .action(ArgAction::SetTrue)
+                .long("allow-nested")
+                .help("Allow creating a workspace even if the folder is already inside another workspace. This also allows to recreate an existing workspace.")
+                .num_args(0)
+                .required(false)
+            )
         )
-    )
         .subcommand(clap::Command::new("deinit")
             .about("Deinitialize a Nodos workspace.")
         )
@@ -231,51 +247,7 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
                 .arg(Arg::new("url").required(true))
             )
         )
-        .subcommand(clap::Command::new("create")
-            .about("Create a Nodos plugin or subsystem module")
-            .arg(Arg::new("type")
-                .value_parser(clap::builder::PossibleValuesParser::new(["plugin", "subsystem"]))
-                .required(true)
-            )
-            .arg(Arg::new("name")
-                .required(true)
-            )
-            .arg(lang_tool_arg.clone())
-            .arg(Arg::new("output_dir")
-                .help("Path to create the module folder in")
-                .long("output-dir")
-                .short('o')
-                .default_value("./Module")
-                .required(false)
-            )
-            .arg(Arg::new("prefix")
-                .help("Folder path relative to out_dir. The module contents will be under this folder. By default, its '<module_name>'.")
-                .long("prefix")
-                .required(false)
-            )
-            .arg(Arg::new("yes_to_all")
-                .action(ArgAction::SetTrue)
-                .long("yes-to-all")
-                .help("Do not ask for confirmation & use defaults for missing parameters")
-                .num_args(0)
-                .short('y')
-                .required(false)
-            )
-            .arg(Arg::new("description")
-                .help("Description of the module")
-                .long("description")
-                .default_value("")
-                .required(false)
-            )
-            .arg(Arg::new("dependency")
-                .help("Add module dependency. Can be specified multiple times. Format: <module_name>-<version>")
-                .long("dependency")
-                .short('d')
-                .required(false)
-                .action(ArgAction::Append)
-                .num_args(1)
-            )
-        )
+        .subcommand(CreateCommand::get_cli())
         .subcommand(clap::Command::new("get-sample")
             .alias("sample")
             .about("Get a sample plugin, subsystem or a process implementation for Nodos")
@@ -501,80 +473,8 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
                 .required(false)
             )
         )
-        .subcommand(clap::Command::new("pin")
-            .about("Add/remove a pin to/from a node definition")
-            .arg(Arg::new("node_class_name")
-                .required(true)
-                .help("Node class name to add/remove pin.")
-            )
-            .arg(Arg::new("pin_name")
-                .required(true)
-                .help("Name of the pin to add/remove.")
-            )
-            .arg(Arg::new("remove")
-                .action(ArgAction::SetTrue)
-                .long("remove")
-                .help("Remove the pin.")
-                .num_args(0)
-                .required(false)
-            )
-            .arg(Arg::new("show_as")
-                .long("show-as")
-                .help("Determine whether the pin is input, property or output pin.")
-                .value_parser(clap::builder::PossibleValuesParser::new(constants::POSSIBLE_SHOW_AS))
-            )
-            .arg(Arg::new("can_show_as")
-                .long("can-show-as")
-                .help("Determine the kind of the pin.")
-                .required(false)
-                .value_parser(clap::builder::PossibleValuesParser::new(constants::POSSIBLE_CAN_SHOW_AS))
-            )
-            .arg(Arg::new("type_name")
-                .long("type-name")
-                .help("Data type name of the pin")
-                .required(false)
-            )
-        )
-        .subcommand(clap::Command::new("node")
-            .about("Add/remove a node definition in a Nodos plugin")
-            .arg(Arg::new("plugin")
-                .required(true)
-                .help("Name of the plugin to add/remove a node.")
-            )
-            .arg(Arg::new("node_class_name")
-                .required(true)
-                .help("Node class name to add/remove.")
-            )
-            .arg(Arg::new("remove")
-                .action(ArgAction::SetTrue)
-                .long("remove")
-                .help("Remove the node class.")
-                .num_args(0)
-                .required(false)
-            )
-            .arg(Arg::new("display_name")
-                .long("display-name")
-                .help("Display name of the node class.")
-                .required(false)
-            )
-            .arg(Arg::new("description")
-                .long("description")
-                .help("Description of the node class.")
-                .required(false)
-            )
-            .arg(Arg::new("category")
-                .long("category")
-                .help("Category of the node class.")
-                .required(false)
-            )
-            .arg(Arg::new("hide_in_context_menu")
-                .action(ArgAction::SetTrue)
-                .long("hide")
-                .help("Should Nodos editors hide it in the editor context menu?")
-                .required(false)
-                .num_args(0)
-            )
-        )
+        .subcommand(PinCommand::get_cli())
+        .subcommand(NodeCommand::get_cli())
         .subcommand(clap::Command::new("depend")
             .about("Add dependency to a Nodos module")
             .arg(Arg::new("module")
@@ -599,7 +499,7 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
             )
             .subcommand(clap::Command::new("gen")
                 .about("Generates project files for Nodos module development")
-                .arg(lang_tool_arg.clone())
+                .arg(get_lang_tool_arg())
                 .arg(Arg::new("project_folder")
                     .long("project-folder")
                     .short('p')
@@ -612,7 +512,7 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
             )
             .subcommand(clap::Command::new("build")
                 .about("Builds project files for Nodos module development")
-                .arg(lang_tool_arg)
+                .arg(get_lang_tool_arg())
                 .arg(Arg::new("project_folder")
                     .long("project-folder")
                     .short('p')

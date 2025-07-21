@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 use std::io::{Read, Seek};
@@ -9,6 +10,9 @@ use inquire::Confirm;
 use zip::ZipArchive;
 use serde_json::Value;
 use crate::nosman::command::CommandError;
+use crate::nosman::command::sdk_info::get_engine_sdk_infos;
+use crate::nosman::index::SemVer;
+use crate::nosman::workspace::Workspace;
 
 pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandError> {
     let mut tmpfile = tempfile::tempfile().expect("Failed to create tempfile");
@@ -139,4 +143,50 @@ pub fn get_string<'a>(json: &'a Value, field: &str, file: &Path) -> &'a str {
 pub fn read_or_fail(file: &PathBuf, tag: &str) -> String {
     fs::read_to_string(file)
         .unwrap_or_else(|e| panic!("Failed to read {} file {:?}: {}", tag, file, e))
+}
+
+pub static NODOS_1_4: SemVer = SemVer { major: 1, minor: Some(4), patch: None, build_number: None };
+pub static NODOS_1_3: SemVer = SemVer { major: 1, minor: Some(3), patch: None, build_number: None };
+
+pub static SUPPORTED_NODOS_VERSIONS: [&'static SemVer; 2] = [
+    &NODOS_1_4,
+    &NODOS_1_3,
+];
+
+pub static DEFAULT_NODOS_VERSION_INDEX: usize = 0;
+
+pub fn is_nodos_version_supported(version: &SemVer) -> bool {
+    SUPPORTED_NODOS_VERSIONS.iter().any(|v| *v == version)
+}
+
+pub fn get_nodos_version(workspace: &Workspace, nodos_version: &Option<SemVer>) -> Result<SemVer, String> {
+    let mut selected_version = SUPPORTED_NODOS_VERSIONS[DEFAULT_NODOS_VERSION_INDEX].clone();
+    if let Some(nodos_ver) = nodos_version {
+        selected_version = nodos_ver.clone();
+        if !is_nodos_version_supported(&selected_version) {
+            return Err(format!("Unsupported Nodos version: {}", selected_version.to_string()));
+        }
+    } else if workspace.ready() {
+        let engines = get_engine_sdk_infos(workspace);
+        if let Ok(engines) = engines {
+            let mut major_minors = HashSet::<SemVer>::new();
+            for engine in engines {
+                if let Some(semver) = SemVer::parse_from_str(engine.version.as_str()) {
+                    major_minors.insert(semver);
+                }
+            }
+            if major_minors.len() > 1 {
+                // Multiple versions found, select the latest one:
+                let mut versions: Vec<SemVer> = major_minors.into_iter().collect();
+                versions.sort_by(|a, b| {
+                    a.cmp(&b) // Descending order
+                });
+                selected_version = versions[0].clone();
+            } else if major_minors.len() == 1 {
+                // Only one version found, use it
+                selected_version = major_minors.into_iter().next().unwrap();
+            }
+        }
+    }
+    Ok(selected_version)
 }

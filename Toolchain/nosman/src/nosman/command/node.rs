@@ -1,8 +1,8 @@
-use clap::{ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use crate::nosman::command::{Command, CommandResult};
-use crate::nosman::command::CommandError::InvalidArgument;
-use crate::nosman::index::ModuleType;
+use crate::nosman::command::CommandError::{InvalidArgument, Runtime};
+use crate::nosman::index::{ModuleType, SemVer};
 use crate::nosman::workspace::{Workspace};
 
 pub struct NodeCommand {}
@@ -10,7 +10,7 @@ pub struct NodeCommand {}
 impl NodeCommand {
     fn run_node(&self, workspace: &mut Workspace, plugin_name: &String, node_class_name: &String,
                 remove: bool, display_name: Option<String>, description: Option<String>,
-                category: Option<String>, hide_in_context_menu: bool) -> CommandResult {
+                category: Option<String>, hide_in_context_menu: bool, nodos_version: Option<SemVer>) -> CommandResult {
         let module = workspace.select_installed_module(&plugin_name)?;
         if module.module_type != ModuleType::Plugin {
             return Err(InvalidArgument { message: format!("Selected module {} is not a Nodos plugin. Only plugins can have nodes!", plugin_name) });
@@ -24,18 +24,68 @@ impl NodeCommand {
             else {
                 format!("{}.{}", plugin_name, node_class_name)
             };
-            if !plugin.remove_node_definition(&node_class_name) {
-                return Err(InvalidArgument { message: format!("Node class {} not found in plugin {}", node_class_name, plugin) });
-            }
+            plugin.remove_node_definition(&node_class_name, nodos_version).map_err(|e| {
+                Runtime { message: e.to_string() }
+            })?;
             println!("{}", format!("Node class {} removed from plugin {}", node_class_name, plugin_name).yellow());
         }
         else {
-            if let Err (e) = plugin.add_node_definition(&node_class_name, display_name, description, category, hide_in_context_menu) {
-                return Err(InvalidArgument { message: format!("Failed to add node class: {}", e) });
-            }
+            plugin.add_node_definition(workspace, &node_class_name, display_name, description, category, hide_in_context_menu, nodos_version).map_err(|e| {
+                Runtime { message: e.to_string() }
+            })?;
             println!("{}", format!("Node class {} added to plugin {}", node_class_name, plugin_name).green());
         }
         Ok(())
+    }
+
+    pub fn get_cli() -> clap::Command {
+        clap::Command::new("node")
+            .about("Add/remove a node definition in a Nodos plugin")
+            .arg(Arg::new("plugin")
+                .required(true)
+                .help("Name of the plugin to add/remove a node.")
+            )
+            .arg(Arg::new("node_class_name")
+                .required(true)
+                .help("Node class name to add/remove.")
+            )
+            .arg(Arg::new("remove")
+                .action(ArgAction::SetTrue)
+                .long("remove")
+                .help("Remove the node class.")
+                .num_args(0)
+                .required(false)
+            )
+            .arg(Arg::new("display_name")
+                .long("display-name")
+                .help("Display name of the node class.")
+                .required(false)
+            )
+            .arg(Arg::new("description")
+                .long("description")
+                .help("Description of the node class.")
+                .required(false)
+            )
+            .arg(Arg::new("category")
+                .long("category")
+                .help("Category of the node class.")
+                .required(false)
+            )
+            .arg(Arg::new("hide_in_context_menu")
+                .action(ArgAction::SetTrue)
+                .long("hide")
+                .help("Should Nodos editors hide it in the editor context menu?")
+                .required(false)
+                .num_args(0)
+            )
+            .arg(Arg::new("nodos_version")
+                .help("Nodos engine version to use for the plugin. If not specified, the latest version will be used.")
+                .long("nodos-version")
+                .short('n')
+                .required(false)
+                .value_name("VERSION")
+                .num_args(1)
+            )
     }
 }
 
@@ -52,7 +102,16 @@ impl Command for NodeCommand {
         let description = args.get_one::<String>("description").cloned();
         let category = args.get_one::<String>("category").cloned();
         let hide_in_context_menu = *args.get_one::<bool>("hide_in_context_menu").unwrap();
-        self.run_node(workspace, plugin_name, node_class_name, remove, display_name, description, category, hide_in_context_menu)
+        let nodos_version_str = args.get_one::<String>("nodos_version");
+        let nodos_version = if let Some(version) = nodos_version_str {
+            match SemVer::parse_from_str(version) {
+                Some(v) => Some(v),
+                None => return Err(InvalidArgument { message: format!("Invalid Nodos version: {}", version) }),
+            }
+        } else {
+            None
+        };
+        self.run_node(workspace, plugin_name, node_class_name, remove, display_name, description, category, hide_in_context_menu, nodos_version)
     }
 
     fn needs_workspace(&self) -> bool {

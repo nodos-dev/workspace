@@ -84,7 +84,7 @@ impl ListCommand {
                 }
                 installed_modules_alphabetical.sort_by(|a, b| a.0.cmp(&b.0));
                 for (name, version, module) in installed_modules_alphabetical {
-                    println!("  {} ({})", format!("{}-{}", name, version).green(), module.get_module_dir().display());
+                    println!("  {} ({})", format!("{} ({})", name.green(), version.yellow()), module.get_module_dir().display());
                 }
             }
             if remote {

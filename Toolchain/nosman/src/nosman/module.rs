@@ -15,9 +15,9 @@ use libloading::Library;
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument, Runtime};
 use crate::nosman::{common, constants, extensions};
-use crate::nosman::common::{get_progress_bar};
+use crate::nosman::common::{get_nodos_version, get_progress_bar, NODOS_1_4};
 use crate::nosman::extensions::{CNosArg, CNosCommand, CNosRunCommandParams, NosCommand, NosCommandDesc};
-use crate::nosman::index::{ModuleType};
+use crate::nosman::index::{ModuleType, SemVer};
 use crate::nosman::path::{get_plugin_manifest_file, get_rel_path_based_on, get_subsystem_manifest_file};
 use crate::nosman::platform::get_host_platform;
 use crate::nosman::workspace::Workspace;
@@ -146,15 +146,41 @@ impl InstalledModule {
             .unwrap_or_else(|e| panic!("Failed to parse module manifest file {:?}: {}", self.manifest_path, e));
         manifest_json
     }
-    pub fn get_node_definition(&self, class_name: &str) -> Option<NodeDefinition> {
+    pub fn get_node_definition(&self, class_name: &str, nodos_version: &Option<SemVer>) -> Option<NodeDefinition> {
         if self.module_type != ModuleType::Plugin {
             return None;
         }
         // Read module manifest file as JSON, and read node definition files
         let manifest_json = self.read_manifest();
-        let node_defs_rel_paths = manifest_json["node_definitions"].as_array()?;
+        let node_defs_rel_paths_opt = manifest_json["node_definitions"].as_array();
+        let mut node_defs_rel_paths = vec![];
+        if node_defs_rel_paths_opt.is_none() {
+            if let Some(nodos_version) = nodos_version {
+                if *nodos_version >= NODOS_1_4 {
+                    // Find .nosnode files under Nodes/ folder
+                    let nodes_dir = self.get_module_dir().join("Nodes");
+                    if !nodes_dir.exists() {
+                        return None;
+                    }
+                    for entry in fs::read_dir(&nodes_dir).unwrap_or_else(|e| panic!("Failed to read Nodes directory {:?}: {}", nodes_dir, e)) {
+                        let entry = entry.unwrap();
+                        let path = entry.path();
+                        if path.is_file() && path.extension().map_or(false, |ext| ext == constants::NODE_DEFINITION_FILE_EXT) {
+                            let rel_path = get_rel_path_based_on(&path.canonicalize().unwrap(), &self.get_module_dir());
+                            let rel_path_str = rel_path.to_string_lossy().to_string();
+                            node_defs_rel_paths.push(rel_path_str);
+                        }
+                    }
+                }
+            }
+        } else {
+            node_defs_rel_paths = node_defs_rel_paths_opt.unwrap()
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect();
+        }
         for node_defs_rel_path in node_defs_rel_paths {
-            let node_defs_path = self.get_module_dir().join(node_defs_rel_path.as_str()?);
+            let node_defs_path = self.get_module_dir().join(node_defs_rel_path.as_str());
             let node_defs_file_content = fs::read_to_string(&node_defs_path);
             if let Err(e) = node_defs_file_content {
                 eprintln!("{}", format!("Failed to read node definitions file ({}): {}", node_defs_path.display(), e).red());
@@ -185,20 +211,51 @@ impl InstalledModule {
         }
         None
     }
-    pub fn remove_node_definition(&self, node_class_name: &String) -> bool {
-        let node_def = self.get_node_definition(node_class_name.as_str());
+    pub fn remove_node_definition(&self, node_class_name: &String, nodos_version: Option<SemVer>) -> Result<(), String> {
+        let node_def = self.get_node_definition(node_class_name.as_str(), &nodos_version);
         if node_def.is_none() {
-            return false;
+            return Err(format!("Node class {} not found in plugin {}", node_class_name, self));
         }
         let mut node_def = node_def.unwrap();
-        // Remove from defined_in
-        node_def.json["nodes"].as_array_mut().unwrap().remove(node_def.index);
+        let node_defs_list = node_def.json["nodes"].as_array().cloned();
+        if node_defs_list.is_none() {
+            return Err(format!("Node definitions file {} does not contain a 'nodes' array", node_def.defined_in.display()));
+        }
+        let mut node_defs_list = node_defs_list.unwrap();
+        let update_manifest = node_defs_list.len() == 1;
+        node_defs_list.remove(node_def.index);
+        node_def.json["nodes"] = serde_json::Value::Array(node_defs_list.clone());
+        let node_defs_list = node_defs_list;
         // Write back to file
         let node_defs_file_content = serde_json::to_string_pretty(&node_def.json).unwrap_or_else(|e| panic!("Failed to serialize node definitions at {}: {}", node_def.defined_in.display(), e));
         fs::write(&node_def.defined_in, node_defs_file_content).unwrap_or_else(|e| panic!("Failed to write node definitions file {}: {}", node_def.defined_in.display(), e));
-        true
+
+        let node_def_path = dunce::canonicalize(&node_def.defined_in).unwrap_or_else(|e| panic!("Failed to canonicalize node definition path: {} {}", node_def.defined_in.display(), e));
+        if update_manifest {
+            let mut manifest_json = self.read_manifest();
+            if !manifest_json["node_definitions"].is_null() {
+                let node_defs_rel_paths = manifest_json["node_definitions"].as_array_mut().unwrap();
+                // Remove the node definition file from the manifest
+                node_defs_rel_paths.retain(|path| {
+                    let path_obj = self.get_module_dir().join(PathBuf::from(path.as_str()
+                        .unwrap_or_else(|| panic!("Failed to convert path to string: {}", path))));
+                    let path_obj = dunce::canonicalize(&path_obj).unwrap_or_else(|e| panic!("Failed to canonicalize path: {} {}", path_obj.display(), e));
+                    path_obj != node_def_path
+                });
+                // Write back to manifest
+                let manifest_str = serde_json::to_string_pretty(&manifest_json).unwrap_or_else(|e| panic!("Failed to serialize module manifest: {}", e));
+                fs::write(&self.manifest_path, manifest_str).unwrap_or_else(|e| panic!("Failed to write module manifest file {}: {}", self.manifest_path.display(), e));
+            }
+        }
+        // Now, if the node definition file is empty, remove it
+        if node_defs_list.is_empty() {
+            fs::remove_file(&node_def.defined_in)
+                .unwrap_or_else(|e| panic!("Failed to remove node definitions file {}: {}", node_def.defined_in.display(), e));
+        }
+        Ok(())
     }
-    pub fn add_node_definition(&self, node_class_name: &String, display_name: Option<String>, description: Option<String>, category: Option<String>, hide_in_context_menu: bool) -> Result<(), String> {
+    pub fn add_node_definition(&self, workspace: &Workspace, node_class_name: &String, display_name: Option<String>, description: Option<String>, category: Option<String>,
+                               hide_in_context_menu: bool, nodos_version: Option<SemVer>) -> Result<(), String> {
         println!("{}", format!("Adding a node '{}' to plugin: {}", node_class_name, self).green());
         let node_class_name = if node_class_name.starts_with(self.info.id.name.as_str()) {
             node_class_name.clone()
@@ -206,7 +263,7 @@ impl InstalledModule {
         else {
             format!("{}.{}", self.info.id.name, node_class_name)
         };
-        let node_def = self.get_node_definition(&node_class_name);
+        let node_def = self.get_node_definition(&node_class_name, &nodos_version);
         if node_def.is_some() {
             return Err(format!("Node class {} already exists in plugin {}", node_class_name, self));
         }
@@ -214,12 +271,23 @@ impl InstalledModule {
         let description = description.unwrap_or(Text::new("Description:").prompt().unwrap());
         let category = category.unwrap_or(Text::new("Category:").prompt().unwrap());
 
+        let selected_version = get_nodos_version(workspace, &nodos_version)?;
         let mut manifest_json = self.read_manifest();
-        let node_defs_rel_paths = manifest_json["node_definitions"].as_array_mut().unwrap_or_else(|| panic!("Missing 'node_definitions' field in module manifest file {}", self.manifest_path.display()));
+        if manifest_json["node_definitions"].is_null() {
+            manifest_json["node_definitions"] = serde_json::json!([]);
+        }
+        let node_defs_rel_paths = manifest_json["node_definitions"].as_array_mut().unwrap();
+        let update_manifest = selected_version < NODOS_1_4 || node_defs_rel_paths.len() > 0;
+        let node_def_file_ext = if selected_version < NODOS_1_4 {
+            constants::LEGACY_NODE_DEFINITION_FILE_EXT
+        } else {
+            constants::NODE_DEFINITION_FILE_EXT
+        };
+
         let out_node_defs_file = Text::new("Node definitions file:")
-            .with_default(format!("Config/{}", node_class_name.strip_prefix(format!("{}.", &self.info.id.name).as_str()).unwrap()).as_str()).prompt()
+            .with_default(format!("Nodes/{}", node_class_name.strip_prefix(format!("{}.", &self.info.id.name).as_str()).unwrap()).as_str()).prompt()
             .unwrap_or_else(|e| panic!("Failed to get node definitions file: {}", e));
-        let node_def_path = PathBuf::from(&out_node_defs_file).with_extension(constants::NODE_DEF_FILE_EXT).to_path_buf();
+        let node_def_path = PathBuf::from(&out_node_defs_file).with_extension(node_def_file_ext).to_path_buf();
         node_defs_rel_paths.push(serde_json::Value::String(node_def_path.to_str()
             .unwrap_or_else(|| panic!("Failed to convert path to string: {}", node_def_path.display())).to_string()));
         let out_node_defs_path = self.get_module_dir().join(&out_node_defs_file);
@@ -245,16 +313,17 @@ impl InstalledModule {
         let node_defs_str = serde_json::to_string_pretty(&node_defs).unwrap_or_else(|e| panic!("Failed to serialize node definitions: {}", e));
         fs::create_dir_all(out_node_defs_path.parent().unwrap())
             .unwrap_or_else(|e| panic!("Failed to create node definitions file parent directory {}: {}", out_node_defs_path.display(), e));
-        // If no .nosdef extension, add it
+        // If no extension, add it
         let out_node_defs_path = if out_node_defs_path.extension().is_none() {
-            out_node_defs_path.with_extension(constants::NODE_DEF_FILE_EXT)
+            out_node_defs_path.with_extension(node_def_file_ext)
         } else {
             out_node_defs_path
         };
         fs::write(&out_node_defs_path, node_defs_str).unwrap_or_else(|e| panic!("Failed to write node definitions file {}: {}", out_node_defs_path.display(), e));
-        // Update manifest file
-        let manifest_str = serde_json::to_string_pretty(&manifest_json).unwrap_or_else(|e| panic!("Failed to serialize module manifest: {}", e));
-        fs::write(&self.manifest_path, manifest_str).unwrap_or_else(|e| panic!("Failed to write module manifest file {}: {}", self.manifest_path.display(), e));
+        if update_manifest {
+            let manifest_str = serde_json::to_string_pretty(&manifest_json).unwrap_or_else(|e| panic!("Failed to serialize module manifest: {}", e));
+            fs::write(&self.manifest_path, manifest_str).unwrap_or_else(|e| panic!("Failed to write module manifest file {}: {}", self.manifest_path.display(), e));
+        }
         Ok(())
     }
     pub fn register_commands(&mut self, workspace: &Workspace) {
@@ -370,10 +439,11 @@ pub fn get_module_manifest_file_in_folder(folder: &PathBuf) -> Result<Option<(Mo
 }
 
 pub fn get_module_type_from_manifest_file_path(file_path: &PathBuf) -> Option<ModuleType> {
-    if file_path.extension()?.to_str()? == constants::SUBSYSTEM_MANIFEST_FILE_EXT {
+    if file_path.extension()?.to_str()? == constants::LEGACY_SUBSYSTEM_MANIFEST_FILE_EXT {
         Some(ModuleType::Subsystem)
     }
-    else if file_path.extension()?.to_str()? == constants::PLUGIN_MANIFEST_FILE_EXT {
+    else if file_path.extension()?.to_str()? == constants::LEGACY_PLUGIN_MANIFEST_FILE_EXT
+        || file_path.extension()?.to_str()? == constants::PLUGIN_MANIFEST_FILE_EXT {
         Some(ModuleType::Plugin)
     } else {
         None
@@ -421,7 +491,7 @@ pub fn get_module_manifests(folder: &PathBuf, silent: bool) -> Vec<(ModuleType, 
     }
 
     let patterns = &[
-        format!("*.{{{},{}}}", constants::SUBSYSTEM_MANIFEST_FILE_EXT, constants::PLUGIN_MANIFEST_FILE_EXT),
+        format!("*.{{{},{},{}}}", constants::PLUGIN_MANIFEST_FILE_EXT, constants::LEGACY_SUBSYSTEM_MANIFEST_FILE_EXT, constants::LEGACY_PLUGIN_MANIFEST_FILE_EXT),
         "!**/.git/**".to_string()
     ];
     let walker = globwalk::GlobWalkerBuilder::from_patterns(folder, patterns)
