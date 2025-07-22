@@ -1,9 +1,25 @@
-use clap::{ArgMatches};
+use clap::{Arg, ArgMatches};
 use colored::Colorize;
 
 use crate::nosman;
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::workspace::Workspace;
+
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("remote")
+        .about("Manage remotes.")
+        .subcommand(clap::Command::new("add")
+            .about("Add a remote")
+            .arg(Arg::new("url").required(true))
+        )
+        .subcommand(clap::Command::new("list")
+            .about("List remotes")
+        )
+        .subcommand(clap::Command::new("remove")
+            .about("Remove a remote")
+            .arg(Arg::new("url").required(true))
+        )
+}
 
 pub struct RemoteAddCommand {
 }

@@ -1,4 +1,4 @@
-use clap::ArgMatches;
+use clap::{Arg, ArgMatches};
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::common;
@@ -120,6 +120,17 @@ impl SdkInfoCommand {
 
         Err(CommandError::InvalidArgument { message: format!("No SDK found for version {}", requested_version) })
     }
+}
+
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("sdk-info")
+        .about("Returns information about an installed Nodos SDK under workspace.\n\
+    If no such version is found, it will return an error.")
+        .arg(Arg::new("version").required(true))
+        .arg(Arg::new("sdk-type").required(false)
+            .help("Type of the SDK to get information about.")
+            .default_value("engine")
+            .value_parser(clap::builder::PossibleValuesParser::new(["engine", "plugin", "subsystem", "process"])))
 }
 
 impl Command for SdkInfoCommand {

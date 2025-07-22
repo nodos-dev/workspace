@@ -1,4 +1,4 @@
-use clap::{ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches};
 use crate::nosman::command::{Command, CommandError, CommandResult};
 
 use crate::nosman::workspace::{OutputMode, Workspace};
@@ -44,6 +44,22 @@ impl InfoCommand {
         println!("{}", json_str);
         Ok(())
     }
+}
+
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("info")
+        .about("Returns information about an installed module in JSON format.\n\
+    If no such module is installed, it will return an error.")
+        .arg(Arg::new("module").required(true))
+        .arg(Arg::new("version").required(true))
+        .arg(Arg::new("relaxed")
+            .action(ArgAction::SetTrue)
+            .help("If set, version parameter will be interpreted as minimum required version within that minor/patch version.\n\
+        It will return information about a version 'x' found among installed modules such that 'a.b <= x < a.(b+1)'.")
+            .long("relaxed")
+            .num_args(0)
+            .required(false)
+        )
 }
 
 impl Command for InfoCommand {

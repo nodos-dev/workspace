@@ -1,9 +1,9 @@
 use std::path::PathBuf;
-use clap::{ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use glob_match::glob_match;
 
-use crate::nosman::command::{Command, CommandResult};
+use crate::nosman::command::{get_version_check_arg, Command, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument};
 use crate::nosman::command::publish::{PublishCommand, PublishOptions};
 use crate::nosman::constants;
@@ -147,6 +147,82 @@ impl PublishBatchCommand {
 
         Ok(())
     }
+}
+
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("publish-batch")
+        .about("Publish all/changed modules under the git repository.")
+        .after_help(format!("This command will publish all/changed modules under the git repository to the specified remote.\n\
+    It will use the {} files to compare file changes & adding files to the release. In the {} file, 'trigger_publish_globs' field will be used check file changes. \
+    The 'release_globs' field however, will both be used for including files to the release as well as checking file changes.", constants::PUBLISH_OPTIONS_FILE_NAME, constants::PUBLISH_OPTIONS_FILE_NAME))
+        .arg(Arg::new("remote")
+            .help("Name of the remote to publish to.")
+            .default_value("default")
+        )
+        .arg(Arg::new("repo_path")
+            .long("repo-path")
+            .short('r')
+            .help("Path to the root folder of the repository. If not provided, the current directory will be used.")
+            .default_value(".")
+        )
+        .arg(Arg::new("compare_with")
+            .long("compare-with")
+            .short('c')
+            .help("Compare current with the given branch, tag or ref.\n\
+        If not provided or empty, it will publish all modules found under the provided repo.")
+        )
+        .arg(Arg::new("version_suffix")
+            .long("version-suffix")
+            .help("Suffix to append to the version of the modules to be published.")
+            .default_value("")
+        )
+        .arg(Arg::new("vendor")
+            .help("Who is publishing the package?\n\
+        Required if the module to be published was not added to the index before.")
+            .long("vendor")
+        )
+        .arg(Arg::new("publisher_name")
+            .help("Git name of the publishing agent. If not provided, the name of the current git user for the remote will be used.")
+            .long("publisher-name")
+            .required(false)
+        )
+        .arg(Arg::new("publisher_email")
+            .help("Git email of the publishing agent. If not provided, the email of the current git user for the remote will be used.")
+            .long("publisher-email")
+            .required(false)
+        )
+        .arg(Arg::new("dry_run")
+            .action(ArgAction::SetTrue)
+            .long("dry-run")
+            .help("Do not actually publish the package, just show what would be done.")
+            .num_args(0)
+            .required(false)
+        )
+        .arg(Arg::new("verbose")
+            .action(ArgAction::SetTrue)
+            .long("verbose")
+            .help("Print more information about the process.")
+            .num_args(0)
+            .required(false)
+        )
+        .arg(Arg::new("tag")
+            .action(ArgAction::Append)
+            .long("tag")
+            .help("Add a tag to the release. Can be specified multiple times.")
+            .required(false)
+            .num_args(1)
+        )
+        .arg(Arg::new("target_platform")
+            .long("target-platform")
+            .help("Target architecture and operating system of the module to be published. If not provided, the current platform will be used.")
+            .required(false)
+        )
+        .arg(Arg::new("release_notes")
+            .long("release-notes")
+            .help("Release notes for the release.")
+            .required(false)
+        )
+        .arg(get_version_check_arg())
 }
 
 impl Command for PublishBatchCommand {

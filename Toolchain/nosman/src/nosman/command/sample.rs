@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use clap::{ArgMatches};
-use crate::nosman::command::{Command, CommandResult};
+use clap::{Arg, ArgMatches};
+use crate::nosman::command::{sample, Command, CommandResult};
 use crate::nosman::command::install::{InstallCommand, InstallFlags};
 use crate::nosman::workspace::Workspace;
 
@@ -25,6 +25,22 @@ impl SampleCommand {
             Err (crate::nosman::command::CommandError::Runtime { message: format!("Sample {} not found", name) })
         }
     }
+}
+
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("get-sample")
+        .alias("sample")
+        .about("Get a sample plugin, subsystem or a process implementation for Nodos")
+        .arg(Arg::new("name")
+            .value_parser(clap::builder::PossibleValuesParser::new(sample::SAMPLES.keys().copied().collect::<Vec<&str>>().as_slice()))
+            .required(true)
+        )
+        .arg(Arg::new("output_dir")
+            .help("Path to bring the sample to")
+            .long("output-dir")
+            .short('o')
+            .required(true)
+        )
 }
 
 impl Command for SampleCommand {

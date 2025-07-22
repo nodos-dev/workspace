@@ -1,4 +1,4 @@
-use clap::{ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 
 use crate::nosman::command::{Command, CommandResult};
@@ -22,6 +22,18 @@ impl InitCommand {
         println!("{}", format!("Workspace initialized with {} modules", workspace.installed_modules.len()).as_str().green());
         Ok(())
     }
+}
+
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("init")
+        .about("Initialize a directory as a Nodos workspace.")
+        .arg(Arg::new("allow_nested")
+            .action(ArgAction::SetTrue)
+            .long("allow-nested")
+            .help("Allow creating a workspace even if the folder is already inside another workspace. This also allows to recreate an existing workspace.")
+            .num_args(0)
+            .required(false)
+        )
 }
 
 impl Command for InitCommand {

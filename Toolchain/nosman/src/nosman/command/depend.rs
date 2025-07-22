@@ -1,5 +1,5 @@
 use std::fs;
-use clap::{ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches};
 use serde_json::{json, Value};
 use crate::nosman::command::{Command, CommandResult};
 
@@ -7,10 +7,10 @@ use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{SemVer};
 use crate::nosman::module::{get_dependency_arguments, PackageIdentifier};
 use crate::nosman::workspace::{Workspace};
-pub struct DependsCommands{
+pub struct DependCommand {
 }
-impl DependsCommands {
-    pub(crate) fn run_depends(&self, workspace: &mut Workspace, module_name: &String, deps: &Vec<PackageIdentifier>) -> CommandResult {
+impl DependCommand {
+    pub(crate) fn run_depend(&self, workspace: &mut Workspace, module_name: &String, deps: &Vec<PackageIdentifier>) -> CommandResult {
         let module_manifest_path;
         let mut manifest_json;
         {
@@ -88,7 +88,22 @@ impl DependsCommands {
     }
 }
 
-impl Command for DependsCommands {
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("depend")
+        .about("Add dependency to a Nodos module")
+        .arg(Arg::new("module")
+            .required(true)
+            .help("Name of the module to add a dependency to.")
+        )
+        .arg(Arg::new("dependency")
+            .help("Dependency to be added. Can be specified multiple times. Version is not required. Format: <module_name>-<version>")
+            .required(false)
+            .action(ArgAction::Append)
+            .num_args(1..)
+        )
+}
+
+impl Command for DependCommand {
     fn matched_args<'a>(&self, _workspace: &Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("depend")
     }
@@ -104,6 +119,6 @@ impl Command for DependsCommands {
         if !success{
             return Err(InvalidArgument { message: format!("Invalid dependency format") });
         }
-        self.run_depends(workspace, module_name, &deps)
+        self.run_depend(workspace, module_name, &deps)
     }
 }

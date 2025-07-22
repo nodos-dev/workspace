@@ -1,4 +1,4 @@
-use clap::{ArgMatches};
+use clap::{Arg, ArgMatches};
 
 use crate::nosman;
 use crate::nosman::command::{Command, CommandResult};
@@ -8,7 +8,11 @@ use nosman::workspace::Workspace;
 pub struct RemoveCommand {
 }
 
-impl RemoveCommand {
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("remove")
+        .about("Remove a module")
+        .arg(Arg::new("module").required(true))
+        .arg(Arg::new("version").required(true))
 }
 
 impl Command for RemoveCommand {

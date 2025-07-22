@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::{Error, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use clap::{ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use filetime::FileTime;
 use indicatif::ProgressBar;
@@ -350,6 +350,37 @@ impl GetCommand {
 
         Ok(())
     }
+}
+
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("get").visible_alias("update")
+        .about("Brings a Nodos release under workspace (with --workspace option).\n\
+    If there is an existing Nodos release, updates it (note that this will remove all installed Nodos engines!)")
+        .arg(Arg::new("name")
+            .help("Name of the Nodos release to bring. Can be 'nodos' or some bundled version.")
+            .long("name")
+            .default_value("nodos")
+        )
+        .arg(Arg::new("version")
+            .help("Version of the Nodos release to bring. If not provided, the latest version will be installed.")
+            .long("version")
+            .short('v')
+            .required(false)
+        )
+        .arg(Arg::new("yes_to_all")
+            .help("Do not ask for confirmation. Execute default behaviour.")
+            .short('y')
+            .action(ArgAction::SetTrue)
+            .num_args(0)
+            .required(false)
+        )
+        .arg(Arg::new("clean_modules")
+            .help("Remove Nodos modules before installing the new release.")
+            .action(ArgAction::SetTrue)
+            .num_args(0)
+            .required(false)
+            .long("clean-modules")
+        )
 }
 
 impl Command for GetCommand {

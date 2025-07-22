@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use clap::{ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 
 use crate::nosman;
@@ -186,6 +186,38 @@ impl InstallCommand {
         println!("{}", format!("{}-{} installed successfully", package_name, version).as_str().green());
         Ok(InstallOp::Installed)
     }
+}
+
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("install")
+        .about("Install a module")
+        .arg(Arg::new("module").required(true))
+        .arg(Arg::new("version").required(false))
+        .arg(Arg::new("exact")
+            .action(ArgAction::SetTrue)
+            .help("If not set, version parameter will be interpreted as minimum required version within that minor/patch version.\n\
+        If no version 'x' such that 'a.b <= x < a.(b+1)' is found among installed modules, latest such version will be installed.\n\
+        If version is set to 'latest' or has no minor component, it will fail.")
+            .long("exact")
+            .num_args(0)
+            .required(false)
+        )
+        .arg(Arg::new("without_deps")
+            .long("without-deps")
+            .help("Do not install dependencies of the module")
+            .action(ArgAction::SetTrue)
+        )
+        .arg(Arg::new("prefix")
+            .help("Folder path relative to out_dir. The module contents will be under this folder. By default, its '<module_name>-<version>'.")
+            .long("prefix")
+            .required(false)
+        )
+        .arg(Arg::new("out_dir")
+            .help("The directory where the module will be installed")
+            .default_value("./Module/Downloaded")
+            .long("out-dir")
+            .required(false)
+        )
 }
 
 impl Command for InstallCommand {
