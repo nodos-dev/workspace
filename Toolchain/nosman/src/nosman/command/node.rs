@@ -1,6 +1,6 @@
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
-use crate::nosman::command::{Command, CommandResult};
+use crate::nosman::command::{get_nodos_version_from_args, Command, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument, Runtime};
 use crate::nosman::index::{ModuleType, SemVer};
 use crate::nosman::workspace::{Workspace};
@@ -102,15 +102,7 @@ impl Command for NodeCommand {
         let description = args.get_one::<String>("description").cloned();
         let category = args.get_one::<String>("category").cloned();
         let hide_in_context_menu = *args.get_one::<bool>("hide_in_context_menu").unwrap();
-        let nodos_version_str = args.get_one::<String>("nodos_version");
-        let nodos_version = if let Some(version) = nodos_version_str {
-            match SemVer::parse_from_str(version) {
-                Some(v) => Some(v),
-                None => return Err(InvalidArgument { message: format!("Invalid Nodos version: {}", version) }),
-            }
-        } else {
-            None
-        };
+        let nodos_version = get_nodos_version_from_args(args)?;
         self.run_node(workspace, plugin_name, node_class_name, remove, display_name, description, category, hide_in_context_menu, nodos_version)
     }
 

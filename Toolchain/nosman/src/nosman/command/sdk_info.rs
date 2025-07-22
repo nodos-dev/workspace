@@ -12,10 +12,10 @@ pub struct SdkInfoCommand {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SdkInfo {
     pub version: String,
-    process_sdk_version: String,
-    plugin_sdk_version: String,
-    subsystem_sdk_version: String,
-    path: String,
+    pub process_sdk_version: String,
+    pub plugin_sdk_version: String,
+    pub subsystem_sdk_version: String,
+    pub path: String,
 }
 
 pub fn get_engine_sdk_infos(workspace: &Workspace) -> Result<Vec<SdkInfo>, CommandError> {
@@ -77,7 +77,7 @@ struct SdkInfoOutput {
 }
 
 impl SdkInfoCommand {
-    fn run_get_sdk_info(&self, workspace: &Workspace, requested_version: &str, sdk_type: &str) -> CommandResult {
+    pub fn run_get_sdk_info(&self, workspace: &Workspace, requested_version: &str, sdk_type: &str) -> CommandResult {
         // Search ./Engine directory under workspace dir and find the version.json with bin/ include/ folders in it
         let engines = get_engine_sdk_infos(workspace)?;
 

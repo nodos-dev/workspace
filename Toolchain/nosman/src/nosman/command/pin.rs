@@ -1,7 +1,7 @@
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use inquire::{MultiSelect, Select, Text};
-use crate::nosman::command::{Command, CommandResult};
+use crate::nosman::command::{get_nodos_version_from_args, Command, CommandResult};
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::constants;
 use crate::nosman::index::SemVer;
@@ -200,15 +200,7 @@ impl Command for PinCommand {
         let show_as = args.get_one::<String>("show_as");
         let can_show_as = args.get_one::<String>("can_show_as");
         let type_name = args.get_one::<String>("type_name");
-        let nodos_version_str = args.get_one::<String>("nodos_version");
-        let nodos_version = if let Some(version) = nodos_version_str {
-            match SemVer::parse_from_str(version) {
-                Some(v) => Some(v),
-                None => return Err(InvalidArgument { message: format!("Invalid Nodos version: {}", version) }),
-            }
-        } else {
-            None
-        };
+        let nodos_version = get_nodos_version_from_args(args)?;
         self.run_pin(workspace, node_class_name, pin_name, *remove, show_as, can_show_as, type_name, nodos_version)
     }
 

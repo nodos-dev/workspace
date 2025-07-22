@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
-use crate::nosman::command::{get_lang_tool_arg, Command, CommandResult};
+use crate::nosman::command::{get_lang_tool_arg, get_nodos_version_from_args, Command, CommandResult};
 use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{ModuleType, SemVer};
 use include_dir::{include_dir, Dir};
@@ -291,15 +291,7 @@ impl Command for CreateCommand {
         }
 
         let description = args.get_one::<String>("description").unwrap();
-        let nodos_version_str = args.get_one::<String>("nodos_version");
-        let nodos_version = if let Some(version) = nodos_version_str {
-            match SemVer::parse_from_str(version) {
-                Some(v) => Some(v),
-                None => return Err(InvalidArgument { message: format!("Invalid Nodos version: {}", version) }),
-            }
-        } else {
-            None
-        };
+        let nodos_version = get_nodos_version_from_args(args)?;
         self.run_create(workspace, module_name, module_type, lang_tool, &output_dir, deps, description, nodos_version)
     }
 

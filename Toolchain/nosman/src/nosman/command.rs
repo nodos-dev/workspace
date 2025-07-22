@@ -27,6 +27,8 @@ use crate::nosman::{constants};
 use crate::nosman::workspace::Workspace;
 use clap::{Arg, ArgMatches};
 use thiserror::Error;
+use crate::nosman::command::CommandError::InvalidArgument;
+use crate::nosman::index::SemVer;
 
 #[derive(Error, Debug)]
 pub enum CommandError {
@@ -139,4 +141,17 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
         .subcommand(launch::get_cli())
         .subcommand(dev::get_cli())
         .subcommand(test::get_cli())
+}
+
+pub fn get_nodos_version_from_args(args: &ArgMatches) -> Result<Option<SemVer>, CommandError> {
+    let nodos_version_str = args.get_one::<String>("nodos_version");
+    let nodos_version = if let Some(version) = nodos_version_str {
+        match SemVer::parse_from_str(version) {
+            Some(v) => Some(v),
+            None => return Err(InvalidArgument { message: format!("Invalid Nodos version: {}", version) }),
+        }
+    } else {
+        None
+    };
+    Ok(nodos_version)
 }
