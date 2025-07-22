@@ -558,12 +558,12 @@ fn sdk_info_process_version_1_3() {
 #[test]
 fn sdk_info_plugin_version_1_4() {
     let mut test = WorkspaceGen::new_random();
-    test_sdk_info(&mut test, "1.4.0.b4435", "plugin");
+    test_sdk_info(&mut test, "1.4.0.b4431", "plugin");
 }
 
 #[test]
 fn sdk_info_process_version_1_4() {
     let mut test = WorkspaceGen::new_random();
-    test_sdk_info(&mut test, "1.4.0.b4435", "process");
+    test_sdk_info(&mut test, "1.4.0.b4431", "process");
 }
 
