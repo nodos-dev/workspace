@@ -172,7 +172,7 @@ function(nos_get_module name version out_target_name)
 				message(STATUS "${name}-${version} schema file: ${fbs_file}")
 			endforeach()
 			target_sources(${target_name} INTERFACE ${fbs_files})
-			source_group("Schemas" FILES ${fbs_files})
+			source_group("Types" FILES ${fbs_files})
 			
 			# Optional: Get "public_include_folder" from JSON output. If not found skip it
 			string(JSON nos_module_include_folder ERROR_VARIABLE err GET "${nosman_output}" "public_include_folder")
@@ -195,7 +195,7 @@ function(nos_get_module name version out_target_name)
 	endif()
 endfunction()
 
-function(_nos_add_module NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_TYPES ALTERNATIVE_MANIFEST_FILE_EXT)
+function(_nos_add_module NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_TYPES ALTERNATIVE_MANIFEST_FILE_EXTS)
 	project(${NAME})
 	nos_colored_message(COLOR CYAN "Processing plugin ${NAME}")
 
@@ -221,7 +221,7 @@ function(_nos_add_module NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_
 	nos_get_files_recursive(${config_folder} "${config_file_types}" config_files)
 	source_group("Config" FILES ${config_files})
 	nos_get_files_recursive(${module_root} ".fbs" type_schema_files)
-	source_group("Schemas" FILES ${type_schema_files})
+	source_group("Types" FILES ${type_schema_files})
 
 	list(LENGTH ADDITIONAL_FILE_TYPES len_file_types_list)
 	math(EXPR last_idx "${len_file_types_list} - 1")
@@ -249,7 +249,12 @@ function(_nos_add_module NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_
 	set_source_files_properties(${shader_files} PROPERTIES HEADER_FILE_ONLY TRUE)
 
 	file(GLOB MODULE_MANIFEST_FILE CONFIGURE_DEPENDS "*.${MANIFEST_FILE_EXT}")
-	file(GLOB ALTERNATIVE_MODULE_MANIFEST_FILES CONFIGURE_DEPENDS "*.${ALTERNATIVE_MANIFEST_FILE_EXT}")
+	foreach (alternative_manifest_file_ext ${ALTERNATIVE_MANIFEST_FILE_EXTS})
+		if (NOT alternative_manifest_file_ext STREQUAL "")
+			file(GLOB ALTERNATIVE_MODULE_MANIFEST_FILES CONFIGURE_DEPENDS "*.${alternative_manifest_file_ext}")
+			list(APPEND MODULE_MANIFEST_FILE ${ALTERNATIVE_MODULE_MANIFEST_FILES})
+		endif()
+	endforeach()
 	set(INCLUDED_IN_PROJECT ${source_files} ${header_files} ${config_files} ${NODE_DEFINITION_FILES} ${type_schema_files} ${shader_files} ${additional_files} ${MODULE_MANIFEST_FILE} ${ALTERNATIVE_MODULE_MANIFEST_FILES})
 	add_library(${NAME} MODULE ${INCLUDED_IN_PROJECT})
 	set_target_properties(${NAME} PROPERTIES
@@ -302,11 +307,11 @@ function(_nos_add_module NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_
 endfunction()
 
 function(nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS)
-	_nos_add_module(${NAME} "${INCLUDE_FOLDERS}" "noscfg" ".nosdef;Node Definitions" "nossys")
+	_nos_add_module(${NAME} "${INCLUDE_FOLDERS}" "noscfg" ".nosdef;Node Definitions;.nosnode;Node Definitions" "nossys;nosplugin")
 endfunction()
 
 function(nos_add_subsystem NAME DEPENDENCIES INCLUDE_FOLDERS)
-	_nos_add_module(${NAME} "${INCLUDE_FOLDERS}" "nossys" "" "")
+	_nos_add_module(${NAME} "${INCLUDE_FOLDERS}" "nossys" "" "nosplugin")
 endfunction()
 
 macro(nos_get_targets targets dir)
