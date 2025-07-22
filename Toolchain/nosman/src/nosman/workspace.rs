@@ -197,7 +197,7 @@ impl Workspace {
         }
         res
     }
-    pub fn select_installed_module(&self, module_name: &String) -> Result<&InstalledModule, CommandError> {
+    pub fn get_or_select_installed_module(&self, module_name: &String) -> Result<InstalledModule, CommandError> {
         let modules = self.get_installed_modules(module_name);
         let module;
         if modules.len() == 0 {
@@ -213,7 +213,24 @@ impl Workspace {
         } else {
             module = modules[0];
         }
-        Ok(module)
+        Ok(self.absolutize_paths(module))
+    }
+    pub fn absolutize_paths(&self, module: &InstalledModule) -> InstalledModule {
+        let mut new_module = module.clone();
+        if new_module.manifest_path.is_relative() {
+            new_module.manifest_path = self.root.join(&new_module.manifest_path);
+        }
+        if let Some(ref path) = new_module.public_include_folder {
+            if path.is_relative() {
+                new_module.public_include_folder = Some(self.root.join(path));
+            }
+        }
+        for path in &mut new_module.type_schema_files {
+            if path.is_relative() {
+                *path = self.root.join(&*path);
+            }
+        }
+        new_module
     }
     pub fn get_latest_installed_module_within_range(&self, name: &str, version_start: &SemVer, version_end: &SemVer) -> Option<&InstalledModule> {
         let version_list = self.installed_modules.get(name);
@@ -395,7 +412,8 @@ impl Workspace {
         let mut res = Vec::new();
         for versions in self.installed_modules.values() {
             for module in versions.values() {
-                if let Some(found) = module.get_node_definition(node_class_name, nodos_version) {
+                let module_abs = self.absolutize_paths(module);
+                if let Some(found) = module_abs.get_node_definition(node_class_name, nodos_version) {
                     res.push(found);
                 }
             }

@@ -11,6 +11,7 @@ use nosman::nosman::command::create::{CreateCommand, LangTool};
 use nosman::nosman::command::get::GetCommand;
 use nosman::nosman::command::node::NodeCommand;
 use nosman::nosman::command::pin::PinCommand;
+use nosman::nosman::common::NODOS_1_4;
 
 #[ctor::ctor]
 fn init() {
@@ -257,18 +258,27 @@ fn test_node_add_remove(version: SemVer) {
         &module_name,
         &node_class.to_string(),
         false,
-        Some("My Node".to_string()),
+        Some("MyNode".to_string()),
         Some("A test node".to_string()),
         Some("TestCategory".to_string()),
         false,
         Some(version.clone()),
     ).expect("Failed to add node");
     // Find node definition file
-    let plugin = test.workspace.select_installed_module(&module_name).unwrap();
+    let plugin = test.workspace.get_or_select_installed_module(&module_name).unwrap();
     let manifest = plugin.read_manifest();
-    let node_defs = manifest["node_definitions"].as_array().expect("No node_definitions");
-    assert!(!node_defs.is_empty());
-    let node_def_path = plugin.get_module_dir().join(node_defs[0].as_str().unwrap());
+    let node_def_path;
+    if version < NODOS_1_4 {
+        let node_defs = manifest["node_definitions"].as_array().expect("No node_definitions");
+        assert!(!node_defs.is_empty());
+        node_def_path = plugin.get_module_dir().join(node_defs[0].as_str().unwrap());
+    } else {
+        // For Nodos 1.4 and later, node definitions are stored in a dedicated directory by default
+        let defs = test.workspace.get_node_definitions(&format!("{}.MyNode", module_name).to_string(), &Some(version.clone()));
+        assert!(!defs.is_empty(), "No node definitions found for {}.{}", module_name, node_class);
+        node_def_path = defs[0].defined_in.clone();
+    }
+
     assert!(node_def_path.exists());
     let json = read_node_def_json(&node_def_path);
     let nodes = json["nodes"].as_array().unwrap();
@@ -315,23 +325,32 @@ fn test_pin_add_remove(version: SemVer) {
         Some(version.clone()),
     ).expect("Failed to create plugin");
     // Add node
-    let node_class = "PinNode";
+    let node_class = "SomeNode";
     NodeCommand{}.run_node(
         &mut test.workspace,
         &module_name,
         &node_class.to_string(),
         false,
-        Some("Pin Node".to_string()),
+        Some(node_class.to_string()),
         Some("A node for pin test".to_string()),
         Some("PinCategory".to_string()),
         false,
         Some(version.clone()),
     ).expect("Failed to add node");
     // Find node definition file
-    let plugin = test.workspace.select_installed_module(&module_name).unwrap();
+    let plugin = test.workspace.get_or_select_installed_module(&module_name).unwrap();
     let manifest = plugin.read_manifest();
-    let node_defs = manifest["node_definitions"].as_array().expect("No node_definitions");
-    let node_def_path = plugin.get_module_dir().join(node_defs[0].as_str().unwrap());
+    let node_def_path;
+    if version < NODOS_1_4 {
+        let node_defs = manifest["node_definitions"].as_array().expect("No node_definitions");
+        assert!(!node_defs.is_empty());
+        node_def_path = plugin.get_module_dir().join(node_defs[0].as_str().unwrap());
+    } else {
+        // For Nodos 1.4 and later, node definitions are stored in a dedicated directory by default
+        let defs = test.workspace.get_node_definitions(&format!("{}.{}", module_name, node_class).to_string(), &Some(version.clone()));
+        assert!(!defs.is_empty(), "No node definitions found for {}.{}", module_name, node_class);
+        node_def_path = defs[0].defined_in.clone();
+    }
     // Add pin
     PinCommand{}.run_pin(
         &test.workspace,

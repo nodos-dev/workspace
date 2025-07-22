@@ -267,9 +267,26 @@ impl InstalledModule {
         if node_def.is_some() {
             return Err(format!("Node class {} already exists in plugin {}", node_class_name, self));
         }
-        let display_name = display_name.unwrap_or(Text::new("Display name:").prompt().unwrap());
-        let description = description.unwrap_or(Text::new("Description:").prompt().unwrap());
-        let category = category.unwrap_or(Text::new("Category:").prompt().unwrap());
+        let display_name = display_name.unwrap_or_else(|| {
+            let default_display_name = node_class_name.strip_prefix(format!("{}.", &self.info.id.name).as_str())
+                .unwrap_or(&node_class_name);
+            Text::new("Display name:")
+                .with_default(default_display_name)
+                .prompt()
+                .unwrap_or_else(|e| panic!("Failed to get display name: {}", e))
+        });
+        let description = description.unwrap_or_else(|| {
+            Text::new("Description:")
+                .with_default(format!("{} node", display_name).as_str())
+                .prompt()
+                .unwrap_or_else(|e| panic!("Failed to get description: {}", e))
+        });
+        let category = category.unwrap_or_else(|| {
+            Text::new("Category:")
+                .with_default("Custom")
+                .prompt()
+                .unwrap_or_else(|e| panic!("Failed to get category: {}", e))
+        });
 
         let selected_version = get_nodos_version(workspace, &nodos_version)?;
         let mut manifest_json = self.read_manifest();
@@ -284,9 +301,9 @@ impl InstalledModule {
             constants::NODE_DEFINITION_FILE_EXT
         };
 
-        let out_node_defs_file = Text::new("Node definitions file:")
-            .with_default(format!("Nodes/{}", node_class_name.strip_prefix(format!("{}.", &self.info.id.name).as_str()).unwrap()).as_str()).prompt()
-            .unwrap_or_else(|e| panic!("Failed to get node definitions file: {}", e));
+
+        let out_node_defs_file = format!("Nodes/{}", node_class_name.strip_prefix(format!("{}.", &self.info.id.name).as_str()).unwrap_or_else(|| &node_class_name));
+        println!("Node definition file: {}", out_node_defs_file);
         let node_def_path = PathBuf::from(&out_node_defs_file).with_extension(node_def_file_ext).to_path_buf();
         node_defs_rel_paths.push(serde_json::Value::String(node_def_path.to_str()
             .unwrap_or_else(|| panic!("Failed to convert path to string: {}", node_def_path.display())).to_string()));

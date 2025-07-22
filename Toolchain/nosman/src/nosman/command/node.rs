@@ -11,7 +11,7 @@ impl NodeCommand {
     pub fn run_node(&self, workspace: &mut Workspace, plugin_name: &String, node_class_name: &String,
                 remove: bool, display_name: Option<String>, description: Option<String>,
                 category: Option<String>, hide_in_context_menu: bool, nodos_version: Option<SemVer>) -> CommandResult {
-        let module = workspace.select_installed_module(&plugin_name)?;
+        let module = workspace.get_or_select_installed_module(&plugin_name)?;
         if module.module_type != ModuleType::Plugin {
             return Err(InvalidArgument { message: format!("Selected module {} is not a Nodos plugin. Only plugins can have nodes!", plugin_name) });
         }

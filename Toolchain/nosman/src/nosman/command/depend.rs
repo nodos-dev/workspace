@@ -14,7 +14,7 @@ impl DependsCommands {
         let module_manifest_path;
         let mut manifest_json;
         {
-            let module = workspace.select_installed_module(module_name)?;
+            let module = workspace.get_or_select_installed_module(module_name)?;
             module_manifest_path = module.manifest_path.clone();
             manifest_json = module.read_manifest();
         }
@@ -39,7 +39,7 @@ impl DependsCommands {
             workspace.fetch_package_releases(&dep_id.name);
 
             if dep_id.version == "any" {
-                if let Ok(module) = workspace.select_installed_module(&dep_id.name) {
+                if let Ok(module) = workspace.get_or_select_installed_module(&dep_id.name) {
                     dep = module.info.id.clone();
                 } else if let Some(remote_package) = workspace.index_cache.get_latest_release(&dep_id.name) {
                     dep.name = dep_id.name.clone();

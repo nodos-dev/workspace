@@ -150,7 +150,7 @@ impl PinCommand {
         }
         Ok(())
     }
-    
+
     pub fn get_cli() -> clap::Command {
         clap::Command::new("pin")
             .about("Add/remove a pin to/from a node definition")
