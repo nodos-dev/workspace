@@ -66,7 +66,7 @@ function(nos_get_files_recursive folder file_suffixes out_files_var)
 	set(${out_files_var} ${local_files} PARENT_SCOPE)
 endfunction()
 
-function(nos_get_module_info name version query out_var)
+function(nos_get_plugin_info name version query out_var)
 	execute_process(
 		COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" info ${name} ${version} --relaxed
 		RESULT_VARIABLE nosman_result
@@ -75,28 +75,28 @@ function(nos_get_module_info name version query out_var)
 
 	if(nosman_result EQUAL 0)
 		string(STRIP ${nosman_output} nosman_output)
-		string(JSON nos_module_info_query_result ERROR_VARIABLE err GET "${nosman_output}" "${query}")
+		string(JSON nos_plugin_info_query_result ERROR_VARIABLE err GET "${nosman_output}" "${query}")
 		if(err STREQUAL "NOTFOUND")
-			set(${out_var} ${nos_module_info_query_result} PARENT_SCOPE)
+			set(${out_var} ${nos_plugin_info_query_result} PARENT_SCOPE)
 		else()
-			nos_fatal_error("Failed to get info '${query}' from module ${name}-${version}.")
+			nos_fatal_error("Failed to get info '${query}' from plugin ${name}-${version}.")
 			set(${out_var} "NOTFOUND")
 		endif()
 	else()
-		nos_fatal_error("Failed to find Nodos module ${name}-${version} in workspace")
+		nos_fatal_error("Failed to find Nodos plugin ${name}-${version} in workspace")
 	endif()
 endfunction()
 
-function(nos_find_module_path name version out_var)
-	nos_get_module_info(${name} ${version} "manifest_path" manifest_path)
+function(nos_find_plugin_path name version out_var)
+	nos_get_plugin_info(${name} ${version} "manifest_path" manifest_path)
 	string(STRIP ${manifest_path} manifest_path)
-	get_filename_component(module_path ${manifest_path} DIRECTORY)
-	cmake_path(SET module_path "${module_path}")
-	message(STATUS "Found ${name} ${version}: ${module_path}")
-	set(${out_var} ${module_path} PARENT_SCOPE)
+	get_filename_component(plugin_path ${manifest_path} DIRECTORY)
+	cmake_path(SET plugin_path "${plugin_path}")
+	message(STATUS "Found ${name} ${version}: ${plugin_path}")
+	set(${out_var} ${plugin_path} PARENT_SCOPE)
 endfunction()
 
-function(nos_get_module name version out_target_name)
+function(nos_get_plugin name version out_target_name)
 	if(NOT DEFINED NOSMAN_WORKSPACE_DIR)
 		nos_fatal_error("NOSMAN_WORKSPACE_DIR is not defined. Set it to the path of the workspace where modules will be installed.")
 	endif()
@@ -109,11 +109,11 @@ function(nos_get_module name version out_target_name)
 	set(${out_target_name} ${target_name} PARENT_SCOPE)
 
 	if(TARGET ${target_name})
-		message(STATUS "Module ${name}-${version} already found in project. Using existing target.")
+		message(STATUS "Plugin ${name}-${version} already found in project. Using existing target.")
 		return()
 	endif()
 
-	message(STATUS "Searching/installing Nodos module ${name} ${version} in workspace")
+	message(STATUS "Searching/installing Nodos plugin ${name} ${version} in workspace")
 
 	# TODO: Download if not exists.
 	if(NOSMAN_EXECUTABLE)
@@ -156,18 +156,18 @@ function(nos_get_module name version out_target_name)
 		if(nosman_result EQUAL 0)
 			string(STRIP ${nosman_output} nosman_output)
 
-			message(STATUS "Creating target ${target_name} for module ${name}-${version}")
+			message(STATUS "Creating target ${target_name} for plugin ${name}-${version}")
 			add_library(${target_name} INTERFACE)
 
 			# Get module path
-			string(JSON module_path GET "${nosman_output}" "manifest_path")
-			get_filename_component(module_path ${module_path} DIRECTORY)
-			cmake_path(SET module_path "${module_path}")
+			string(JSON plugin_path GET "${nosman_output}" "manifest_path")
+			get_filename_component(plugin_path ${plugin_path} DIRECTORY)
+			cmake_path(SET plugin_path "${plugin_path}")
 
 			# Add fbs files to target
-			nos_get_files_recursive(${module_path} ".fbs" fbs_files)
+			nos_get_files_recursive(${plugin_path} ".fbs" fbs_files)
 			list(LENGTH fbs_files fbs_count)
-			message(STATUS "Found ${fbs_count} schema files in module ${name}-${version}")
+			message(STATUS "Found ${fbs_count} schema files in plugin ${name}-${version}")
 			foreach(fbs_file ${fbs_files})
 				message(STATUS "${name}-${version} schema file: ${fbs_file}")
 			endforeach()
@@ -175,35 +175,35 @@ function(nos_get_module name version out_target_name)
 			source_group("Types" FILES ${fbs_files})
 			
 			# Optional: Get "public_include_folder" from JSON output. If not found skip it
-			string(JSON nos_module_include_folder ERROR_VARIABLE err GET "${nosman_output}" "public_include_folder")
+			string(JSON nos_plugin_include_folder ERROR_VARIABLE err GET "${nosman_output}" "public_include_folder")
 			if (err STREQUAL "NOTFOUND")
-				message(STATUS "Found ${name} ${version} include folder: ${nos_module_include_folder}")
-				cmake_path(SET ${target_name}_INCLUDE_DIR "${nos_module_include_folder}")
-				message(STATUS "Found public header files in module ${name}-${version}. Adding to target.")
+				message(STATUS "Found ${name} ${version} include folder: ${nos_plugin_include_folder}")
+				cmake_path(SET ${target_name}_INCLUDE_DIR "${nos_plugin_include_folder}")
+				message(STATUS "Found public header files in plugin ${name}-${version}. Adding to target.")
 				nos_get_files_recursive(${${target_name}_INCLUDE_DIR} ".h;.hpp;.hxx;.hh;.inl" include_files)
 				target_sources(${target_name} PUBLIC ${include_files})
 				target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
 			else()
-				message(STATUS "No public header files found in module ${name}-${version}.")
+				message(STATUS "No public header files found in plugin ${name}-${version}.")
 			endif()
 			set_target_properties(${target_name} PROPERTIES FOLDER "nosman")
 		else()
 			nos_fatal_error("Failed to find ${name} ${version} include folder")
 		endif()
 	else()
-		nos_fatal_error("Unable to find nosman. Set NOSMAN_EXECUTABLE to use nos_get_module.")
+		nos_fatal_error("Unable to find nosman. Set NOSMAN_EXECUTABLE to use nos_get_plugin.")
 	endif()
 endfunction()
 
-function(_nos_add_module NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_TYPES ALTERNATIVE_MANIFEST_FILE_EXTS)
+function(_nos_add_plugin NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_TYPES ALTERNATIVE_MANIFEST_FILE_EXTS)
 	project(${NAME})
 	nos_colored_message(COLOR CYAN "Processing plugin ${NAME}")
 
-	set(module_root "${CMAKE_CURRENT_SOURCE_DIR}")
-	set(config_folder "${module_root}/Config")
-	set(source_folder "${module_root}/Source")
-	set(public_include_folder "${module_root}/Include")
-	set(shaders_folder "${module_root}/Shaders")
+	set(plugin_root "${CMAKE_CURRENT_SOURCE_DIR}")
+	set(config_folder "${plugin_root}/Config")
+	set(source_folder "${plugin_root}/Source")
+	set(public_include_folder "${plugin_root}/Include")
+	set(shaders_folder "${plugin_root}/Shaders")
 	if (NOT EXISTS ${source_folder})
 		nos_fatal_error("Nodos CMake helpers for adding a plugin requires a folder named 'Source' at the root. Either manually setup your CMake script or create the 'Source' folder.")
 	endif()
@@ -220,7 +220,7 @@ function(_nos_add_module NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_
 	set(config_file_types ".json")
 	nos_get_files_recursive(${config_folder} "${config_file_types}" config_files)
 	source_group("Config" FILES ${config_files})
-	nos_get_files_recursive(${module_root} ".fbs" type_schema_files)
+	nos_get_files_recursive(${plugin_root} ".fbs" type_schema_files)
 	source_group("Types" FILES ${type_schema_files})
 
 	list(LENGTH ADDITIONAL_FILE_TYPES len_file_types_list)
@@ -234,7 +234,7 @@ function(_nos_add_module NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_
 			list(GET ADDITIONAL_FILE_TYPES ${file_idx} file_type)
 			list(GET ADDITIONAL_FILE_TYPES ${group_idx} group_name)
 			message(STATUS "Adding file type ${file_type} in source group ${group_name}")
-			nos_get_files_recursive(${module_root} ${file_type} _files)
+			nos_get_files_recursive(${plugin_root} ${file_type} _files)
 			source_group("${group_name}" FILES ${_files})
 			foreach(file IN LISTS _files)
 				list(APPEND additional_files ${file})
@@ -243,44 +243,44 @@ function(_nos_add_module NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_
 	endif()
 
 	set(shader_file_types ".glsl" ".comp" ".frag" ".vert" ".hlsl")
-	nos_get_files_recursive(${module_root} "${shader_file_types}" shader_files)
+	nos_get_files_recursive(${plugin_root} "${shader_file_types}" shader_files)
 	nos_get_files_recursive(${shaders_folder} "${shader_file_types}" shader_files)
 	source_group("Shaders" FILES ${shader_files})
 	set_source_files_properties(${shader_files} PROPERTIES HEADER_FILE_ONLY TRUE)
 
-	file(GLOB MODULE_MANIFEST_FILE CONFIGURE_DEPENDS "*.${MANIFEST_FILE_EXT}")
+	file(GLOB PLUGIN_MANIFEST_FILE CONFIGURE_DEPENDS "*.${MANIFEST_FILE_EXT}")
 	foreach (alternative_manifest_file_ext ${ALTERNATIVE_MANIFEST_FILE_EXTS})
 		if (NOT alternative_manifest_file_ext STREQUAL "")
-			file(GLOB ALTERNATIVE_MODULE_MANIFEST_FILES CONFIGURE_DEPENDS "*.${alternative_manifest_file_ext}")
-			list(APPEND MODULE_MANIFEST_FILE ${ALTERNATIVE_MODULE_MANIFEST_FILES})
+			file(GLOB ALTERNATIVE_PLUGIN_MANIFEST_FILES CONFIGURE_DEPENDS "*.${alternative_manifest_file_ext}")
+			list(APPEND PLUGIN_MANIFEST_FILE ${ALTERNATIVE_PLUGIN_MANIFEST_FILES})
 		endif()
 	endforeach()
-	set(INCLUDED_IN_PROJECT ${source_files} ${header_files} ${config_files} ${NODE_DEFINITION_FILES} ${type_schema_files} ${shader_files} ${additional_files} ${MODULE_MANIFEST_FILE} ${ALTERNATIVE_MODULE_MANIFEST_FILES})
+	set(INCLUDED_IN_PROJECT ${source_files} ${header_files} ${config_files} ${NODE_DEFINITION_FILES} ${type_schema_files} ${shader_files} ${additional_files} ${PLUGIN_MANIFEST_FILE} ${ALTERNATIVE_PLUGIN_MANIFEST_FILES})
 	add_library(${NAME} MODULE ${INCLUDED_IN_PROJECT})
 	set_target_properties(${NAME} PROPERTIES
 		PREFIX ""
-		LIBRARY_OUTPUT_DIRECTORY "${module_root}/Binaries"
-		LIBRARY_OUTPUT_DIRECTORY_DEBUG "${module_root}/Binaries"
-		LIBRARY_OUTPUT_DIRECTORY_RELEASE "${module_root}/Binaries"
-		LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO "${module_root}/Binaries"
-		LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL "${module_root}/Binaries"
+		LIBRARY_OUTPUT_DIRECTORY "${plugin_root}/Binaries"
+		LIBRARY_OUTPUT_DIRECTORY_DEBUG "${plugin_root}/Binaries"
+		LIBRARY_OUTPUT_DIRECTORY_RELEASE "${plugin_root}/Binaries"
+		LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO "${plugin_root}/Binaries"
+		LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL "${plugin_root}/Binaries"
 	)
 
 	foreach(source IN LISTS source_files)
 		get_filename_component(source_path "${source}" PATH)
-		string(REPLACE "${module_root}" "" source_path_compact "${source_path}")
+		string(REPLACE "${plugin_root}" "" source_path_compact "${source_path}")
 		string(REPLACE "/" "\\" source_path_msvc "${source_path_compact}")
 		source_group("${source_path_msvc}" FILES "${source}")
 	endforeach()
 
 	foreach(header IN LISTS header_files)
 		get_filename_component(header_path "${header}" PATH)
-		string(REPLACE "${module_root}" "" header_path_compact "${header_path}")
+		string(REPLACE "${plugin_root}" "" header_path_compact "${header_path}")
 		string(REPLACE "/" "\\" header_path_msvc "${header_path_compact}")
 		source_group("${header_path_msvc}" FILES "${header}")
 	endforeach()
 
-	target_include_directories(${NAME} PRIVATE ${module_root} ${source_folder} ${public_include_folder} ${INCLUDE_FOLDERS})
+	target_include_directories(${NAME} PRIVATE ${plugin_root} ${source_folder} ${public_include_folder} ${INCLUDE_FOLDERS})
 
 	foreach(dependency IN LISTS DEPENDENCIES)
 		# If target "dependency" type is UTILITY then add it as a dependency
@@ -307,11 +307,11 @@ function(_nos_add_module NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_
 endfunction()
 
 function(nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS)
-	_nos_add_module(${NAME} "${INCLUDE_FOLDERS}" "noscfg" ".nosdef;Node Definitions;.nosnode;Node Definitions" "nossys;nosplugin")
+	_nos_add_plugin(${NAME} "${INCLUDE_FOLDERS}" "nosplugin" ".nosdef;Node Definitions;.nosnode;Node Definitions" "nossys;noscfg")
 endfunction()
 
 function(nos_add_subsystem NAME DEPENDENCIES INCLUDE_FOLDERS)
-	_nos_add_module(${NAME} "${INCLUDE_FOLDERS}" "nossys" "" "nosplugin")
+	_nos_add_plugin(${NAME} "${INCLUDE_FOLDERS}" "nosplugin" "" "nossys")
 endfunction()
 
 macro(nos_get_targets targets dir)
@@ -338,3 +338,19 @@ macro(nos_group_targets targets folder_name)
 		set_target_properties(${target} PROPERTIES FOLDER ${FOLD_NAME})
 	endforeach()
 endmacro()
+
+# Deprecated, use _plugin functions instead.
+function(nos_get_module_info name version query out_var)
+	nos_get_plugin_info(${name} ${version} ${query} ${out_var})
+	set(${out_var} ${${out_var}} PARENT_SCOPE)
+endfunction()
+
+function(nos_find_module_path name version out_var)
+	nos_find_plugin_path(${name} ${version} ${out_var})
+	set(${out_var} ${${out_var}} PARENT_SCOPE)
+endfunction()
+
+function(nos_get_module name version out_target_name)
+	nos_get_plugin(${name} ${version} ${out_target_name})
+	set(${out_target_name} ${${out_target_name}} PARENT_SCOPE)
+endfunction()
