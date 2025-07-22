@@ -153,6 +153,31 @@ impl TestCommand {
     }
 }
 
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("test")
+        .about("Enumerate modules in a folder, look under Tests folder of each module, and run nosLauncher with --load-graph for each graph file.")
+        .arg(clap::Arg::new("modules_folder")
+            .help("Path to the folder containing modules (default: workspace root)")
+            .long("modules-folder")
+            .short('m')
+            .required(false)
+        )
+        .arg(clap::Arg::new("engine_dir")
+            .help("Path to the engine directory to use for nosLauncher (default: auto-detect from workspace)")
+            .long("engine-dir")
+            .short('e')
+            .required(false)
+        )
+        .arg(clap::Arg::new("timeout")
+            .help("Timeout in seconds for each test")
+            .long("timeout")
+            .short('t')
+            .required(false)
+            .value_parser(clap::value_parser!(u64))
+            .default_value("30")
+        )
+}
+
 impl Command for TestCommand {
     fn matched_args<'a>(&self, _workspace: &Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("test")

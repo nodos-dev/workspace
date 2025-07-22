@@ -29,6 +29,11 @@ impl DeinitCommand {
     }
 }
 
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("deinit")
+        .about("Deinitialize a Nodos workspace.")
+}
+
 impl Command for DeinitCommand {
     fn matched_args<'a>(&self, _workspace: &Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("deinit")

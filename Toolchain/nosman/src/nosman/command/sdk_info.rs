@@ -1,4 +1,4 @@
-use clap::ArgMatches;
+use clap::{Arg, ArgMatches};
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::common;
@@ -12,10 +12,10 @@ pub struct SdkInfoCommand {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SdkInfo {
     pub version: String,
-    process_sdk_version: String,
-    plugin_sdk_version: String,
-    subsystem_sdk_version: String,
-    path: String,
+    pub process_sdk_version: String,
+    pub plugin_sdk_version: String,
+    pub subsystem_sdk_version: String,
+    pub path: String,
 }
 
 pub fn get_engine_sdk_infos(workspace: &Workspace) -> Result<Vec<SdkInfo>, CommandError> {
@@ -77,7 +77,7 @@ struct SdkInfoOutput {
 }
 
 impl SdkInfoCommand {
-    fn run_get_sdk_info(&self, workspace: &Workspace, requested_version: &str, sdk_type: &str) -> CommandResult {
+    pub fn run_get_sdk_info(&self, workspace: &Workspace, requested_version: &str, sdk_type: &str) -> CommandResult {
         // Search ./Engine directory under workspace dir and find the version.json with bin/ include/ folders in it
         let engines = get_engine_sdk_infos(workspace)?;
 
@@ -120,6 +120,17 @@ impl SdkInfoCommand {
 
         Err(CommandError::InvalidArgument { message: format!("No SDK found for version {}", requested_version) })
     }
+}
+
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("sdk-info")
+        .about("Returns information about an installed Nodos SDK under workspace.\n\
+    If no such version is found, it will return an error.")
+        .arg(Arg::new("version").required(true))
+        .arg(Arg::new("sdk-type").required(false)
+            .help("Type of the SDK to get information about.")
+            .default_value("engine")
+            .value_parser(clap::builder::PossibleValuesParser::new(["engine", "plugin", "subsystem", "process"])))
 }
 
 impl Command for SdkInfoCommand {

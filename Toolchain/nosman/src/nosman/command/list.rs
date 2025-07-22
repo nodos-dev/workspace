@@ -1,5 +1,5 @@
 use chrono::DateTime;
-use clap::{ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use inquire::{MultiSelect};
 use crate::nosman::command::{Command, CommandResult};
@@ -84,7 +84,7 @@ impl ListCommand {
                 }
                 installed_modules_alphabetical.sort_by(|a, b| a.0.cmp(&b.0));
                 for (name, version, module) in installed_modules_alphabetical {
-                    println!("  {} ({})", format!("{}-{}", name, version).green(), module.get_module_dir().display());
+                    println!("  {} ({})", format!("{} ({})", name.green(), version.yellow()), module.get_module_dir().display());
                 }
             }
             if remote {
@@ -99,6 +99,33 @@ impl ListCommand {
         }
         Ok(())
     }
+}
+
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("list")
+        .about("List packages")
+        .arg(Arg::new("installed")
+            .action(ArgAction::SetTrue)
+            .help("List installed modules")
+            .long("installed")
+            .num_args(0)
+            .required(false)
+            .group("list_type")
+        )
+        .arg(Arg::new("remote")
+            .action(ArgAction::SetTrue)
+            .help("List remote packages")
+            .long("remote")
+            .num_args(0)
+            .required(false)
+            .group("list_type")
+        )
+        .arg(Arg::new("package_name")
+            .help("Name of the package to list remote/installed packages of")
+            .long("package-name")
+            .short('p')
+            .required(false)
+        )
 }
 
 impl Command for ListCommand {

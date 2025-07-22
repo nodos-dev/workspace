@@ -3,13 +3,59 @@ use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
-use clap::{ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use indicatif::ProgressBar;
 use rayon::prelude::*;
 use CommandError::InvalidArgument;
-use crate::nosman::command::{Command, CommandError, CommandResult};
+use crate::nosman::command::{get_lang_tool_arg, Command, CommandError, CommandResult};
 use crate::nosman::workspace::Workspace;
+
+pub fn get_cli() -> clap::Command {
+    let git_dir_arg = Arg::new("dir")
+        .long("directory")
+        .short('m')
+        .help("Path to the directory to scan for git repositories")
+        .action(ArgAction::Append)
+        .num_args(1)
+        .default_values(&[".", "Engine", "Module"]);
+    clap::Command::new("dev")
+        .about("Helper commands for Nodos module development")
+        .subcommand(clap::Command::new("pull")
+            .about("Scans for git repositories and pulls their current branches")
+            .arg(git_dir_arg.clone())
+        )
+        .subcommand(clap::Command::new("gen")
+            .about("Generates project files for Nodos module development")
+            .arg(get_lang_tool_arg())
+            .arg(Arg::new("project_folder")
+                .long("project-folder")
+                .short('p')
+                .help("Path to the project folder to generate files in")
+                .default_value("Project"))
+            .arg(Arg::new("extra_args")
+                .last(true)
+                .help("Arguments to pass to the underlying tool when generating project files")
+            )
+        )
+        .subcommand(clap::Command::new("build")
+            .about("Builds project files for Nodos module development")
+            .arg(get_lang_tool_arg())
+            .arg(Arg::new("project_folder")
+                .long("project-folder")
+                .short('p')
+                .help("Path to the project folder to build")
+                .default_value("Project"))
+            .arg(Arg::new("extra_args")
+                .last(true)
+                .help("Arguments to pass to the underlying tool when building project files")
+            )
+        )
+        .subcommand(clap::Command::new("status")
+            .about("Shows the status of the git repositories under the workspace")
+            .arg(git_dir_arg)
+        )
+}
 
 pub struct DevPullCommand {}
 

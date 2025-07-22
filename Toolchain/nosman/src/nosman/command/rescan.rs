@@ -1,9 +1,21 @@
-use clap::ArgMatches;
+use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::workspace::{RescanFlags, Workspace};
 
 pub struct RescanCommand {
+}
+
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("rescan")
+        .about("Rescan modules and update caches")
+        .arg(Arg::new("fetch_index")
+            .action(ArgAction::SetTrue)
+            .help("Fetch remote module indices before scanning")
+            .long("fetch-index")
+            .num_args(0)
+            .required(false)
+        )
 }
 
 impl Command for RescanCommand {

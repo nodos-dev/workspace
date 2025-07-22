@@ -1,9 +1,10 @@
-use clap::{ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use inquire::{MultiSelect, Select, Text};
-use crate::nosman::command::{Command, CommandResult};
+use crate::nosman::command::{get_nodos_version_from_args, Command, CommandResult};
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::constants;
+use crate::nosman::index::SemVer;
 use crate::nosman::workspace::{Workspace};
 
 pub struct PinCommand {
@@ -11,10 +12,10 @@ pub struct PinCommand {
 
 impl PinCommand {
 
-    fn run_pin(&self, workspace: &Workspace, node_class_name: &String, pin_name: &String, remove: bool,
-               show_as: Option<&String>, can_show_as: Option<&String>, type_name: Option<&String>) -> CommandResult {
+    pub fn run_pin(&self, workspace: &Workspace, node_class_name: &String, pin_name: &String, remove: bool,
+               show_as: Option<&String>, can_show_as: Option<&String>, type_name: Option<&String>, nodos_version: Option<SemVer>) -> CommandResult {
         let mut node_def_obj;
-        let node_def_objs = workspace.get_node_definitions(node_class_name);
+        let node_def_objs = workspace.get_node_definitions(node_class_name, &nodos_version);
         if node_def_objs.len() == 0 {
             return Err(InvalidArgument { message: format!("Node class {} not found", node_class_name) });
         }
@@ -151,6 +152,42 @@ impl PinCommand {
     }
 }
 
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("pin")
+        .about("Add/remove a pin to/from a node definition")
+        .arg(Arg::new("node_class_name")
+            .required(true)
+            .help("Node class name to add/remove pin.")
+        )
+        .arg(Arg::new("pin_name")
+            .required(true)
+            .help("Name of the pin to add/remove.")
+        )
+        .arg(Arg::new("remove")
+            .action(ArgAction::SetTrue)
+            .long("remove")
+            .help("Remove the pin.")
+            .num_args(0)
+            .required(false)
+        )
+        .arg(Arg::new("show_as")
+            .long("show-as")
+            .help("Determine whether the pin is input, property or output pin.")
+            .value_parser(clap::builder::PossibleValuesParser::new(constants::POSSIBLE_SHOW_AS))
+        )
+        .arg(Arg::new("can_show_as")
+            .long("can-show-as")
+            .help("Determine the kind of the pin.")
+            .required(false)
+            .value_parser(clap::builder::PossibleValuesParser::new(constants::POSSIBLE_CAN_SHOW_AS))
+        )
+        .arg(Arg::new("type_name")
+            .long("type-name")
+            .help("Data type name of the pin")
+            .required(false)
+        )
+}
+
 impl Command for PinCommand {
     fn matched_args<'a>(&self, _workspace: &Workspace, args : &'a ArgMatches) -> Option<&'a ArgMatches> {
         args.subcommand_matches("pin")
@@ -163,7 +200,8 @@ impl Command for PinCommand {
         let show_as = args.get_one::<String>("show_as");
         let can_show_as = args.get_one::<String>("can_show_as");
         let type_name = args.get_one::<String>("type_name");
-        self.run_pin(workspace, node_class_name, pin_name, *remove, show_as, can_show_as, type_name)
+        let nodos_version = get_nodos_version_from_args(args)?;
+        self.run_pin(workspace, node_class_name, pin_name, *remove, show_as, can_show_as, type_name, nodos_version)
     }
 
     fn needs_workspace(&self) -> bool {

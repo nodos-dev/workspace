@@ -16,7 +16,7 @@ void PrintHelloNodos()
 	nosEngine.LogI("Hello Nodos!");
 }
 
-static std::unordered_map<uint32_t, MySubsystem*> GExported;
+static std::unordered_map<uint32_t, MyPlugin*> GExported;
 
 nosResult ExportAPI(uint32_t minor, void** outSubsystemCtx)
 {
@@ -27,7 +27,7 @@ nosResult ExportAPI(uint32_t minor, void** outSubsystemCtx)
         {
         case 0:
         {
-            MySubsystem* subsystem = new MySubsystem();
+            MyPlugin* subsystem = new MyPlugin();
             subsystem->PrintHelloNodos = PrintHelloNodos;
             subsystem->Add = AddInt;
             GExported[minor] = subsystem;

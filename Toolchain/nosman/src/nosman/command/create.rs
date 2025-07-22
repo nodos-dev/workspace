@@ -1,14 +1,15 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use clap::{ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
-use crate::nosman::command::{Command, CommandResult};
+use crate::nosman::command::{get_lang_tool_arg, get_nodos_version_from_args, Command, CommandResult};
 use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{ModuleType, SemVer};
 use include_dir::{include_dir, Dir};
 use crate::nosman::command::sdk_info::get_engine_sdk_infos;
-use crate::nosman::constants;
-use crate::nosman::module::{get_dependency_arguments, PackageIdentifier};
+use crate::nosman::common::{DEFAULT_NODOS_VERSION_INDEX, SUPPORTED_NODOS_VERSIONS};
+use crate::nosman::module::{get_dependency_arguments, get_manifest_file_ext, PackageIdentifier};
 use crate::nosman::workspace::{ScanModulesFlags, Workspace};
 
 pub struct CreateCommand {}
@@ -41,11 +42,11 @@ impl LangTool {
 
 static DATA_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/data");
 
-fn get_template_dir_for<'a>(name: &str, module_type: &ModuleType) -> &'a Dir<'a> {
+fn get_template_dir_for<'a>(name: &str, module_type: &ModuleType, version: &str) -> &'a Dir<'a> {
     let template_dir = if *module_type == ModuleType::Plugin {
-        DATA_DIR.get_dir(format!("templates/{}/plugin", name)).unwrap()
+        DATA_DIR.get_dir(format!("templates/nodos-{}/{}/plugin", version, name)).unwrap()
     } else {
-        DATA_DIR.get_dir(format!("templates/{}/subsystem", name)).unwrap()
+        DATA_DIR.get_dir(format!("templates/nodos-{}/{}/subsystem", version, name)).unwrap()
     };
     template_dir
 }
@@ -101,7 +102,7 @@ impl CreateCommand {
     }
 
     pub fn run_create(&self, workspace: &mut Workspace, module_name: &str, module_type: ModuleType, lang_tool: LangTool,
-                      output_dir: &PathBuf, deps: Vec<PackageIdentifier>, description: &str) -> CommandResult {
+                      output_dir: &PathBuf, deps: Vec<PackageIdentifier>, description: &str, nodos_version: Option<SemVer>) -> CommandResult {
         println!("{}", format!("Creating a new Nodos module project of type '{:?}'", module_type).green());
 
         // Check module name contains at least one namespace
@@ -109,18 +110,53 @@ impl CreateCommand {
             return Err(InvalidArgument { message: "Module name must contain a company/organization prefix".to_string() });
         }
 
+        let mut selected_version: Option<SemVer> = None;
+        if let Some(version) = nodos_version {
+            selected_version = Some(version.clone());
+        } else if workspace.ready() {
+            let engines = get_engine_sdk_infos(workspace);
+            if let Ok(engines) = engines {
+                let mut major_minors = HashSet::<SemVer>::new();
+                for engine in engines {
+                    if let Some(semver) = SemVer::parse_from_str(engine.version.as_str()) {
+                        major_minors.insert(semver);
+                    }
+                }
+                if major_minors.len() > 1 {
+                    // Multiple versions found, select the latest one:
+                    let mut versions: Vec<SemVer> = major_minors.into_iter().collect();
+                    versions.sort_by(|a, b| {
+                        a.cmp(&b) // Descending order
+                    });
+                    selected_version = Some(versions[0].clone());
+                } else if major_minors.len() == 1 {
+                    // Only one version found, use it
+                    selected_version = Some(major_minors.into_iter().next().unwrap());
+                }
+            }
+        }
+
+        // Default to 1.4
+        let version_str = if let Some(v) = selected_version.as_ref() {
+            v.to_string()
+        } else {
+            SUPPORTED_NODOS_VERSIONS[DEFAULT_NODOS_VERSION_INDEX].to_string()
+        };
+
         fs::create_dir_all(&output_dir)?;
 
-        let tool_template_dir = get_template_dir_for(lang_tool.tool(), &module_type);
-        let lang_template_dir = get_template_dir_for(lang_tool.lang(), &module_type);
+        let tool_template_dir = get_template_dir_for(lang_tool.tool(), &module_type, &version_str);
+        let lang_template_dir = get_template_dir_for(lang_tool.lang(), &module_type, &version_str);
+
+        let manifest_path_ext = get_manifest_file_ext(selected_version.as_ref(), &module_type);
 
         // Copy .noscfg if plugin or .nossys
         let manifest_template_file = if module_type == ModuleType::Plugin {
-            DATA_DIR.get_file(format!("templates/Plugin.{}", constants::PLUGIN_MANIFEST_FILE_EXT)).unwrap()
+            DATA_DIR.get_file(format!("templates/nodos-{}/Plugin.{}", version_str, manifest_path_ext)).unwrap()
         } else {
-            DATA_DIR.get_file(format!("templates/Subsystem.{}", constants::SUBSYSTEM_MANIFEST_FILE_EXT)).unwrap()
+            DATA_DIR.get_file(format!("templates/nodos-{}/Subsystem.{}", version_str, manifest_path_ext)).unwrap()
         };
-        let output_manifest_path = output_dir.join(format!("{}.{}", module_name, if module_type == ModuleType::Plugin { constants::PLUGIN_MANIFEST_FILE_EXT } else { constants::SUBSYSTEM_MANIFEST_FILE_EXT }));
+        let output_manifest_path = output_dir.join(format!("{}.{}", module_name, manifest_path_ext));
 
         // Read file and replace placeholders
         // <NAME>
@@ -156,6 +192,61 @@ impl CreateCommand {
 
         Ok(())
     }
+}
+
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("create")
+        .about("Create a Nodos plugin")
+        .arg(Arg::new("type")
+            .value_parser(clap::builder::PossibleValuesParser::new(["plugin", "subsystem"]))
+            .required(true)
+        )
+        .arg(Arg::new("name")
+            .required(true)
+        )
+        .arg(get_lang_tool_arg())
+        .arg(Arg::new("output_dir")
+            .help("Path to create the plugin folder in")
+            .long("output-dir")
+            .short('o')
+            .default_value("./Module")
+            .required(false)
+        )
+        .arg(Arg::new("prefix")
+            .help("Folder path relative to out_dir. The plugin contents will be under this folder. By default, its '<plugin_name>'.")
+            .long("prefix")
+            .required(false)
+        )
+        .arg(Arg::new("yes_to_all")
+            .action(ArgAction::SetTrue)
+            .long("yes-to-all")
+            .help("Do not ask for confirmation & use defaults for missing parameters")
+            .num_args(0)
+            .short('y')
+            .required(false)
+        )
+        .arg(Arg::new("description")
+            .help("Description of the plugin")
+            .long("description")
+            .default_value("")
+            .required(false)
+        )
+        .arg(Arg::new("dependency")
+            .help("Add plugin dependency. Can be specified multiple times. Format: <plugin_name>-<version>")
+            .long("dependency")
+            .short('d')
+            .required(false)
+            .action(ArgAction::Append)
+            .num_args(1)
+        )
+        .arg(Arg::new("nodos_version")
+            .help("Nodos engine version to use for the plugin. If not specified, the latest version will be used.")
+            .long("nodos-version")
+            .short('n')
+            .required(false)
+            .value_name("VERSION")
+            .num_args(1)
+        )
 }
 
 impl Command for CreateCommand {
@@ -200,7 +291,8 @@ impl Command for CreateCommand {
         }
 
         let description = args.get_one::<String>("description").unwrap();
-        self.run_create(workspace, module_name, module_type, lang_tool, &output_dir, deps, description)
+        let nodos_version = get_nodos_version_from_args(args)?;
+        self.run_create(workspace, module_name, module_type, lang_tool, &output_dir, deps, description, nodos_version)
     }
 
     fn needs_workspace(&self) -> bool {

@@ -1,14 +1,14 @@
+use crate::nosman::common::{get_progress_bar, run_if_not};
+use crate::nosman::module::PackageIdentifier;
+use crate::nosman::platform::get_host_platform;
+use crate::nosman::workspace::Workspace;
+use crate::nosman::{common, constants};
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::{fs};
+use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
-use serde::{Deserialize, Serialize};
-use rayon::prelude::*;
-use crate::nosman::{common, constants};
-use crate::nosman::workspace::Workspace;
-use crate::nosman::common::{get_progress_bar, run_if_not};
-use crate::nosman::module::{PackageIdentifier};
-use crate::nosman::platform::get_host_platform;
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub enum PackageType {
@@ -53,11 +53,26 @@ pub enum ModuleType {
 pub struct SemVer {
     #[serde(alias = "major", alias = "MAJOR", alias = "Major")]
     pub major: u32,
-    #[serde(alias = "minor", alias = "MINOR", alias = "Minor", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        alias = "minor",
+        alias = "MINOR",
+        alias = "Minor",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub minor: Option<u32>,
-    #[serde(alias = "patch", alias = "PATCH", alias = "Patch", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        alias = "patch",
+        alias = "PATCH",
+        alias = "Patch",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub patch: Option<u32>,
-    #[serde(alias = "build", alias = "BUILD", alias = "Build", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        alias = "build",
+        alias = "BUILD",
+        alias = "Build",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub build_number: Option<u32>,
 }
 
@@ -103,7 +118,12 @@ impl std::cmp::Ord for SemVer {
 }
 
 impl SemVer {
-    pub fn new(major: u32, minor: Option<u32>, patch: Option<u32>, build_number: Option<u32>) -> SemVer {
+    pub fn new(
+        major: u32,
+        minor: Option<u32>,
+        patch: Option<u32>,
+        build_number: Option<u32>,
+    ) -> SemVer {
         SemVer {
             major,
             minor,
@@ -121,12 +141,13 @@ impl SemVer {
         let opt_major = parts.get(0).and_then(|s| s.parse::<u32>().ok());
         let opt_minor = parts.get(1).and_then(|s| s.parse::<u32>().ok());
         let opt_patch = parts.get(2).and_then(|s| s.parse::<u32>().ok());
-        let opt_build_number = parts.get(3).and_then(|s|
+        let opt_build_number = parts.get(3).and_then(|s| {
             if s.starts_with("b") {
                 s.get(1..).and_then(|s| s.parse::<u32>().ok())
             } else {
                 s.parse::<u32>().ok()
-            });
+            }
+        });
         let major = opt_major?;
         Some(SemVer {
             major,
@@ -182,12 +203,12 @@ impl SemVer {
             version_start.upper_build()
         }
     }
-	pub fn satisfies_requested_version(&self, requested: &SemVer) -> bool {
-		if self.major != requested.major {
-			return false;
-		}
-		self.minor >= requested.minor
-	}
+    pub fn satisfies_requested_version(&self, requested: &SemVer) -> bool {
+        if self.major != requested.major {
+            return false;
+        }
+        self.minor >= requested.minor
+    }
     pub fn is_equal_excl_build_no(&self, other: &SemVer) -> bool {
         self.major == other.major && self.minor == other.minor && self.patch == other.patch
     }
@@ -228,7 +249,7 @@ pub struct PackageReleases {
 pub enum VersionCheckStrategy {
     None,
     Strict, // If the version components major, minor & patch is the same, it is considered the same version
-    Loose, // If the version string is the same, it is considered the same version
+    Loose,  // If the version string is the same, it is considered the same version
 }
 
 impl VersionCheckStrategy {
@@ -299,17 +320,28 @@ impl Remote {
         if !package_index_root_fp.exists() {
             let res = fs::remove_dir_all(&repo_dir);
             if let Err(e) = res {
-                return Err(format!("Unable to remove remote module index repo {}: {}", repo_dir.display(), e));
+                return Err(format!(
+                    "Unable to remove remote module index repo {}: {}",
+                    repo_dir.display(),
+                    e
+                ));
             }
             return self.fetch(workspace);
         }
         let res = fs::read_to_string(&package_index_root_fp);
         if let Err(e) = res {
-            return Err(format!("Failed to read remote package index ({}): {}", package_index_root_fp.display(),  e));
+            return Err(format!(
+                "Failed to read remote package index ({}): {}",
+                package_index_root_fp.display(),
+                e
+            ));
         }
         let res = serde_json::from_str(&res.unwrap());
         if let Err(e) = res {
-            return Err(format!("Failed to parse remote package index: {}", e.to_string()));
+            return Err(format!(
+                "Failed to parse remote package index: {}",
+                e.to_string()
+            ));
         }
         let package_list: Vec<PackageIndexEntry> = res.unwrap();
         Ok(package_list)
@@ -334,11 +366,19 @@ impl Remote {
         let branch_name = String::from_utf8(output.unwrap().stdout).unwrap();
         branch_name.trim().to_string()
     }
-    pub fn fetch_add(&self, dry_run: bool, verbose: bool, workspace: &Workspace, name: &String,
-                     vendor: Option<&String>, package_type: &PackageType,
-                     release: PackageReleaseEntry, publisher_name: Option<&String>,
-                     publisher_email: Option<&String>,
-                     version_check_strategy: &VersionCheckStrategy) -> Result<String, String> {
+    pub fn fetch_add(
+        &self,
+        dry_run: bool,
+        verbose: bool,
+        workspace: &Workspace,
+        name: &String,
+        vendor: Option<&String>,
+        package_type: &PackageType,
+        release: PackageReleaseEntry,
+        publisher_name: Option<&String>,
+        publisher_email: Option<&String>,
+        version_check_strategy: &VersionCheckStrategy,
+    ) -> Result<String, String> {
         let repo_dir = workspace.get_remote_repo_dir(&self);
         let mut package_list: Vec<PackageIndexEntry> = self.fetch(workspace)?;
         // If package does not exist, add it
@@ -361,14 +401,20 @@ impl Remote {
 
             let package = PackageIndexEntry {
                 name: name.clone(),
-                releases_url: format!("https://raw.githubusercontent.com/{}/{}/{}/releases/{}.json", org_name, repo_name, branch_name, name),
+                releases_url: format!(
+                    "https://raw.githubusercontent.com/{}/{}/{}/releases/{}.json",
+                    org_name, repo_name, branch_name, name
+                ),
                 vendor: vendor.unwrap().clone(),
                 package_type: package_type.clone(),
             };
             package_list.push(package);
 
             let root_file = repo_dir.join(constants::PACKAGE_INDEX_ROOT_FILE);
-            let res = fs::write(root_file, serde_json::to_string_pretty(&package_list).unwrap());
+            let res = fs::write(
+                root_file,
+                serde_json::to_string_pretty(&package_list).unwrap(),
+            );
             if let Err(e) = res {
                 return Err(format!("Failed to write remote package index: {}", e));
             }
@@ -376,26 +422,40 @@ impl Remote {
 
         // Set author email and name
         if let Some(user_name) = publisher_name {
-            let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
-                .current_dir(&repo_dir)
-                .arg("config")
-                .arg("user.name")
-                .arg(user_name));
+            let res = run_if_not(
+                dry_run,
+                verbose,
+                std::process::Command::new("git")
+                    .current_dir(&repo_dir)
+                    .arg("config")
+                    .arg("user.name")
+                    .arg(user_name),
+            );
             if let Some(output) = res {
                 if !output.status.success() {
-                    return Err(format!("Failed to set user name: {}", String::from_utf8_lossy(&output.stderr)));
+                    return Err(format!(
+                        "Failed to set user name: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
                 }
             }
         }
         if let Some(user_email) = publisher_email {
-            let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
-                .current_dir(&repo_dir)
-                .arg("config")
-                .arg("user.email")
-                .arg(user_email));
+            let res = run_if_not(
+                dry_run,
+                verbose,
+                std::process::Command::new("git")
+                    .current_dir(&repo_dir)
+                    .arg("config")
+                    .arg("user.email")
+                    .arg(user_email),
+            );
             if let Some(output) = res {
                 if !output.status.success() {
-                    return Err(format!("Failed to set user email: {}", String::from_utf8_lossy(&output.stderr)));
+                    return Err(format!(
+                        "Failed to set user email: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
                 }
             }
         }
@@ -404,50 +464,80 @@ impl Remote {
         if !release_list_file.parent().unwrap().exists() {
             fs::create_dir_all(release_list_file.parent().unwrap()).unwrap();
         }
-        let mut release_list = PackageReleases{ name : name.clone(), releases: vec![] };
+        let mut release_list = PackageReleases {
+            name: name.clone(),
+            releases: vec![],
+        };
         if release_list_file.exists() {
-            release_list = serde_json::from_str(&common::read_or_fail(&release_list_file, "release list")).unwrap();
+            release_list =
+                serde_json::from_str(&common::read_or_fail(&release_list_file, "release list"))
+                    .unwrap();
         }
         let version = release.version.clone();
         let platform = release.platform.clone();
         // Check if target_platform exists for the same version in release_list
-        let sem_ver = SemVer::parse_from_str(&version).unwrap_or_else(|| panic!("{} is not a valid semantic version", version));
+        let sem_ver = SemVer::parse_from_str(&version)
+            .unwrap_or_else(|| panic!("{} is not a valid semantic version", version));
         for existing_release in &release_list.releases {
             if existing_release.platform.is_some() && release.platform.is_some() {
                 if existing_release.platform != release.platform {
                     continue;
                 }
                 let already_exists: bool = match version_check_strategy {
-                    VersionCheckStrategy::None => {
-                        false
-                    }
+                    VersionCheckStrategy::None => false,
                     VersionCheckStrategy::Strict => {
-                        let existing_release_sem_ver = SemVer::parse_from_str(&existing_release.version).unwrap_or_default();
+                        let existing_release_sem_ver =
+                            SemVer::parse_from_str(&existing_release.version).unwrap_or_default();
                         sem_ver.is_equal_excl_build_no(&existing_release_sem_ver)
                     }
-                    VersionCheckStrategy::Loose => {
-                        existing_release.version == version
-                    }
+                    VersionCheckStrategy::Loose => existing_release.version == version,
                 };
                 if already_exists {
-                    return Err(format!("Release {}-{} for platform {} already exists!", name, existing_release.version, &release.platform.unwrap()));
+                    return Err(format!(
+                        "Release {}-{} for platform {} already exists!",
+                        name,
+                        existing_release.version,
+                        &release.platform.unwrap()
+                    ));
                 }
             }
         }
         release_list.releases.insert(0, release);
-        let res = fs::write(release_list_file, serde_json::to_string_pretty(&release_list).unwrap());
+        let res = fs::write(
+            release_list_file,
+            serde_json::to_string_pretty(&release_list).unwrap(),
+        );
         if let Err(e) = res {
             return Err(format!("Failed to write remote package releases: {}", e));
         }
-        self.update_remote(dry_run, verbose, format!("Add package {}-{} targeting {}", name, version, platform.unwrap_or("unknown".to_string())), &repo_dir)
+        self.update_remote(
+            dry_run,
+            verbose,
+            format!(
+                "Add package {}-{} targeting {}",
+                name,
+                version,
+                platform.unwrap_or("unknown".to_string())
+            ),
+            &repo_dir,
+        )
     }
-    pub fn remove_release(&self, dry_run: bool, verbose: bool, workspace: &Workspace, name: &String, version_opt: Option<&String>) -> Result<String, String> {
+    pub fn remove_release(
+        &self,
+        dry_run: bool,
+        verbose: bool,
+        workspace: &Workspace,
+        name: &String,
+        version_opt: Option<&String>,
+    ) -> Result<String, String> {
         let repo_dir = workspace.get_remote_repo_dir(&self);
         let release_list_file = repo_dir.join("releases").join(format!("{}.json", name));
         if !release_list_file.exists() {
             return Err(format!("No releases found for package {}", name));
         }
-        let mut release_list: PackageReleases = serde_json::from_str(&common::read_or_fail(&release_list_file, "release list")).unwrap();
+        let mut release_list: PackageReleases =
+            serde_json::from_str(&common::read_or_fail(&release_list_file, "release list"))
+                .unwrap();
         let commit_msg;
         if let Some(version) = version_opt {
             let mut found = false;
@@ -460,10 +550,16 @@ impl Remote {
                 }
             });
             if !found {
-                return Err(format!("No release found for package {} version {}", name, version));
+                return Err(format!(
+                    "No release found for package {} version {}",
+                    name, version
+                ));
             }
             commit_msg = format!("Remove package {} version {}", name, version);
-            let res = fs::write(release_list_file, serde_json::to_string_pretty(&release_list).unwrap());
+            let res = fs::write(
+                release_list_file,
+                serde_json::to_string_pretty(&release_list).unwrap(),
+            );
             if let Err(e) = res {
                 return Err(format!("Failed to write remote package releases: {}", e));
             }
@@ -478,7 +574,8 @@ impl Remote {
                 return Err(format!("Failed to remove remote package releases: {}", e));
             }
             let index_file = repo_dir.join(constants::PACKAGE_INDEX_ROOT_FILE);
-            let mut package_list: Vec<PackageIndexEntry> = serde_json::from_str(&common::read_or_fail(&index_file, "package index")).unwrap();
+            let mut package_list: Vec<PackageIndexEntry> =
+                serde_json::from_str(&common::read_or_fail(&index_file, "package index")).unwrap();
             let mut found = false;
             for i in 0..package_list.len() {
                 if package_list[i].name == *name {
@@ -490,106 +587,170 @@ impl Remote {
             if !found {
                 return Err(format!("No package found for package {}", name));
             }
-            let res = fs::write(index_file, serde_json::to_string_pretty(&package_list).unwrap());
+            let res = fs::write(
+                index_file,
+                serde_json::to_string_pretty(&package_list).unwrap(),
+            );
             if let Err(e) = res {
                 return Err(format!("Failed to write remote package index: {}", e));
             }
         }
         self.update_remote(dry_run, verbose, commit_msg, &repo_dir)
     }
-    fn update_remote(&self, dry_run: bool, verbose: bool, commit_msg: String, repo_dir: &PathBuf) -> Result<String, String> {
+    fn update_remote(
+        &self,
+        dry_run: bool,
+        verbose: bool,
+        commit_msg: String,
+        repo_dir: &PathBuf,
+    ) -> Result<String, String> {
         // Commit and push
-        let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
-            .current_dir(&repo_dir)
-            .arg("add")
-            .arg("."));
+        let res = run_if_not(
+            dry_run,
+            verbose,
+            std::process::Command::new("git")
+                .current_dir(&repo_dir)
+                .arg("add")
+                .arg("."),
+        );
         if let Some(output) = res {
             if !output.status.success() {
-                return Err(format!("Failed to add files to the remote repository: {}", String::from_utf8_lossy(&output.stderr)));
+                return Err(format!(
+                    "Failed to add files to the remote repository: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
             }
         }
 
-        let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
-            .current_dir(&repo_dir)
-            .arg("commit")
-            .arg("-m")
-            .arg(commit_msg));
+        let res = run_if_not(
+            dry_run,
+            verbose,
+            std::process::Command::new("git")
+                .current_dir(&repo_dir)
+                .arg("commit")
+                .arg("-m")
+                .arg(commit_msg),
+        );
         if let Some(output) = res {
             if !output.status.success() {
-                return Err(format!("Failed to commit to the remote repository: {}", String::from_utf8_lossy(&output.stderr)));
+                return Err(format!(
+                    "Failed to commit to the remote repository: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
             }
         }
 
         // If push fails, pull with rebase first and then push
-        let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
-            .current_dir(&repo_dir)
-            .arg("push"));
+        let res = run_if_not(
+            dry_run,
+            verbose,
+            std::process::Command::new("git")
+                .current_dir(&repo_dir)
+                .arg("push"),
+        );
         if res.is_some() {
             let mut output = res.unwrap();
             let mut tries = 3;
             while !output.status.success() && tries > 0 {
-                output = run_if_not(false, verbose, std::process::Command::new("git")
-                    .current_dir(&repo_dir)
-                    .arg("pull")
-                    .arg("--rebase")).unwrap();
+                output = run_if_not(
+                    false,
+                    verbose,
+                    std::process::Command::new("git")
+                        .current_dir(&repo_dir)
+                        .arg("pull")
+                        .arg("--rebase"),
+                )
+                .unwrap();
                 if !output.status.success() {
                     return Err(format!("Failed to pull with rebase from the remote {}. If there were conflicts, manually solve them under {}.", self.name, repo_dir.display()));
                 }
-                output = run_if_not(false, verbose,
-                                    std::process::Command::new("git")
-                                        .current_dir(&repo_dir)
-                                        .arg("push")).unwrap();
+                output = run_if_not(
+                    false,
+                    verbose,
+                    std::process::Command::new("git")
+                        .current_dir(&repo_dir)
+                        .arg("push"),
+                )
+                .unwrap();
                 tries -= 1;
             }
             if !output.status.success() {
-                return Err(format!("Failed to publish: {}", String::from_utf8_lossy(&output.stderr)));
+                return Err(format!(
+                    "Failed to publish: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
             }
         }
 
         // Get commit SHA
-        let res = run_if_not(dry_run, verbose, std::process::Command::new("git")
-            .current_dir(&repo_dir)
-            .arg("rev-parse")
-            .arg("HEAD"));
+        let res = run_if_not(
+            dry_run,
+            verbose,
+            std::process::Command::new("git")
+                .current_dir(&repo_dir)
+                .arg("rev-parse")
+                .arg("HEAD"),
+        );
         let mut commit_sha = "COMMIT_SHA_DRY_RUN".to_string();
         if let Some(output) = res {
             if !output.status.success() {
-                return Err(format!("Failed to get commit SHA from the remote repository: {}", String::from_utf8_lossy(&output.stderr)));
+                return Err(format!(
+                    "Failed to get commit SHA from the remote repository: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
             }
             commit_sha = String::from_utf8(output.stdout).unwrap().trim().to_string();
         }
 
         Ok(commit_sha)
     }
-    pub fn create_gh_release(&self, dry_run: bool, verbose: bool, workspace: &Workspace, commit_sha: &String, name: &String, version: &String, target_platform: &String, tag: &String, artifacts: Vec<PathBuf>, release_notes: &String) -> Result<(), String> {
+    pub fn create_gh_release(
+        &self,
+        dry_run: bool,
+        verbose: bool,
+        workspace: &Workspace,
+        commit_sha: &String,
+        name: &String,
+        version: &String,
+        target_platform: &String,
+        tag: &String,
+        artifacts: Vec<PathBuf>,
+        release_notes: &String,
+    ) -> Result<(), String> {
         let repo_dir = workspace.get_remote_repo_dir(&self);
         let (org_name, repo_name) = self.get_gh_remote_org_repo();
 
-        let res = run_if_not(dry_run, verbose, std::process::Command::new("gh")
-            .current_dir(&repo_dir)
-            .arg("release")
-            .arg("create")
-            .arg(tag)
-            .arg("--title")
-            .arg(format!("{} {} ({})", name, version, target_platform))
-            .arg("--repo")
-            .arg(format!("{}/{}", org_name, repo_name))
-            .arg("--target")
-            .arg(commit_sha)
-            .args(artifacts.iter().map(|p| p.to_str().unwrap()))
-            .arg("--notes").arg(release_notes)
+        let res = run_if_not(
+            dry_run,
+            verbose,
+            std::process::Command::new("gh")
+                .current_dir(&repo_dir)
+                .arg("release")
+                .arg("create")
+                .arg(tag)
+                .arg("--title")
+                .arg(format!("{} {} ({})", name, version, target_platform))
+                .arg("--repo")
+                .arg(format!("{}/{}", org_name, repo_name))
+                .arg("--target")
+                .arg(commit_sha)
+                .args(artifacts.iter().map(|p| p.to_str().unwrap()))
+                .arg("--notes")
+                .arg(release_notes),
         );
         if let Some(output) = res {
             if !output.status.success() {
-                return Err(format!("Failed to create release: {}", String::from_utf8_lossy(&output.stderr)));
+                return Err(format!(
+                    "Failed to create release: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
             }
         }
         Ok(())
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-#[derive(Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Index {
     pub packages: HashMap<String, (PackageType, Vec<PackageReleaseEntry>)>, // name -> version -> ModuleReleaseEntry
 }
@@ -620,27 +781,51 @@ impl Index {
                 return;
             }
             let package_list: Vec<PackageIndexEntry> = res.unwrap();
-            pb.println(format!("Fetched {} packages from remote {}", package_list.len(), remote.name));
+            pb.println(format!(
+                "Fetched {} packages from remote {}",
+                package_list.len(),
+                remote.name
+            ));
         });
         pb.finish_and_clear();
-        Index { packages: HashMap::new() }
+        Index {
+            packages: HashMap::new(),
+        }
     }
-    pub fn add_package(&mut self, name: &String, package_type: PackageType, package: PackageReleaseEntry) {
-        let type_versions = self.packages.entry(name.clone()).or_insert((package_type, Vec::new()));
+    pub fn add_package(
+        &mut self,
+        name: &String,
+        package_type: PackageType,
+        package: PackageReleaseEntry,
+    ) {
+        let type_versions = self
+            .packages
+            .entry(name.clone())
+            .or_insert((package_type, Vec::new()));
         type_versions.1.push(package);
     }
-    pub fn get_package(&self, name: &str, version: &str) -> Option<(&PackageType, &PackageReleaseEntry)> {
+    pub fn get_package(
+        &self,
+        name: &str,
+        version: &str,
+    ) -> Option<(&PackageType, &PackageReleaseEntry)> {
         let res = self.packages.get(name);
         let (package_type, version_list) = res?;
         let platform = get_host_platform().to_string();
         for module in version_list {
-            if module.version == version && (module.platform.is_none() || module.platform.as_ref()? == &platform) {
+            if module.version == version
+                && (module.platform.is_none() || module.platform.as_ref()? == &platform)
+            {
                 return Some((package_type, module));
             }
         }
         None
     }
-    pub fn get_package_cpy(&self, name: &str, version: &str) -> Option<(PackageType, PackageReleaseEntry)> {
+    pub fn get_package_cpy(
+        &self,
+        name: &str,
+        version: &str,
+    ) -> Option<(PackageType, PackageReleaseEntry)> {
         let res = self.get_package(name, version);
         if res.is_none() {
             return None;
@@ -665,7 +850,12 @@ impl Index {
         }
         None
     }
-    pub fn get_latest_compatible_release_within_range(&self, name: &str, version_start: &SemVer, version_end: &SemVer) -> Option<(&PackageType, &PackageReleaseEntry)> {
+    pub fn get_latest_compatible_release_within_range(
+        &self,
+        name: &str,
+        version_start: &SemVer,
+        version_end: &SemVer,
+    ) -> Option<(&PackageType, &PackageReleaseEntry)> {
         let res = self.packages.get(name);
         let (package_type, version_list) = res?;
         let mut versions: Vec<&PackageReleaseEntry> = version_list.iter().collect();
@@ -678,7 +868,10 @@ impl Index {
                 continue;
             }
             let semver = semver?;
-            if semver >= *version_start && semver < *version_end && (module.platform.is_none() || module.platform.as_ref()? == &platform) {
+            if semver >= *version_start
+                && semver < *version_end
+                && (module.platform.is_none() || module.platform.as_ref()? == &platform)
+            {
                 return Some((package_type, module));
             }
         }

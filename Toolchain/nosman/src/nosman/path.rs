@@ -31,11 +31,14 @@ pub fn get_module_manifest_file(path: &PathBuf, extension: &str) -> Result<Optio
 }
 
 pub fn get_plugin_manifest_file(path: &PathBuf) -> Result<Option<PathBuf>, String> {
-    get_module_manifest_file(path, constants::PLUGIN_MANIFEST_FILE_EXT)
+    if let Some(manifest_file) = get_module_manifest_file(path, constants::PLUGIN_MANIFEST_FILE_EXT)? {
+        return Ok(Some(manifest_file));
+    }
+    get_module_manifest_file(path, constants::LEGACY_PLUGIN_MANIFEST_FILE_EXT)
 }
 
 pub fn get_subsystem_manifest_file(path: &PathBuf) -> Result<Option<PathBuf>, String> {
-    get_module_manifest_file(path, constants::SUBSYSTEM_MANIFEST_FILE_EXT)
+    get_module_manifest_file(path, constants::LEGACY_SUBSYSTEM_MANIFEST_FILE_EXT)
 }
 
 pub fn get_default_engines_dir(workspace: &PathBuf) -> PathBuf {

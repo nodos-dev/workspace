@@ -8,7 +8,7 @@ use std::io::{Write};
 use std::path;
 use std::path::PathBuf;
 use std::time::Duration;
-use clap::{ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use indicatif::ProgressBar;
 use libloading::{Symbol};
@@ -18,7 +18,7 @@ use tempfile::{tempdir};
 use zip::write::{SimpleFileOptions};
 use chrono::{Utc};
 
-use crate::nosman::command::{Command, CommandError, CommandResult};
+use crate::nosman::command::{get_version_check_arg, Command, CommandError, CommandResult};
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::{common, constants};
 use crate::nosman::index::{ModuleType, PackageReleaseEntry, PackageType, SemVer, VersionCheckStrategy};
@@ -422,6 +422,90 @@ impl PublishCommand {
         }
         Ok(())
     }
+}
+
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("publish")
+        .about("Publish a package")
+        .after_help("This command will publish a package to the specified remote.\n\
+    If there is an existing Nodos release, updates it (note that this will remove all installed Nodos engines!)")
+        .arg(Arg::new("path")
+            .long("path")
+            .short('p')
+            .help(format!("Path to the root folder of the package (or a file) to be published.\n\
+        If not provided, the current directory will be used.\n\
+        If the path is a folder and it does not contain a {} file, it will add all files to the release.", constants::PUBLISH_OPTIONS_FILE_NAME))
+            .default_value(".")
+        )
+        .arg(Arg::new("name")
+            .long("name")
+            .short('n')
+            .help("Name of the package. It will be overridden by the module manifest files under <path> if present.\n\
+        If the <path> does not contain a module manifest file, this parameter is required."))
+        .arg(Arg::new("version")
+            .long("version")
+            .help("Version of the package. It will be overridden by the module manifest files under <path> if present.\n\
+        If the <path> does not contain a module manifest file, this parameter is required.")
+        )
+        .arg(Arg::new("version_suffix")
+            .long("version-suffix")
+            .help("Suffix to append to the version of the package.")
+            .default_value("")
+        )
+        .arg(Arg::new("remote")
+            .help("Name of the remote to publish to.")
+            .long("remote")
+            .default_value("default")
+        )
+        .arg(Arg::new("type")
+            .long("type")
+            .short('t')
+            .value_parser(clap::builder::PossibleValuesParser::new(["plugin", "subsystem", "nodos", "engine", "generic"]))
+            .help("Type of the package. It will be overridden by the module manifest files under <path> if present.\n\
+        If the <path> does not contain a module manifest file, this parameter is required.")
+        )
+        .arg(Arg::new("vendor")
+            .help("Who is publishing the package?\n\
+        Required if the module to be published was not added to the index before.")
+            .long("vendor")
+        )
+        .arg(Arg::new("publisher_name")
+            .help("Git name of the publishing agent. If not provided, the name of the current git user will be used.")
+            .long("publisher-name")
+            .required(false)
+        )
+        .arg(Arg::new("publisher_email")
+            .help("Git email of the publishing agent. If not provided, the email of the current git user will be used.")
+            .long("publisher-email")
+            .required(false)
+        )
+        .arg(Arg::new("dry_run")
+            .action(ArgAction::SetTrue)
+            .long("dry-run")
+            .help("Do not actually publish the package, just show what would be done.")
+            .num_args(0)
+            .required(false)
+        )
+        .arg(Arg::new("verbose")
+            .action(ArgAction::SetTrue)
+            .long("verbose")
+            .help("Print more information about the process.")
+            .num_args(0)
+            .required(false)
+        )
+        .arg(Arg::new("tag")
+            .action(ArgAction::Append)
+            .long("tag")
+            .help("Add a tag to the release. Can be specified multiple times.")
+            .required(false)
+            .num_args(1)
+        )
+        .arg(Arg::new("target_platform")
+            .long("target-platform")
+            .help("Target architecture and operating system of the module to be published. If not provided, the current platform will be used.")
+            .required(false)
+        )
+        .arg(get_version_check_arg())
 }
 
 impl Command for PublishCommand {

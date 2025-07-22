@@ -1,4 +1,4 @@
-use clap::{ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use crate::nosman;
 use crate::nosman::command::{Command, CommandResult};
@@ -35,6 +35,34 @@ impl UnpublishCommand {
         }
         Ok(())
     }
+}
+
+pub fn get_cli() -> clap::Command {
+    clap::Command::new("unpublish")
+        .alias("yank")
+        .about("Unpublish a package from the index.")
+        .arg(Arg::new("package_name").required(true))
+        .arg(Arg::new("remote")
+            .help("Name of the remote to edit.")
+            .long("remote")
+            .default_value("default")
+        )
+        .arg(Arg::new("version")
+            .help("Version of the package to unpublish. If not provided, all versions will be unpublished."))
+        .arg(Arg::new("dry_run")
+            .action(ArgAction::SetTrue)
+            .long("dry-run")
+            .help("Do not actually publish the package, just show what would be done.")
+            .num_args(0)
+            .required(false)
+        )
+        .arg(Arg::new("verbose")
+            .action(ArgAction::SetTrue)
+            .long("verbose")
+            .help("Print more information about the process.")
+            .num_args(0)
+            .required(false)
+        )
 }
 
 impl Command for UnpublishCommand {
