@@ -21,8 +21,10 @@ use chrono::{Utc};
 use crate::nosman::command::{get_version_check_arg, Command, CommandError, CommandResult};
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::{common, constants};
-use crate::nosman::index::{ModuleType, PackageReleaseEntry, PackageType, SemVer, VersionCheckStrategy};
-use crate::nosman::module::{get_module_manifest_and_type, load_module, PackageIdentifier};
+use crate::nosman::index::{PackageReleaseEntry, PackageType, SemVer, VersionCheckStrategy};
+use crate::nosman::module::{load_module};
+use crate::nosman::package::PackageIdentifier;
+use crate::nosman::path::get_package_manifest_file;
 use crate::nosman::platform::{get_host_platform, Platform};
 use crate::nosman::workspace::Workspace;
 
@@ -138,7 +140,7 @@ impl PublishCommand {
 
         let mut dependencies: Option<Vec<PackageIdentifier>> = None;
         let mut category: Option<String> = None;
-        let mut module_tags: Option<Vec<String>> = None;
+        let mut package_tags: Option<Vec<String>> = None;
 
         // If path is a directory, search for a manifest file
         let mut manifest_file = None;
@@ -153,24 +155,21 @@ impl PublishCommand {
                 }
             }
 
-            let res = get_module_manifest_and_type(&abs_path);
-            if res.is_err() {
-                return Err(res.err().unwrap());
+            let res = get_package_manifest_file(&abs_path);
+            if let Err(msg) = res {
+                return Err(Runtime { message: msg });
             }
-            if let Ok(Some((module_type, file))) = res {
+            if let Ok(Some((pkg_type, file))) = res {
                 manifest_file = Some(file);
-                package_type = Some(match module_type {
-                    ModuleType::Plugin => PackageType::Plugin,
-                    ModuleType::Subsystem => PackageType::Subsystem
-                });
+                package_type = Some(pkg_type);
             }
             if manifest_file.is_some() {
                 let package_type = package_type.as_ref().unwrap();
                 let manifest_file = manifest_file.as_ref().unwrap();
                 let contents = std::fs::read_to_string(manifest_file)?;
                 let manifest: serde_json::Value = serde_json::from_str(&contents).unwrap();
-                name = Some(manifest["info"]["id"]["name"].as_str().unwrap_or_else(|| panic!("Module manifest file {:?} must contain info.id.name field!", manifest_file)).to_string());
-                version = Some(manifest["info"]["id"]["version"].as_str().unwrap_or_else(|| panic!("Module manifest file {:?} must contain info.id.version field!", manifest_file)).to_string());
+                name = Some(manifest["info"]["id"]["name"].as_str().unwrap_or_else(|| panic!("Package manifest file {:?} must contain info.id.name field!", manifest_file)).to_string());
+                version = Some(manifest["info"]["id"]["version"].as_str().unwrap_or_else(|| panic!("Package manifest file {:?} must contain info.id.version field!", manifest_file)).to_string());
                 let dependencies_json = manifest["info"]["dependencies"].as_array();
                 if dependencies_json.is_some() {
                     let mut deps = vec![];
@@ -182,15 +181,15 @@ impl PublishCommand {
                     dependencies = Some(deps);
                 }
                 category = manifest["info"]["category"].as_str().map(|s| s.to_string());
-                module_tags = manifest["info"]["tags"].as_array().map(|a| a.iter().map(|v| v.as_str().unwrap().to_string()).collect());
+                package_tags = manifest["info"]["tags"].as_array().map(|a| a.iter().map(|v| v.as_str().unwrap().to_string()).collect());
                 let binary_path = manifest["binary_path"].as_str();
-                if binary_path.is_some() {
-                    let lib = match load_module(verbose, manifest, manifest_file.parent().unwrap().to_path_buf(), workspace) {
+                if binary_path.is_some() && package_type.is_plugin() {
+                    let lib = match load_module(verbose, &package_type, manifest, manifest_file.parent().unwrap().to_path_buf(), workspace) {
                         Ok(lib) => lib,
                         Err(error) => return Err(error),
                     };
                     if verbose {
-                        println!("Module {} loaded successfully. Checking Nodos {:?} API version...", name.as_ref().unwrap(), &package_type);
+                        println!("Package {} loaded successfully. Checking Nodos {:?} API version...", name.as_ref().unwrap(), &package_type);
                     }
                     let get_api_version_func_name = "nosGetPluginAPIVersion";
                     unsafe
@@ -283,6 +282,9 @@ impl PublishCommand {
                     if file_path == m {
                         let mut manifest: serde_json::Value = serde_json::from_slice(&buffer).unwrap();
                         manifest["info"]["id"]["version"] = serde_json::Value::String(version.clone());
+                        if package_type == PackageType::Generic {
+                            manifest["schema_version"] = serde_json::Value::String(constants::GENERIC_PACKAGE_MANIFEST_SCHEMA_VERSION.to_string());
+                        }
                         pb.println(format!("Updated version to {} in manifest file: {}", version.clone(), m.display()).as_str());
                         buffer = serde_json::to_vec_pretty(&manifest).unwrap();
                     }
@@ -361,7 +363,7 @@ impl PublishCommand {
             release_date: Some(now_iso),
             dependencies,
             category,
-            module_tags,
+            module_tags: package_tags,
             release_tags: if release_tags.is_empty() { None } else { Some(release_tags.clone()) },
             platform: Some(target_platform.to_string()),
         };

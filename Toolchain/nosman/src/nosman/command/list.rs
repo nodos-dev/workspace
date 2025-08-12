@@ -9,42 +9,42 @@ use crate::nosman::workspace::{Workspace};
 pub struct ListCommand {}
 
 impl ListCommand {
-    fn run_list(&self, workspace: &mut Workspace, mut installed: bool, mut remote: bool, opt_package_name: Option<&String>) -> CommandResult {
-        if !installed && !remote {
+    fn run_list(&self, workspace: &mut Workspace, mut local: bool, mut remote: bool, opt_package_name: Option<&String>) -> CommandResult {
+        if !local && !remote {
             // Select
-            let selection = MultiSelect::new("What do you want to list?", vec!["Installed modules", "Remote packages"])
+            let selection = MultiSelect::new("What do you want to list?", vec!["Local packages", "Remote packages"])
                 .prompt();
             let selection = selection.map_err(|e| crate::nosman::command::CommandError::Runtime { message: format!("Failed to prompt user: {}", e) })?;
             for sel in selection {
                 match sel {
-                    "Installed modules" => installed = true,
+                    "Local packages" => local = true,
                     "Remote packages" => remote = true,
                     _ => {}
                 }
             }
-            if !installed && !remote {
+            if !local && !remote {
                 println!("{}", "Nothing selected".to_string().yellow());
             }
         }
 
         if let Some(package_name) = opt_package_name {
-            if installed {
-                println!("{}", format!("Installed versions of {}", package_name).green());
-                let mut installed_versions = Vec::new();
-                for (name, ver_map) in &workspace.installed_modules {
+            if local {
+                println!("{}", format!("Local versions of {}", package_name).green());
+                let mut local_versions = Vec::new();
+                for (name, ver_map) in &workspace.packages {
                     for (version, module) in ver_map {
                         if name == package_name {
-                            installed_versions.push((name.clone(), version.clone(), module.clone()));
+                            local_versions.push((name.clone(), version.clone(), module.clone()));
                         }
                     }
                 }
-                installed_versions.sort_by(|a, b| {
+                local_versions.sort_by(|a, b| {
                     let a_version = SemVer::parse_from_str(a.1.as_str());
                     let b_version = SemVer::parse_from_str(b.1.as_str());
                     a_version.cmp(&b_version)
                 });
-                for (_name, version, module) in installed_versions {
-                    println!("  {} ({})", format!("{}", version).green(), module.get_module_dir().display());
+                for (_name, version, module) in local_versions {
+                    println!("  {} ({})", format!("{}", version).green(), module.get_package_root().display());
                 }
             }
             if remote {
@@ -74,17 +74,17 @@ impl ListCommand {
                 }
             }
         } else {
-            if installed {
-                println!("{}", "Installed modules".green());
+            if local {
+                println!("{}", "Local packages".green());
                 let mut installed_modules_alphabetical = Vec::new();
-                for (name, ver_map) in &workspace.installed_modules {
+                for (name, ver_map) in &workspace.packages {
                     for (version, module) in ver_map {
                         installed_modules_alphabetical.push((name.clone(), version.clone(), module.clone()));
                     }
                 }
                 installed_modules_alphabetical.sort_by(|a, b| a.0.cmp(&b.0));
                 for (name, version, module) in installed_modules_alphabetical {
-                    println!("  {} ({})", format!("{} ({})", name.green(), version.yellow()), module.get_module_dir().display());
+                    println!("  {} ({})", format!("{} ({})", name.green(), version.yellow()), module.get_package_root().display());
                 }
             }
             if remote {
@@ -104,10 +104,11 @@ impl ListCommand {
 pub fn get_cli() -> clap::Command {
     clap::Command::new("list")
         .about("List packages")
-        .arg(Arg::new("installed")
+        .arg(Arg::new("local")
             .action(ArgAction::SetTrue)
-            .help("List installed modules")
-            .long("installed")
+            .help("List local packages")
+            .long("local")
+            .alias("installed")
             .num_args(0)
             .required(false)
             .group("list_type")
@@ -121,7 +122,7 @@ pub fn get_cli() -> clap::Command {
             .group("list_type")
         )
         .arg(Arg::new("package_name")
-            .help("Name of the package to list remote/installed packages of")
+            .help("Name of the package to list remote/local packages of")
             .long("package-name")
             .short('p')
             .required(false)
@@ -138,9 +139,9 @@ impl Command for ListCommand {
     }
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
-        let installed = args.get_one::<bool>("installed").unwrap();
+        let local = args.get_one::<bool>("local").unwrap();
         let remote = args.get_one::<bool>("remote").unwrap();
         let opt_package_name = args.get_one::<String>("package_name");
-        self.run_list(workspace, *installed, *remote, opt_package_name)
+        self.run_list(workspace, *local, *remote, opt_package_name)
     }
 }

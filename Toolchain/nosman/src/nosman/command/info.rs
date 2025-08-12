@@ -10,13 +10,13 @@ impl InfoCommand {
     fn run_get_info(&self, workspace: &mut Workspace, module_name: &str, version: &str, relaxed: bool, rescan_if_needed: bool) -> CommandResult {
         workspace.set_output_mode(OutputMode::Silent);
         let module =  if relaxed {
-            let res = workspace.get_latest_installed_module_for_version(module_name, version);
+            let res = workspace.get_latest_local_package_for_version(module_name, version);
             if let Err(msg) = res {
                 return Err(CommandError::InvalidArgument { message: msg });
             }
             res.unwrap()
         } else {
-            let res = workspace.get_installed_module(module_name, version);
+            let res = workspace.get_package(module_name, version);
             if res.is_none() {
                 if rescan_if_needed {
                     workspace.recreate()?;

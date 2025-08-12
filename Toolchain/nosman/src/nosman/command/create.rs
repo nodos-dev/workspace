@@ -5,11 +5,12 @@ use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use crate::nosman::command::{get_lang_tool_arg, get_nodos_version_from_args, Command, CommandResult};
 use crate::nosman::command::CommandError::InvalidArgument;
-use crate::nosman::index::{ModuleType, SemVer};
+use crate::nosman::index::{PluginType, SemVer};
 use include_dir::{include_dir, Dir};
 use crate::nosman::command::sdk_info::get_engine_sdk_infos;
 use crate::nosman::common::{DEFAULT_NODOS_VERSION_INDEX, SUPPORTED_NODOS_VERSIONS};
-use crate::nosman::module::{get_dependency_arguments, get_manifest_file_ext, PackageIdentifier};
+use crate::nosman::module::get_dependency_arguments;
+use crate::nosman::package::{get_plugin_manifest_file_ext, PackageIdentifier};
 use crate::nosman::workspace::{ScanModulesFlags, Workspace};
 
 pub struct CreateCommand {}
@@ -42,8 +43,8 @@ impl LangTool {
 
 static DATA_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/data");
 
-fn get_template_dir_for<'a>(name: &str, module_type: &ModuleType, version: &str) -> &'a Dir<'a> {
-    let template_dir = if *module_type == ModuleType::Plugin {
+fn get_template_dir_for<'a>(name: &str, module_type: &PluginType, version: &str) -> &'a Dir<'a> {
+    let template_dir = if *module_type == PluginType::Plugin {
         DATA_DIR.get_dir(format!("templates/nodos-{}/{}/plugin", version, name)).unwrap()
     } else {
         DATA_DIR.get_dir(format!("templates/nodos-{}/{}/subsystem", version, name)).unwrap()
@@ -101,9 +102,9 @@ impl CreateCommand {
         }
     }
 
-    pub fn run_create(&self, workspace: &mut Workspace, module_name: &str, module_type: ModuleType, lang_tool: LangTool,
+    pub fn run_create(&self, workspace: &mut Workspace, module_name: &str, plugin_type: PluginType, lang_tool: LangTool,
                       output_dir: &PathBuf, deps: Vec<PackageIdentifier>, description: &str, nodos_version: Option<SemVer>) -> CommandResult {
-        println!("{}", format!("Creating a new Nodos module project of type '{:?}'", module_type).green());
+        println!("{}", format!("Creating a new Nodos module project of type '{:?}'", plugin_type).green());
 
         // Check module name contains at least one namespace
         if module_name.split('.').count() < 2 {
@@ -145,13 +146,13 @@ impl CreateCommand {
 
         fs::create_dir_all(&output_dir)?;
 
-        let tool_template_dir = get_template_dir_for(lang_tool.tool(), &module_type, &version_str);
-        let lang_template_dir = get_template_dir_for(lang_tool.lang(), &module_type, &version_str);
+        let tool_template_dir = get_template_dir_for(lang_tool.tool(), &plugin_type, &version_str);
+        let lang_template_dir = get_template_dir_for(lang_tool.lang(), &plugin_type, &version_str);
 
-        let manifest_path_ext = get_manifest_file_ext(selected_version.as_ref(), &module_type);
+        let manifest_path_ext = get_plugin_manifest_file_ext(selected_version.as_ref(), &plugin_type);
 
         // Copy .noscfg if plugin or .nossys
-        let manifest_template_file = if module_type == ModuleType::Plugin {
+        let manifest_template_file = if plugin_type == PluginType::Plugin {
             DATA_DIR.get_file(format!("templates/nodos-{}/Plugin.{}", version_str, manifest_path_ext)).unwrap()
         } else {
             DATA_DIR.get_file(format!("templates/nodos-{}/Subsystem.{}", version_str, manifest_path_ext)).unwrap()
@@ -183,10 +184,10 @@ impl CreateCommand {
             Self::replace_lang_placeholders(content, lang_tool.lang());
         })?;
 
-        println!("{:?} project created at {:?}", module_type, output_dir);
+        println!("{:?} project created at {:?}", plugin_type, output_dir);
 
         if workspace.ready() {
-            workspace.scan_modules_in_folder(output_dir.clone(), ScanModulesFlags::ForceReplaceInRegistry);
+            workspace.scan_packages_in_folder(output_dir.clone(), ScanModulesFlags::ForceReplaceInRegistry);
             workspace.save()?;
         }
 
@@ -256,8 +257,8 @@ impl Command for CreateCommand {
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let module_type = match args.get_one::<String>("type").unwrap().as_str() {
-            "plugin" => ModuleType::Plugin,
-            "subsystem" => ModuleType::Subsystem,
+            "plugin" => PluginType::Plugin,
+            "subsystem" => PluginType::Subsystem,
             _ => panic!("Invalid module type") // Unreachable
         };
         let lang_tool = match args.get_one::<String>("language/tool").unwrap().as_str() {

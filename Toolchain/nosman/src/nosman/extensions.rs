@@ -210,7 +210,7 @@ pub fn get_commands(lib: Library) -> Option<Vec<NosCommandDesc>> {
 }
 
 pub fn add_extensions(workspace: &Workspace, mut cmd: clap::Command) -> clap::Command {
-    let modules = workspace.get_latest_installed_modules();
+    let modules = workspace.get_latest_local_packages();
     for module in modules {
         for command in &module.commands {
             let mut new_cmd = clap::Command::new(command.name.clone())

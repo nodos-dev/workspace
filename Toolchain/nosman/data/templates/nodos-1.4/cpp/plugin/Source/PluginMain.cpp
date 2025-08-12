@@ -1,6 +1,4 @@
-#include <Nodos/PluginAPI.h>
-#include <Nodos/PluginHelpers.hpp>
-#include <Nodos/Helpers.hpp>
+#include <Nodos/Plugin.hpp>
 
 NOS_INIT()
 NOS_BEGIN_IMPORT_DEPS()

@@ -15,7 +15,8 @@ use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::{constants};
 use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{Index, PackageIndexEntry, PackageReleaseEntry, PackageReleases, PackageType, Remote, SemVer};
-use crate::nosman::module::{InstalledModule, get_module_manifests, NodeDefinition};
+use crate::nosman::module::{NodeDefinition};
+use crate::nosman::package::{get_package_manifests, LocalPackageEntry};
 use crate::nosman::path::get_rel_path_based_on;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
@@ -44,7 +45,8 @@ pub struct Workspace {
     #[serde(skip_serializing, skip_deserializing)]
     pub root: PathBuf,
     pub remotes: Vec<Remote>,
-    pub installed_modules: HashMap<String, HashMap<String, InstalledModule>>,
+    #[serde(alias = "installed_modules")]
+    pub packages: HashMap<String, HashMap<String, LocalPackageEntry>>,
     #[serde(skip_serializing, skip_deserializing)]
     pub index_cache: Index,
     #[serde(skip_serializing, skip_deserializing)]
@@ -56,7 +58,7 @@ pub struct RescanFlags(u8);
 
 bitflags! {
     impl RescanFlags: u8 {
-        const ScanModules = 0b1;
+        const ScanPackages = 0b1;
         const FetchPackageIndex = 0b10;
         const AddDefaultPackageIndexIfNoRemoteExists = 0b100;
     }
@@ -126,7 +128,7 @@ impl Workspace {
         Workspace {
             root: path,
             remotes: Vec::new(),
-            installed_modules: HashMap::new(),
+            packages: HashMap::new(),
             index_cache: Index { packages: HashMap::new() },
             runtime: WorkspaceRuntimeParams { status: WorkspaceStatus::DoesNotExist, output_mode: OutputMode::Default },
         }
@@ -182,75 +184,75 @@ impl Workspace {
     pub fn get_nosman_index_filepath(&self) -> PathBuf {
         get_nosman_index_filepath_for(&self.root)
     }
-    pub fn get_installed_module(&self, name: &str, version: &str) -> Option<&InstalledModule> {
-        match self.installed_modules.get(name) {
+    pub fn get_package(&self, name: &str, version: &str) -> Option<&LocalPackageEntry> {
+        match self.packages.get(name) {
             Some(versions) => versions.get(version),
             None => None,
         }
     }
-    pub fn get_installed_modules(&self, name: &str) -> Vec<&InstalledModule> {
+    pub fn get_packages(&self, name: &str) -> Vec<&LocalPackageEntry> {
         let mut res = Vec::new();
-        if let Some(versions) = self.installed_modules.get(name) {
-            for (_version, module) in versions {
-                res.push(module);
+        if let Some(versions) = self.packages.get(name) {
+            for (_version, package) in versions {
+                res.push(package);
             }
         }
         res
     }
-    pub fn get_or_select_installed_module(&self, module_name: &String) -> Result<InstalledModule, CommandError> {
-        let modules = self.get_installed_modules(module_name);
-        let module;
-        if modules.len() == 0 {
-            return Err(InvalidArgument { message: format!("Module {} not found", module_name) });
-        } else if modules.len() > 1 {
-            let selection = Select::new(format!("Multiple modules found with name {}. Please select one:", module_name).as_str(), modules)
+    pub fn get_or_select_package(&self, package_name: &String) -> Result<LocalPackageEntry, CommandError> {
+        let packages = self.get_packages(package_name);
+        let package;
+        if packages.len() == 0 {
+            return Err(InvalidArgument { message: format!("Package {} not found", package_name) });
+        } else if packages.len() > 1 {
+            let selection = Select::new(format!("Multiple packages found with name {}. Please select one:", package_name).as_str(), packages)
                 .prompt();
             if let Err(e) = selection {
                 return Err(InvalidArgument { message: format!("Failed to select module: {}", e) });
             } else {
-                module = selection.unwrap();
+                package = selection.unwrap();
             }
         } else {
-            module = modules[0];
+            package = packages[0];
         }
-        Ok(self.absolutize_paths(module))
+        Ok(self.absolutize_paths(package))
     }
-    pub fn absolutize_paths(&self, module: &InstalledModule) -> InstalledModule {
-        let mut new_module = module.clone();
-        if new_module.manifest_path.is_relative() {
-            new_module.manifest_path = self.root.join(&new_module.manifest_path);
+    pub fn absolutize_paths(&self, package: &LocalPackageEntry) -> LocalPackageEntry {
+        let mut new_package = package.clone();
+        if new_package.manifest_path.is_relative() {
+            new_package.manifest_path = self.root.join(&new_package.manifest_path);
         }
-        if let Some(ref path) = new_module.public_include_folder {
+        if let Some(ref path) = new_package.public_include_folder {
             if path.is_relative() {
-                new_module.public_include_folder = Some(self.root.join(path));
+                new_package.public_include_folder = Some(self.root.join(path));
             }
         }
-        for path in &mut new_module.type_schema_files {
+        for path in &mut new_package.type_schema_files {
             if path.is_relative() {
                 *path = self.root.join(&*path);
             }
         }
-        new_module
+        new_package
     }
-    pub fn get_latest_installed_module_within_range(&self, name: &str, version_start: &SemVer, version_end: &SemVer) -> Option<&InstalledModule> {
-        let version_list = self.installed_modules.get(name);
+    pub fn get_latest_local_package_within_range(&self, name: &str, version_start: &SemVer, version_end: &SemVer) -> Option<&LocalPackageEntry> {
+        let version_list = self.packages.get(name);
         let version_list = version_list?;
-        let mut versions: Vec<(&String, &InstalledModule)> = version_list.iter().collect();
+        let mut versions: Vec<(&String, &LocalPackageEntry)> = version_list.iter().collect();
         versions.sort_by(|a, b| a.0.cmp(b.0));
         versions.reverse();
-        for (version, module) in versions {
+        for (version, package) in versions {
             let semver = SemVer::parse_from_str(version);
             if semver.is_none() {
                 continue;
             }
             let semver = semver?;
             if semver >= *version_start && semver < *version_end {
-                return Some(module);
+                return Some(package);
             }
         }
         None
     }
-    pub fn get_latest_installed_module_for_version(&self, module_name: &str, requested_version: &str) -> Result<&InstalledModule, String> {
+    pub fn get_latest_local_package_for_version(&self, module_name: &str, requested_version: &str) -> Result<&LocalPackageEntry, String> {
         let semver_res = SemVer::parse_from_str(requested_version);
         if semver_res.is_none() {
             return Err(format!("Invalid semantic version: {}.", requested_version));
@@ -260,9 +262,9 @@ impl Workspace {
             return Err("Please provide a minor version too!".to_string());
         }
         let version_end = version_start.get_one_up();
-        let res = self.get_latest_installed_module_within_range(module_name, &version_start, &version_end);
+        let res = self.get_latest_local_package_within_range(module_name, &version_start, &version_end);
         if res.is_none() {
-            return Err(format!("No installed version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), module_name));
+            return Err(format!("No installed version in range [{}, {}) for package {}", version_start.to_string(), version_end.to_string(), module_name));
         }
         Ok(res.unwrap())
     }
@@ -274,29 +276,29 @@ impl Workspace {
         }
         let semver = semver.unwrap();
         let version_end = semver.get_one_up();
-        let installed = self.get_latest_installed_module_within_range(name, &semver, &version_end);
+        let installed = self.get_latest_local_package_within_range(name, &semver, &version_end);
         if installed.is_some() {
             return Ok(None);
         }
         let res = self.index_cache.get_latest_compatible_release_within_range(name, &semver, &version_end);
         if res.is_none() {
-            return Err(InvalidArgument { message: format!("No releases found for module {} in range [{}, {})", name, semver.to_string(), version_end.to_string()) });
+            return Err(InvalidArgument { message: format!("No releases found for package {} in range [{}, {})", name, semver.to_string(), version_end.to_string()) });
         }
         Ok(Some(res.unwrap()))
     }
-    pub fn add(&mut self, module: InstalledModule) {
-        let versions = self.installed_modules.entry(module.info.id.name.clone()).or_insert(HashMap::new());
-        versions.insert(module.info.id.version.clone(), module);
+    pub fn add(&mut self, package: LocalPackageEntry) {
+        let versions = self.packages.entry(package.info.id.name.clone()).or_insert(HashMap::new());
+        versions.insert(package.info.id.version.clone(), package);
     }
     pub fn remove(&mut self, name: &str, version: &str) -> CommandResult {
-        let res = self.get_installed_module(name, version);
+        let res = self.get_package(name, version);
         if res.is_none() {
-            return Err(CommandError::InvalidArgument { message: format!("Module {} version {} is not installed", name, version) });
+            return Err(CommandError::InvalidArgument { message: format!("Package {} version {} is not installed", name, version) });
         }
-        println!("Removing module {} version {}", name, version);
-        let module = res.unwrap();
-        fs::remove_dir_all(module.get_module_dir())?;
-        if let Some(versions) = self.installed_modules.get_mut(name) {
+        println!("Removing package {} version {}", name, version);
+        let package = res.unwrap();
+        fs::remove_dir_all(package.get_package_root())?;
+        if let Some(versions) = self.packages.get_mut(name) {
             versions.remove(version);
         }
         self.save()?;
@@ -304,13 +306,13 @@ impl Workspace {
         Ok(())
     }
     pub fn remove_all(&mut self) -> CommandResult {
-        for (_name, versions) in self.installed_modules.iter() {
+        for (_name, versions) in self.packages.iter() {
             for (_version, module) in versions.iter() {
                 println!("Removing module {}", module.info.id);
-                fs::remove_dir_all(module.get_module_dir())?;
+                fs::remove_dir_all(module.get_package_root())?;
             }
         }
-        self.installed_modules.clear();
+        self.packages.clear();
         self.save()?;
         println!("{}", "All modules removed successfully".green());
         Ok(())
@@ -321,25 +323,25 @@ impl Workspace {
     pub fn set_output_mode(&mut self, mode: OutputMode) {
         self.runtime.output_mode = mode;
     }
-    pub fn scan_modules_in_folder(&mut self, folder: PathBuf, flags: ScanModulesFlags) {
+    pub fn scan_packages_in_folder(&mut self, folder: PathBuf, flags: ScanModulesFlags) {
         // Scan folders with .noscfg and .nossys files
         let folder = dunce::canonicalize(&folder).unwrap_or_else(|e| panic!("Failed to canonicalize path {}: {}", folder.display(), e));
-        let module_manifests = get_module_manifests(&folder, self.is_silent());
+        let package_manifests = get_package_manifests(&folder, self.is_silent());
 
         let pb = get_progress_bar(self.is_silent());
         pb.enable_steady_tick(Duration::from_millis(100));
 
-        pb.println(format!("Found {} modules in {}", module_manifests.len(), folder.display()).as_str().green().to_string());
+        pb.println(format!("Found {} modules in {}", package_manifests.len(), folder.display()).as_str().green().to_string());
 
-        for (_ty, path) in module_manifests {
+        for (ty, path) in package_manifests {
             pb.set_message(format!("Scanning module: {}", path.display()));
-            let res = InstalledModule::new(&self, get_rel_path_based_on(&path, &self.root), flags.contains(ScanModulesFlags::RegisterCommands));
+            let res = LocalPackageEntry::new(&self, get_rel_path_based_on(&path, &self.root), ty, flags.contains(ScanModulesFlags::RegisterCommands));
             if let Err(msg) = res {
                 pb.println(format!("Error while scanning {}: {}", path.display(), msg).red().to_string());
                 continue;
             }
             let installed_module = res.unwrap();
-            let opt_found = self.get_installed_module(&installed_module.info.id.name, &installed_module.info.id.version);
+            let opt_found = self.get_package(&installed_module.info.id.name, &installed_module.info.id.version);
             if opt_found.is_some() {
                 let found = opt_found.unwrap();
                 if flags.contains(ScanModulesFlags::ForceReplaceInRegistry) {
@@ -352,8 +354,8 @@ impl Workspace {
             self.add(installed_module);
         }
     }
-    pub fn scan_modules(&mut self, flags: ScanModulesFlags) {
-       self.scan_modules_in_folder(self.root.clone(), flags);
+    pub fn scan_packages(&mut self, flags: ScanModulesFlags) {
+       self.scan_packages_in_folder(self.root.clone(), flags);
     }
     pub fn recreate(&mut self) -> Result<(), CommandError> {
         self.rescan(RescanFlags::all())?;
@@ -365,9 +367,9 @@ impl Workspace {
             self.index_cache.packages.clear();
             self.fetch_remotes(flags.contains(RescanFlags::AddDefaultPackageIndexIfNoRemoteExists))?;
         }
-        if flags.contains(RescanFlags::ScanModules) {
-            self.installed_modules.clear();
-            self.scan_modules(ScanModulesFlags::ForceReplaceInRegistry | ScanModulesFlags::RegisterCommands);
+        if flags.contains(RescanFlags::ScanPackages) {
+            self.packages.clear();
+            self.scan_packages(ScanModulesFlags::ForceReplaceInRegistry | ScanModulesFlags::RegisterCommands);
         }
         self.save()?;
         self.runtime.status = WorkspaceStatus::Ready;
@@ -410,7 +412,7 @@ impl Workspace {
     }
     pub fn get_node_definitions(&self, node_class_name: &String, nodos_version: &Option<SemVer>) -> Vec<NodeDefinition> {
         let mut res = Vec::new();
-        for versions in self.installed_modules.values() {
+        for versions in self.packages.values() {
             for module in versions.values() {
                 let module_abs = self.absolutize_paths(module);
                 if let Some(found) = module_abs.get_node_definition(node_class_name, nodos_version) {
@@ -420,9 +422,9 @@ impl Workspace {
         }
         res
     }
-    pub fn get_latest_installed_modules(&self) -> Vec<&InstalledModule> {
+    pub fn get_latest_local_packages(&self) -> Vec<&LocalPackageEntry> {
         let mut versions_map = HashMap::new();
-        for (module_name, versions) in &self.installed_modules {
+        for (module_name, versions) in &self.packages {
             for (version, module) in versions {
                 if !versions_map.contains_key(module_name) {
                     versions_map.insert(module_name.clone(), module);
@@ -456,7 +458,7 @@ impl Workspace {
     #[allow(dead_code)]
     pub fn get_installed_module_count(&self) -> usize {
         let mut count = 0;
-        for (_name, versions) in self.installed_modules.iter() {
+        for (_name, versions) in self.packages.iter() {
             count += versions.len();
         }
         count

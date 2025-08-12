@@ -1,5 +1,5 @@
 use crate::nosman::common::{get_progress_bar, run_if_not};
-use crate::nosman::module::PackageIdentifier;
+use crate::nosman::package::PackageIdentifier;
 use crate::nosman::platform::get_host_platform;
 use crate::nosman::workspace::Workspace;
 use crate::nosman::{common, constants};
@@ -25,7 +25,7 @@ pub enum PackageType {
 }
 
 impl PackageType {
-    pub fn is_module(&self) -> bool {
+    pub fn is_plugin(&self) -> bool {
         match self {
             PackageType::Plugin | PackageType::Subsystem => true,
             _ => false,
@@ -44,7 +44,7 @@ pub struct PackageIndexEntry {
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
-pub enum ModuleType {
+pub enum PluginType {
     Plugin,
     Subsystem,
 }

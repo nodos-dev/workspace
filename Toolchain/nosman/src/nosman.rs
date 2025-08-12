@@ -9,3 +9,4 @@ pub mod eula;
 mod platform;
 pub mod extensions;
 pub mod cli;
+pub mod package;
