@@ -9,28 +9,11 @@ use libloading::Library;
 #[cfg(unix)]
 use std::env;
 use std::ffi::OsString;
-use std::fmt::Display;
 #[cfg(target_os = "windows")]
 use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
-use std::fmt;
 use crate::nosman::package::{LocalPackageEntry, PackageIdentifier};
 use clap::ArgMatches;
-
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub struct NodeDefinition {
-    pub class_name: String,
-    pub defined_in: PathBuf,
-    pub index: usize,
-    pub json: serde_json::Value,
-    pub owner: LocalPackageEntry,
-}
-
-impl Display for NodeDefinition {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} ({})", self.owner.info.id, self.defined_in.display())
-    }
-}
 
 pub fn load_dylib_with_search_paths(verbose: bool, binary_path: &OsString, additional_search_paths: Vec<PathBuf>) -> Result<Library, CommandError> {
     if verbose {
@@ -141,8 +124,8 @@ pub fn load_dylib_with_search_paths(verbose: bool, binary_path: &OsString, addit
 
 pub fn load_module_from_manifest(package: &LocalPackageEntry, workspace: &Workspace) -> Result<Library, CommandError> {
     let path = package.get_abs_manifest_path(workspace);
-    let manifest_file_contents = common::read_or_fail(&path, "module manifest");
-    let manifest: serde_json::Value = serde_json::from_str(&manifest_file_contents).unwrap_or_else(|e| panic!("Failed to parse module manifest file {}: {}", path.display(), e));
+    let manifest_file_contents = common::read_or_fail(&path, "package manifest");
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_file_contents).unwrap_or_else(|e| panic!("Failed to parse package manifest file {}: {}", path.display(), e));
     load_module(false, &package.package_type, manifest, package.get_abs_manifest_path(workspace).parent().unwrap().to_path_buf(), workspace)
 }
 
@@ -157,7 +140,7 @@ pub fn load_module(verbose: bool, package_type: &PackageType, manifest: serde_js
     };
     let binary_path = manifest[key].as_str();
     if binary_path.is_none() {
-        return Err (InvalidArgument {message: "Module manifest does not specify a binary path".to_string() })
+        return Err (InvalidArgument {message: "Package manifest does not specify a binary path".to_string() })
     }
     let module_dir = manifest_file_parent;
     let binary_path = module_dir.join(binary_path.unwrap());

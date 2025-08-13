@@ -13,7 +13,8 @@ use crate::nosman::command::CommandError::Runtime;
 use crate::nosman::command::CommandResult;
 use crate::nosman::extensions::{CNosArg, CNosCommand, CNosRunCommandParams, NosCommand, NosCommandDesc};
 use crate::nosman::index::{PackageType, PluginType, SemVer};
-use crate::nosman::module::{load_module_from_manifest, NodeDefinition};
+use crate::nosman::module::{load_module_from_manifest};
+use crate::nosman::plugin::{NodeDefinition};
 use crate::nosman::path::{get_package_manifest_file, get_rel_path_based_on};
 use crate::nosman::workspace::Workspace;
 
