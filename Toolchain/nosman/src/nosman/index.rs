@@ -45,8 +45,8 @@ pub struct PackageIndexEntry {
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub enum PluginType {
-    Plugin,
-    Subsystem,
+    Default,
+    SubsystemLegacy,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone, Default)]
@@ -219,7 +219,7 @@ pub struct PackageReleaseEntry {
     pub(crate) version: String,
     pub(crate) url: String,
     // TODO: Replace plugin_api_version & subsystem_api_version with these
-    // module_type: String,
+    // plugin_type: String,
     // api_version: SemVer,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) plugin_api_version: Option<SemVer>,

@@ -475,7 +475,7 @@ pub fn get_package_manifests(folder: &PathBuf, silent: bool) -> Vec<(PackageType
 pub fn get_plugin_manifest_file_ext(nodos_version: Option<&SemVer>, plugin_type: &PluginType) -> &'static str {
     let ext = if nodos_version.is_some() && *nodos_version.unwrap() >= NODOS_1_4 {
         constants::PLUGIN_MANIFEST_FILE_EXT
-    } else if *plugin_type == PluginType::Plugin {
+    } else if *plugin_type == PluginType::Default {
         constants::LEGACY_PLUGIN_MANIFEST_FILE_EXT
     } else {
         constants::LEGACY_SUBSYSTEM_MANIFEST_FILE_EXT

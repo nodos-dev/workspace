@@ -13,8 +13,8 @@ use std::time::Duration;
 pub struct TestCommand {}
 
 struct TestCase {
-    module_name: String, // now the package name from manifest
-    module_dir: PathBuf,
+    package_name: String, // now the package name from manifest
+    package_dir: PathBuf,
     test_graph: PathBuf,
 }
 
@@ -30,9 +30,9 @@ impl TestCommand {
     fn collect_tests(modules_folder: &PathBuf) -> Vec<TestCase> {
         let mut tests = Vec::new();
         let manifests = package::get_package_manifests(modules_folder, true);
-        for (_module_type, manifest_path) in manifests {
-            let module_dir = manifest_path.parent().unwrap().to_path_buf();
-            let tests_dir = module_dir.join("Tests");
+        for (_plugin_type, manifest_path) in manifests {
+            let package_dir = manifest_path.parent().unwrap().to_path_buf();
+            let tests_dir = package_dir.join("Tests");
             if !tests_dir.exists() || !tests_dir.is_dir() {
                 continue;
             }
@@ -55,8 +55,8 @@ impl TestCommand {
                     let path = entry.path();
                     if path.is_file() && path.extension().map_or(false, |ext| ext == "nosa" || ext == "nos") {
                         tests.push(TestCase {
-                            module_name: package_name.clone(),
-                            module_dir: module_dir.clone(),
+                            package_name: package_name.clone(),
+                            package_dir: package_dir.clone(),
                             test_graph: path,
                         });
                     }
@@ -195,13 +195,13 @@ impl Command for TestCommand {
             println!("{}", "No modules with tests found.".yellow());
             return Ok(());
         }
-        println!("Found {} test(s) in {} module(s).", tests.len(), tests.iter().map(|t| &t.module_name).collect::<std::collections::HashSet<_>>().len());
+        println!("Found {} test(s) in {} module(s).", tests.len(), tests.iter().map(|t| &t.package_name).collect::<std::collections::HashSet<_>>().len());
         let mut results = Vec::new();
         for test in &tests {
             let test_graph_relpath = test.test_graph
                 .strip_prefix(&modules_folder)
                 .unwrap_or(&test.test_graph);
-            println!("{} {} (module: {})", "Running test graph:".green(), test_graph_relpath.display(), test.module_name);
+            println!("{} {} (module: {})", "Running test graph:".green(), test_graph_relpath.display(), test.package_name);
             let start = Instant::now();
             let exit_code = match Self::run_nodos_graph_test(workspace, engine_dir.as_deref(), &test.test_graph, timeout) {
                 Ok(code) => code,
@@ -212,8 +212,8 @@ impl Command for TestCommand {
             };
             let duration = start.elapsed();
             results.push(TestResult {
-                module_name: test.module_name.clone(),
-                module_dir: test.module_dir.clone(),
+                module_name: test.package_name.clone(),
+                module_dir: test.package_dir.clone(),
                 test_graph: test.test_graph.clone(),
                 exit_code,
                 duration,

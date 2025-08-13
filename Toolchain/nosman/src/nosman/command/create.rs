@@ -43,8 +43,8 @@ impl LangTool {
 
 static DATA_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/data");
 
-fn get_template_dir_for<'a>(name: &str, module_type: &PluginType, version: &str) -> &'a Dir<'a> {
-    let template_dir = if *module_type == PluginType::Plugin {
+fn get_template_dir_for<'a>(name: &str, plugin_type: &PluginType, version: &str) -> &'a Dir<'a> {
+    let template_dir = if *plugin_type == PluginType::Default {
         DATA_DIR.get_dir(format!("templates/nodos-{}/{}/plugin", version, name)).unwrap()
     } else {
         DATA_DIR.get_dir(format!("templates/nodos-{}/{}/subsystem", version, name)).unwrap()
@@ -152,7 +152,7 @@ impl CreateCommand {
         let manifest_path_ext = get_plugin_manifest_file_ext(selected_version.as_ref(), &plugin_type);
 
         // Copy .noscfg if plugin or .nossys
-        let manifest_template_file = if plugin_type == PluginType::Plugin {
+        let manifest_template_file = if plugin_type == PluginType::Default {
             DATA_DIR.get_file(format!("templates/nodos-{}/Plugin.{}", version_str, manifest_path_ext)).unwrap()
         } else {
             DATA_DIR.get_file(format!("templates/nodos-{}/Subsystem.{}", version_str, manifest_path_ext)).unwrap()
@@ -256,9 +256,9 @@ impl Command for CreateCommand {
     }
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
-        let module_type = match args.get_one::<String>("type").unwrap().as_str() {
-            "plugin" => PluginType::Plugin,
-            "subsystem" => PluginType::Subsystem,
+        let plugin_type = match args.get_one::<String>("type").unwrap().as_str() {
+            "plugin" => PluginType::Default,
+            "subsystem" => PluginType::SubsystemLegacy,
             _ => panic!("Invalid module type") // Unreachable
         };
         let lang_tool = match args.get_one::<String>("language/tool").unwrap().as_str() {
@@ -293,7 +293,7 @@ impl Command for CreateCommand {
 
         let description = args.get_one::<String>("description").unwrap();
         let nodos_version = get_nodos_version_from_args(args)?;
-        self.run_create(workspace, module_name, module_type, lang_tool, &output_dir, deps, description, nodos_version)
+        self.run_create(workspace, module_name, plugin_type, lang_tool, &output_dir, deps, description, nodos_version)
     }
 
     fn needs_workspace(&self) -> bool {

@@ -331,27 +331,27 @@ impl Workspace {
         let pb = get_progress_bar(self.is_silent());
         pb.enable_steady_tick(Duration::from_millis(100));
 
-        pb.println(format!("Found {} modules in {}", package_manifests.len(), folder.display()).as_str().green().to_string());
+        pb.println(format!("Found {} packages in {}", package_manifests.len(), folder.display()).as_str().green().to_string());
 
         for (ty, path) in package_manifests {
-            pb.set_message(format!("Scanning module: {}", path.display()));
+            pb.set_message(format!("Scanning: {}", path.display()));
             let res = LocalPackageEntry::new(&self, get_rel_path_based_on(&path, &self.root), ty, flags.contains(ScanModulesFlags::RegisterCommands));
             if let Err(msg) = res {
                 pb.println(format!("Error while scanning {}: {}", path.display(), msg).red().to_string());
                 continue;
             }
-            let installed_module = res.unwrap();
-            let opt_found = self.get_package(&installed_module.info.id.name, &installed_module.info.id.version);
+            let package = res.unwrap();
+            let opt_found = self.get_package(&package.info.id.name, &package.info.id.version);
             if opt_found.is_some() {
                 let found = opt_found.unwrap();
                 if flags.contains(ScanModulesFlags::ForceReplaceInRegistry) {
-                    pb.println(format!("Updating module entry in registry: {}. {} <=> {}", installed_module.info.id, path.display(), found.manifest_path.display()));
+                    pb.println(format!("Updating package entry in registry: {}. {} <=> {}", package.info.id, path.display(), found.manifest_path.display()));
                 } else {
-                    pb.println(format!("Duplicate module found: {}. {} <=> {}, skipping.", installed_module.info.id, path.display(), found.manifest_path.display()));
+                    pb.println(format!("Duplicate module found: {}. {} <=> {}, skipping.", package.info.id, path.display(), found.manifest_path.display()));
                     continue;
                 }
             }
-            self.add(installed_module);
+            self.add(package);
         }
     }
     pub fn scan_packages(&mut self, flags: ScanModulesFlags) {
@@ -456,7 +456,7 @@ impl Workspace {
         }
     }
     #[allow(dead_code)]
-    pub fn get_installed_module_count(&self) -> usize {
+    pub fn get_local_package_count(&self) -> usize {
         let mut count = 0;
         for (_name, versions) in self.packages.iter() {
             count += versions.len();

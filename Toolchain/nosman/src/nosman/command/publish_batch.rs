@@ -63,9 +63,9 @@ impl PublishBatchCommand {
 
         // Find all modules in the repo
         let mut to_be_published: Vec<PathBuf> = vec![];
-        let module_manifests = get_package_manifests(&repo_path, false);
-        println!("Found {} modules in {}", module_manifests.len(), repo_path.display());
-        for (_module_type, manifest_file_path) in module_manifests {
+        let package_manifests = get_package_manifests(&repo_path, false);
+        println!("Found {} packages in {}", package_manifests.len(), repo_path.display());
+        for (_plugin_type, manifest_file_path) in package_manifests {
             let parent = manifest_file_path.parent().unwrap();
             let relative_path = parent.strip_prefix(&repo_path).unwrap();
             let (publish_options, found) = PublishOptions::from_file(&parent.join(constants::PUBLISH_OPTIONS_FILE_NAME));

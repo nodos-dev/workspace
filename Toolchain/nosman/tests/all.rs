@@ -111,7 +111,7 @@ fn install_brings_dependencies() {
         .unwrap_or_else(|_| panic!("Failed to install {}", package_name));
     assert_eq!(
         requested_modules.len(),
-        test.workspace.get_installed_module_count()
+        test.workspace.get_local_package_count()
     );
     for requested in requested_modules {
         let installed = test
@@ -191,7 +191,7 @@ fn test_cmake_build(test: &WorkspaceGen) {
 
 fn test_create_module(
     module_name: &str,
-    module_type: PluginType,
+    plugin_type: PluginType,
     description: &str,
     nodos_version: &str,
 ) {
@@ -227,29 +227,29 @@ fn test_create_module(
         .run_create(
             &mut test.workspace,
             module_name,
-            module_type.clone(),
+            plugin_type.clone(),
             LangTool::CppCMake,
             &module_dir,
             Vec::new(), // No dependencies
             description,
             nodos_version.clone(),
         )
-        .expect(&format!("Failed to create {:?}", module_type));
+        .expect(&format!("Failed to create {:?}", plugin_type));
 
     // Verify the module was created correctly
     assert!(
         module_dir.exists(),
         "{:?} directory was not created",
-        module_type
+        plugin_type
     );
 
     // Check manifest file exists with correct extension
-    let extension = get_plugin_manifest_file_ext(Option::from(&nodos_version), &module_type);
+    let extension = get_plugin_manifest_file_ext(Option::from(&nodos_version), &plugin_type);
     let manifest_path = module_dir.join(format!("{}.{}", module_name, extension));
     assert!(
         manifest_path.exists(),
         "{:?} manifest file was not created",
-        module_type
+        plugin_type
     );
 
     // Verify CMake files are present
@@ -263,7 +263,7 @@ fn test_create_module(
 fn create_plugin_1_3() {
     test_create_module(
         "test.example",
-        PluginType::Plugin,
+        PluginType::Default,
         "Test plugin description",
         "1.3",
     );
@@ -273,7 +273,7 @@ fn create_plugin_1_3() {
 fn create_subsystem_1_3() {
     test_create_module(
         "test.sys.example",
-        PluginType::Subsystem,
+        PluginType::SubsystemLegacy,
         "Test subsystem description",
         "1.3",
     );
@@ -283,7 +283,7 @@ fn create_subsystem_1_3() {
 fn create_plugin_1_4() {
     test_create_module(
         "test.example",
-        PluginType::Plugin,
+        PluginType::Default,
         "Test plugin description",
         "1.4",
     );
@@ -293,7 +293,7 @@ fn create_plugin_1_4() {
 fn create_subsystem_1_4() {
     test_create_module(
         "test.sys.example",
-        PluginType::Subsystem,
+        PluginType::SubsystemLegacy,
         "Test subsystem description",
         "1.4",
     );
@@ -315,7 +315,7 @@ fn test_node_add_remove(version: SemVer) {
         .run_create(
             &mut test.workspace,
             &module_name,
-            PluginType::Plugin,
+            PluginType::Default,
             LangTool::CppCMake,
             &module_dir,
             Vec::new(),
@@ -410,7 +410,7 @@ fn test_pin_add_remove(version: SemVer) {
         .run_create(
             &mut test.workspace,
             &module_name,
-            PluginType::Plugin,
+            PluginType::Default,
             LangTool::CppCMake,
             &module_dir,
             Vec::new(),

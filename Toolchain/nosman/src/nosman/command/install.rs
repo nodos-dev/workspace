@@ -164,7 +164,7 @@ impl InstallCommand {
             install_dir = install_dir.join(format!("{}-{}", package_name, version));
         }
 
-        let pkg_type_str = if package_type.is_plugin() { "module" } else { "package" };
+        let pkg_type_str = if package_type.is_plugin() { "plugin" } else { "package" };
 
         let final_out_dir = if install_dir.is_relative() { workspace.root.join(install_dir) } else { install_dir };
         let module_name_version = format!("{}-{}", package_name, version);
