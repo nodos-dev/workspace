@@ -445,12 +445,12 @@ pub fn get_cli() -> clap::Command {
         .arg(Arg::new("name")
             .long("name")
             .short('n')
-            .help("Name of the package. It will be overridden by the module manifest files under <path> if present.\n\
-        If the <path> does not contain a module manifest file, this parameter is required."))
+            .help("Name of the package. It will be overridden by the package manifest files under <path> if present.\n\
+        If the <path> does not contain a package manifest file, this parameter is required."))
         .arg(Arg::new("version")
             .long("version")
-            .help("Version of the package. It will be overridden by the module manifest files under <path> if present.\n\
-        If the <path> does not contain a module manifest file, this parameter is required.")
+            .help("Version of the package. It will be overridden by the package manifest files under <path> if present.\n\
+        If the <path> does not contain a package manifest file, this parameter is required.")
         )
         .arg(Arg::new("version_suffix")
             .long("version-suffix")
@@ -466,12 +466,12 @@ pub fn get_cli() -> clap::Command {
             .long("type")
             .short('t')
             .value_parser(clap::builder::PossibleValuesParser::new(["plugin", "subsystem", "nodos", "engine", "generic"]))
-            .help("Type of the package. It will be overridden by the module manifest files under <path> if present.\n\
-        If the <path> does not contain a module manifest file, this parameter is required.")
+            .help("Type of the package. It will be overridden by the package manifest files under <path> if present.\n\
+        If the <path> does not contain a package manifest file, this parameter is required.")
         )
         .arg(Arg::new("vendor")
             .help("Who is publishing the package?\n\
-        Required if the module to be published was not added to the index before.")
+        Required if the package to be published was not added to the index before.")
             .long("vendor")
         )
         .arg(Arg::new("publisher_name")
@@ -507,7 +507,7 @@ pub fn get_cli() -> clap::Command {
         )
         .arg(Arg::new("target_platform")
             .long("target-platform")
-            .help("Target architecture and operating system of the module to be published. If not provided, the current platform will be used.")
+            .help("Target architecture and operating system of the package to be published. If not provided, the current platform will be used.")
             .required(false)
         )
         .arg(get_version_check_arg())
