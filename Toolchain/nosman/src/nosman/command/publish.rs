@@ -283,7 +283,10 @@ impl PublishCommand {
                         let mut manifest: serde_json::Value = serde_json::from_slice(&buffer).unwrap();
                         manifest["info"]["id"]["version"] = serde_json::Value::String(version.clone());
                         if package_type == PackageType::Generic {
-                            manifest["schema_version"] = serde_json::Value::String(constants::GENERIC_PACKAGE_MANIFEST_SCHEMA_VERSION.to_string());
+                            let schema_ver = manifest["schema_version"].as_str();
+                            if schema_ver.is_none() {
+                                manifest["schema_version"] = serde_json::Value::String(constants::GENERIC_PACKAGE_MANIFEST_SCHEMA_VERSION.to_string());
+                            }
                         }
                         pb.println(format!("Updated version to {} in manifest file: {}", version.clone(), m.display()).as_str());
                         buffer = serde_json::to_vec_pretty(&manifest).unwrap();
