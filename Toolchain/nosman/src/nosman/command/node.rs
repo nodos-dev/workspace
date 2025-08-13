@@ -3,7 +3,7 @@ use colored::Colorize;
 use crate::nosman::command::{get_nodos_version_from_args, Command, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument, Runtime};
 use crate::nosman::index::{PackageType, SemVer};
-use crate::nosman::package::PluginEntry;
+use crate::nosman::plugin::PluginEntry;
 use crate::nosman::workspace::{Workspace};
 
 pub struct NodeCommand {}

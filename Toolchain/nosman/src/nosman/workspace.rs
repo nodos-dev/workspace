@@ -12,11 +12,11 @@ use inquire::Select;
 use rayon::iter::IntoParallelRefIterator;
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
-use crate::nosman::{constants};
+use crate::nosman::constants;
 use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{Index, PackageIndexEntry, PackageReleaseEntry, PackageReleases, PackageType, Remote, SemVer};
-use crate::nosman::plugin::{NodeDefinition};
-use crate::nosman::package::{get_package_manifests, LocalPackageEntry, PluginEntry};
+use crate::nosman::plugin::{NodeDefinition, PluginEntry};
+use crate::nosman::package::{get_package_manifests, LocalPackageEntry};
 use crate::nosman::path::get_rel_path_based_on;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
