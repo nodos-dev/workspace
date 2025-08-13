@@ -16,7 +16,7 @@ use crate::nosman::{constants};
 use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{Index, PackageIndexEntry, PackageReleaseEntry, PackageReleases, PackageType, Remote, SemVer};
 use crate::nosman::plugin::{NodeDefinition};
-use crate::nosman::package::{get_package_manifests, LocalPackageEntry};
+use crate::nosman::package::{get_package_manifests, LocalPackageEntry, PluginEntry};
 use crate::nosman::path::get_rel_path_based_on;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
@@ -413,10 +413,14 @@ impl Workspace {
     pub fn get_node_definitions(&self, node_class_name: &String, nodos_version: &Option<SemVer>) -> Vec<NodeDefinition> {
         let mut res = Vec::new();
         for versions in self.packages.values() {
-            for module in versions.values() {
-                let module_abs = self.absolutize_paths(module);
-                if let Some(found) = module_abs.get_node_definition(node_class_name, nodos_version) {
-                    res.push(found);
+            for package in versions.values() {
+                let package_abs = self.absolutize_paths(package);
+                if package_abs.package_type == PackageType::Plugin {
+                    if let Ok(plugin) = PluginEntry::new(package_abs) {
+                        if let Some(found) = plugin.get_node_definition(node_class_name, nodos_version) {
+                            res.push(found);
+                        }
+                    }
                 }
             }
         }
@@ -424,12 +428,12 @@ impl Workspace {
     }
     pub fn get_latest_local_packages(&self) -> Vec<&LocalPackageEntry> {
         let mut versions_map = HashMap::new();
-        for (module_name, versions) in &self.packages {
+        for (package_name, versions) in &self.packages {
             for (version, module) in versions {
-                if !versions_map.contains_key(module_name) {
-                    versions_map.insert(module_name.clone(), module);
+                if !versions_map.contains_key(package_name) {
+                    versions_map.insert(package_name.clone(), module);
                 } else {
-                    let existing = versions_map.get(module_name).unwrap();
+                    let existing = versions_map.get(package_name).unwrap();
                     let existing_semver = SemVer::parse_from_str(existing.info.id.version.as_str());
                     let new_semver = SemVer::parse_from_str(version.as_str());
                     if existing_semver.is_none() || new_semver.is_none() {
@@ -438,7 +442,7 @@ impl Workspace {
                     let existing_semver = existing_semver.unwrap();
                     let new_semver = new_semver.unwrap();
                     if new_semver > existing_semver {
-                        versions_map.insert(module_name.clone(), module);
+                        versions_map.insert(package_name.clone(), module);
                     }
                 }
             }
