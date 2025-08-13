@@ -1,6 +1,6 @@
 // Copyright Nodos AS. All Rights Reserved.
 #include <mySubsystem/PublicHeader.h>
-#include <Nodos/PluginAPI.h>
+#include <Nodos/Plugin.hpp>
 
 NOS_INIT()
 NOS_BEGIN_IMPORT_DEPS()

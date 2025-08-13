@@ -1,44 +1,48 @@
+use std::collections::HashMap;
 use std::path::{PathBuf};
-use crate::nosman::constants;
+use crate::nosman::index::{PackageType};
 
 pub fn get_rel_path_based_on(path: &PathBuf, base: &PathBuf) -> PathBuf {
     pathdiff::diff_paths(dunce::canonicalize(path).unwrap_or_else(|_| { panic!("Failed to canonicalize path {}", path.display()) }),
                          base).unwrap()
 }
 
-pub fn get_module_manifest_file(path: &PathBuf, extension: &str) -> Result<Option<PathBuf>, String> {
-    // Find a *.nosman file in the directory
-    // If there are multiple, return an error
-    let mut manifest_files = vec![];
-    for entry in std::fs::read_dir(path).unwrap() {
+pub (crate) static MANIFEST_EXT_TO_PACKAGE_TYPE: phf::Map<&'static str, PackageType> = phf::phf_map! {
+    "nosplugin" => PackageType::Plugin,
+    "noscfg" => PackageType::Plugin,
+    "nossys" => PackageType::Subsystem,
+    "nospackage" => PackageType::Generic,
+};
+
+pub fn get_package_manifest_file(folder: &PathBuf) -> Result<Option<(PackageType, PathBuf)>, String> {
+    let mut found_manifests: HashMap<PackageType, PathBuf> = HashMap::new();
+    let mut files = vec![];
+    for entry in std::fs::read_dir(folder).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
         if path.is_file() {
             if let Some(ext) = path.extension() {
-                if ext == extension {
-                    manifest_files.push(path);
+                if let Some(ext_str) = ext.to_str() {
+                    if let Some(package_type) = MANIFEST_EXT_TO_PACKAGE_TYPE.get(ext_str).cloned() {
+                        if found_manifests.contains_key(&package_type) {
+                            return Err(format!("Multiple {} files found in {}", ext_str, folder.display()));
+                        }
+                        found_manifests.insert(package_type, path.clone());
+                        files.push(path);
+                    }
                 }
             }
         }
     }
-    if manifest_files.is_empty() {
+    if files.is_empty() {
         return Ok(None);
     }
-    if manifest_files.len() > 1 {
-        return Err(format!("Multiple manifest files found in {}", path.display()));
+    if found_manifests.len() > 1 {
+        let mut types: Vec<String> = found_manifests.keys().map(|k| format!("{:?}", k)).collect();
+        types.sort();
+        return Err(format!("Multiple manifest files found in {}: {}", folder.display(), types.join(", ")));
     }
-    Ok(Some(manifest_files[0].clone()))
-}
-
-pub fn get_plugin_manifest_file(path: &PathBuf) -> Result<Option<PathBuf>, String> {
-    if let Some(manifest_file) = get_module_manifest_file(path, constants::PLUGIN_MANIFEST_FILE_EXT)? {
-        return Ok(Some(manifest_file));
-    }
-    get_module_manifest_file(path, constants::LEGACY_PLUGIN_MANIFEST_FILE_EXT)
-}
-
-pub fn get_subsystem_manifest_file(path: &PathBuf) -> Result<Option<PathBuf>, String> {
-    get_module_manifest_file(path, constants::LEGACY_SUBSYSTEM_MANIFEST_FILE_EXT)
+    Ok(Some(found_manifests.into_iter().next().unwrap()))
 }
 
 pub fn get_default_engines_dir(workspace: &PathBuf) -> PathBuf {

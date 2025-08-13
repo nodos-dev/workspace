@@ -5,30 +5,32 @@ use crate::nosman::command::{Command, CommandResult};
 
 use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{SemVer};
-use crate::nosman::module::{get_dependency_arguments, PackageIdentifier};
+use crate::nosman::module::{get_dependency_arguments};
+use crate::nosman::package::PackageIdentifier;
 use crate::nosman::workspace::{Workspace};
+
 pub struct DependCommand {
 }
 impl DependCommand {
-    pub(crate) fn run_depend(&self, workspace: &mut Workspace, module_name: &String, deps: &Vec<PackageIdentifier>) -> CommandResult {
-        let module_manifest_path;
+    pub(crate) fn run_depend(&self, workspace: &mut Workspace, package_name: &String, deps: &Vec<PackageIdentifier>) -> CommandResult {
+        let package_manifest_path;
         let mut manifest_json;
         {
-            let module = workspace.get_or_select_installed_module(module_name)?;
-            module_manifest_path = module.manifest_path.clone();
-            manifest_json = module.read_manifest();
+            let package = workspace.get_or_select_package(package_name)?;
+            package_manifest_path = package.manifest_path.clone();
+            manifest_json = package.read_manifest();
         }
 
         let manifest_info = manifest_json
             .get_mut("info")
             .and_then(Value::as_object_mut)
-            .unwrap_or_else(|| panic!("Missing 'info' field in module manifest file {}", module_manifest_path.display()));
+            .unwrap_or_else(|| panic!("Missing 'info' field in package manifest file {}", package_manifest_path.display()));
 
         let manifest_deps = manifest_info
             .entry("dependencies")
             .or_insert_with(|| json!([])) // Ensure the field exists, defaulting to an empty array
             .as_array_mut()
-            .unwrap_or_else(|| panic!("Failed to access 'dependencies' as array: {}", module_manifest_path.display()));
+            .unwrap_or_else(|| panic!("Failed to access 'dependencies' as array: {}", package_manifest_path.display()));
 
         for dep_id in deps {
             let mut dep = PackageIdentifier {
@@ -39,14 +41,14 @@ impl DependCommand {
             workspace.fetch_package_releases(&dep_id.name);
 
             if dep_id.version == "any" {
-                if let Ok(module) = workspace.get_or_select_installed_module(&dep_id.name) {
+                if let Ok(module) = workspace.get_or_select_package(&dep_id.name) {
                     dep = module.info.id.clone();
                 } else if let Some(remote_package) = workspace.index_cache.get_latest_release(&dep_id.name) {
                     dep.name = dep_id.name.clone();
                     dep.version = remote_package.1.version.clone();
                     println!("Found latest version {} for {}", dep.version, dep.name);
                 }
-            } else if let Ok(module) = workspace.get_latest_installed_module_for_version(&dep_id.name, &dep_id.version) {
+            } else if let Ok(module) = workspace.get_latest_local_package_for_version(&dep_id.name, &dep_id.version) {
                 dep = module.info.id.clone();
             } else {
                 // Convert the `Option` from `parse_from_string` to a `Result` so we can use `map_err`
@@ -82,21 +84,22 @@ impl DependCommand {
                 manifest_deps.push(serde_json::json!({"name": dep.name, "version": dep.version}));
             }
         }
-        let manifest_str = serde_json::to_string_pretty(&manifest_json).unwrap_or_else(|e| panic!("Failed to serialize manifest {}: {}", module_manifest_path.display(), e));
-        fs::write(&module_manifest_path, manifest_str).unwrap_or_else(|e| panic!("Failed to write manifest file {}: {}", module_manifest_path.display(), e));
+        let manifest_str = serde_json::to_string_pretty(&manifest_json).unwrap_or_else(|e| panic!("Failed to serialize manifest {}: {}", package_manifest_path.display(), e));
+        fs::write(&package_manifest_path, manifest_str).unwrap_or_else(|e| panic!("Failed to write manifest file {}: {}", package_manifest_path.display(), e));
         Ok(())
     }
 }
 
 pub fn get_cli() -> clap::Command {
     clap::Command::new("depend")
-        .about("Add dependency to a Nodos module")
-        .arg(Arg::new("module")
+        .about("Add dependency to a Nodos package")
+        .arg(Arg::new("package")
+            .alias("module")
             .required(true)
-            .help("Name of the module to add a dependency to.")
+            .help("Name of the package to add a dependency to.")
         )
         .arg(Arg::new("dependency")
-            .help("Dependency to be added. Can be specified multiple times. Version is not required. Format: <module_name>-<version>")
+            .help("Dependency to be added. Can be specified multiple times. Version is not required. Format: <package_name>-<version>")
             .required(false)
             .action(ArgAction::Append)
             .num_args(1..)
@@ -113,12 +116,12 @@ impl Command for DependCommand {
     }
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
-        let module_name = args.get_one::<String>("module").unwrap();
+        let package_name = args.get_one::<String>("package").unwrap();
         let mut success = false;
         let deps = get_dependency_arguments(args, true, &mut success);
         if !success{
             return Err(InvalidArgument { message: format!("Invalid dependency format") });
         }
-        self.run_depend(workspace, module_name, &deps)
+        self.run_depend(workspace, package_name, &deps)
     }
 }

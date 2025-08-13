@@ -6,13 +6,13 @@ use nosman::nosman::command::node::NodeCommand;
 use nosman::nosman::command::pin::PinCommand;
 use nosman::nosman::command::sdk_info::SdkInfoCommand;
 use nosman::nosman::common::NODOS_1_4;
-use nosman::nosman::index::{ModuleType, SemVer};
-use nosman::nosman::module::{get_manifest_file_ext, PackageIdentifier};
+use nosman::nosman::index::{PluginType, SemVer};
 use nosman::nosman::workspace::Workspace;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::path::PathBuf;
 use std::{fs, io};
+use nosman::nosman::package::{get_plugin_manifest_file_ext, PackageIdentifier};
 
 #[ctor::ctor]
 fn init() {
@@ -75,7 +75,7 @@ fn install_no_deps() {
             InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
         )
         .unwrap_or_else(|_| panic!("Failed to install {}", package_name));
-    let versions = test.workspace.get_installed_modules(package_name);
+    let versions = test.workspace.get_packages(package_name);
     assert_eq!(versions.len(), 1);
 }
 
@@ -111,12 +111,12 @@ fn install_brings_dependencies() {
         .unwrap_or_else(|_| panic!("Failed to install {}", package_name));
     assert_eq!(
         requested_modules.len(),
-        test.workspace.get_installed_module_count()
+        test.workspace.get_local_package_count()
     );
     for requested in requested_modules {
         let installed = test
             .workspace
-            .get_installed_modules(requested.name.as_str());
+            .get_packages(requested.name.as_str());
         assert_eq!(installed.len(), 1);
         let installed = installed[0].info.clone();
         let requested_version = SemVer::parse_from_str(requested.version.as_str())
@@ -191,7 +191,7 @@ fn test_cmake_build(test: &WorkspaceGen) {
 
 fn test_create_module(
     module_name: &str,
-    module_type: ModuleType,
+    plugin_type: PluginType,
     description: &str,
     nodos_version: &str,
 ) {
@@ -227,29 +227,29 @@ fn test_create_module(
         .run_create(
             &mut test.workspace,
             module_name,
-            module_type.clone(),
+            plugin_type.clone(),
             LangTool::CppCMake,
             &module_dir,
             Vec::new(), // No dependencies
             description,
             nodos_version.clone(),
         )
-        .expect(&format!("Failed to create {:?}", module_type));
+        .expect(&format!("Failed to create {:?}", plugin_type));
 
     // Verify the module was created correctly
     assert!(
         module_dir.exists(),
         "{:?} directory was not created",
-        module_type
+        plugin_type
     );
 
     // Check manifest file exists with correct extension
-    let extension = get_manifest_file_ext(Option::from(&nodos_version), &module_type);
+    let extension = get_plugin_manifest_file_ext(Option::from(&nodos_version), &plugin_type);
     let manifest_path = module_dir.join(format!("{}.{}", module_name, extension));
     assert!(
         manifest_path.exists(),
         "{:?} manifest file was not created",
-        module_type
+        plugin_type
     );
 
     // Verify CMake files are present
@@ -263,7 +263,7 @@ fn test_create_module(
 fn create_plugin_1_3() {
     test_create_module(
         "test.example",
-        ModuleType::Plugin,
+        PluginType::Default,
         "Test plugin description",
         "1.3",
     );
@@ -273,7 +273,7 @@ fn create_plugin_1_3() {
 fn create_subsystem_1_3() {
     test_create_module(
         "test.sys.example",
-        ModuleType::Subsystem,
+        PluginType::SubsystemLegacy,
         "Test subsystem description",
         "1.3",
     );
@@ -283,7 +283,7 @@ fn create_subsystem_1_3() {
 fn create_plugin_1_4() {
     test_create_module(
         "test.example",
-        ModuleType::Plugin,
+        PluginType::Default,
         "Test plugin description",
         "1.4",
     );
@@ -293,7 +293,7 @@ fn create_plugin_1_4() {
 fn create_subsystem_1_4() {
     test_create_module(
         "test.sys.example",
-        ModuleType::Subsystem,
+        PluginType::SubsystemLegacy,
         "Test subsystem description",
         "1.4",
     );
@@ -315,7 +315,7 @@ fn test_node_add_remove(version: SemVer) {
         .run_create(
             &mut test.workspace,
             &module_name,
-            ModuleType::Plugin,
+            PluginType::Default,
             LangTool::CppCMake,
             &module_dir,
             Vec::new(),
@@ -341,7 +341,7 @@ fn test_node_add_remove(version: SemVer) {
     // Find node definition file
     let plugin = test
         .workspace
-        .get_or_select_installed_module(&module_name)
+        .get_or_select_package(&module_name)
         .unwrap();
     let manifest = plugin.read_manifest();
     let node_def_path;
@@ -350,7 +350,7 @@ fn test_node_add_remove(version: SemVer) {
             .as_array()
             .expect("No node_definitions");
         assert!(!node_defs.is_empty());
-        node_def_path = plugin.get_module_dir().join(node_defs[0].as_str().unwrap());
+        node_def_path = plugin.get_package_root().join(node_defs[0].as_str().unwrap());
     } else {
         // For Nodos 1.4 and later, node definitions are stored in a dedicated directory by default
         let defs = test.workspace.get_node_definitions(
@@ -410,7 +410,7 @@ fn test_pin_add_remove(version: SemVer) {
         .run_create(
             &mut test.workspace,
             &module_name,
-            ModuleType::Plugin,
+            PluginType::Default,
             LangTool::CppCMake,
             &module_dir,
             Vec::new(),
@@ -436,7 +436,7 @@ fn test_pin_add_remove(version: SemVer) {
     // Find node definition file
     let plugin = test
         .workspace
-        .get_or_select_installed_module(&module_name)
+        .get_or_select_package(&module_name)
         .unwrap();
     let manifest = plugin.read_manifest();
     let node_def_path;
@@ -445,7 +445,7 @@ fn test_pin_add_remove(version: SemVer) {
             .as_array()
             .expect("No node_definitions");
         assert!(!node_defs.is_empty());
-        node_def_path = plugin.get_module_dir().join(node_defs[0].as_str().unwrap());
+        node_def_path = plugin.get_package_root().join(node_defs[0].as_str().unwrap());
     } else {
         // For Nodos 1.4 and later, node definitions are stored in a dedicated directory by default
         let defs = test.workspace.get_node_definitions(

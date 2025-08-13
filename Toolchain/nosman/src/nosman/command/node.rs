@@ -2,7 +2,8 @@ use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use crate::nosman::command::{get_nodos_version_from_args, Command, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument, Runtime};
-use crate::nosman::index::{ModuleType, SemVer};
+use crate::nosman::index::{PackageType, SemVer};
+use crate::nosman::package::PluginEntry;
 use crate::nosman::workspace::{Workspace};
 
 pub struct NodeCommand {}
@@ -11,11 +12,11 @@ impl NodeCommand {
     pub fn run_node(&self, workspace: &mut Workspace, plugin_name: &String, node_class_name: &String,
                 remove: bool, display_name: Option<String>, description: Option<String>,
                 category: Option<String>, hide_in_context_menu: bool, nodos_version: Option<SemVer>) -> CommandResult {
-        let module = workspace.get_or_select_installed_module(&plugin_name)?;
-        if module.module_type != ModuleType::Plugin {
-            return Err(InvalidArgument { message: format!("Selected module {} is not a Nodos plugin. Only plugins can have nodes!", plugin_name) });
+        let package = workspace.get_or_select_package(&plugin_name)?;
+        if package.package_type != PackageType::Plugin {
+            return Err(InvalidArgument { message: format!("Selected package {} is not a Nodos plugin. Only plugins can have nodes!", plugin_name) });
         }
-        let plugin = module;
+        let plugin = PluginEntry::new(package).map_err(|e| Runtime { message: e })?;
         if remove {
             // Prefix node_class_name if it doesn't have the plugin name
             let node_class_name = if node_class_name.starts_with(plugin_name.as_str()) {
@@ -27,13 +28,13 @@ impl NodeCommand {
             plugin.remove_node_definition(&node_class_name, nodos_version).map_err(|e| {
                 Runtime { message: e.to_string() }
             })?;
-            println!("{}", format!("Node class {} removed from plugin {}", node_class_name, plugin_name).yellow());
+            println!("{}", format!("Node class {} removed from plugin {}", node_class_name, plugin.package.info.id.name).yellow());
         }
         else {
             plugin.add_node_definition(workspace, &node_class_name, display_name, description, category, hide_in_context_menu, nodos_version).map_err(|e| {
                 Runtime { message: e.to_string() }
             })?;
-            println!("{}", format!("Node class {} added to plugin {}", node_class_name, plugin_name).green());
+            println!("{}", format!("Node class {} added to plugin {}", node_class_name, plugin.package.info.id.name).green());
         }
         Ok(())
     }

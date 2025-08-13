@@ -13,7 +13,7 @@ use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::common::download_and_extract;
 use bitflags::bitflags;
-use crate::nosman::module::PackageIdentifier;
+use crate::nosman::package::PackageIdentifier;
 use crate::nosman::workspace::ScanModulesFlags;
 
 pub struct InstallCommand {
@@ -55,12 +55,12 @@ impl InstallCommand {
                     return Err(InvalidArgument { message: "Please provide a minor version too!".to_string() });
                 }
                 let version_end = version_start.get_one_up();
-                if let Some(installed_module) = workspace.get_latest_installed_module_within_range(package_name, &version_start, &version_end) {
+                if let Some(installed_module) = workspace.get_latest_local_package_within_range(package_name, &version_start, &version_end) {
                     println!("{}", format!("Found an already installed compatible version for {} version {}: {}", package_name, version, installed_module.info.id.version).as_str().yellow());
                     return Ok(InstallOp::Skipped)
                 }
-            } else if let Some(existing) = workspace.get_installed_module(package_name, version.as_str()) {
-                if existing.get_module_dir().exists() {
+            } else if let Some(existing) = workspace.get_package(package_name, version.as_str()) {
+                if existing.get_package_root().exists() {
                     println!("{}", format!("Module {} version {} is already installed", package_name, version).as_str().yellow());
                     return Ok(InstallOp::Skipped);
                 }
@@ -149,7 +149,7 @@ impl InstallCommand {
             for dep in deps_to_install {
                 let dep_name = dep.name.clone();
                 let dep_version = dep.version.clone();
-                if workspace.get_installed_module(&dep_name, &dep_version).is_none() {
+                if workspace.get_package(&dep_name, &dep_version).is_none() {
                     println!("Installing dependency {} {}", dep_name, dep_version);
                     self.run_install(workspace, &dep_name, Some(&dep_version), output_dir, prefix, dep_install_flags)?;
                 } else {
@@ -160,11 +160,11 @@ impl InstallCommand {
         let mut install_dir = output_dir.clone();
         if let Some(p) = prefix {
             install_dir = install_dir.join(p);
-        } else if package_type.is_module() {
+        } else if package_type.is_plugin() {
             install_dir = install_dir.join(format!("{}-{}", package_name, version));
         }
 
-        let pkg_type_str = if package_type.is_module() { "module" } else { "package" };
+        let pkg_type_str = if package_type.is_plugin() { "plugin" } else { "package" };
 
         let final_out_dir = if install_dir.is_relative() { workspace.root.join(install_dir) } else { install_dir };
         let module_name_version = format!("{}-{}", package_name, version);
@@ -173,13 +173,13 @@ impl InstallCommand {
         download_and_extract(&package.url, &final_out_dir)?;
 
         println!("Extracted {} {} to {}", pkg_type_str, package_name, final_out_dir.display());
-        if package_type.is_module() {
+        if package_type.is_plugin() {
             let mut scan_flags = ScanModulesFlags::empty();
             if install_with_deps {
                 scan_flags.insert(ScanModulesFlags::RegisterCommands);
             }
             scan_flags.insert(ScanModulesFlags::ForceReplaceInRegistry);
-            workspace.scan_modules_in_folder(final_out_dir, scan_flags);
+            workspace.scan_packages_in_folder(final_out_dir, scan_flags);
             println!("Adding to workspace file");
             workspace.save()?;
         }

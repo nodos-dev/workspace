@@ -26,7 +26,7 @@ impl Command for RescanCommand {
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let now = std::time::Instant::now();
         let fetch_index = args.get_one::<bool>("fetch_index").unwrap();
-        let mut flags = RescanFlags::ScanModules;
+        let mut flags = RescanFlags::ScanPackages;
         if *fetch_index {
             flags |= RescanFlags::FetchPackageIndex;
         }

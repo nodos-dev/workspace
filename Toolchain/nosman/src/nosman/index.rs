@@ -1,5 +1,5 @@
 use crate::nosman::common::{get_progress_bar, run_if_not};
-use crate::nosman::module::PackageIdentifier;
+use crate::nosman::package::PackageIdentifier;
 use crate::nosman::platform::get_host_platform;
 use crate::nosman::workspace::Workspace;
 use crate::nosman::{common, constants};
@@ -25,7 +25,7 @@ pub enum PackageType {
 }
 
 impl PackageType {
-    pub fn is_module(&self) -> bool {
+    pub fn is_plugin(&self) -> bool {
         match self {
             PackageType::Plugin | PackageType::Subsystem => true,
             _ => false,
@@ -44,9 +44,9 @@ pub struct PackageIndexEntry {
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
-pub enum ModuleType {
-    Plugin,
-    Subsystem,
+pub enum PluginType {
+    Default,
+    SubsystemLegacy,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone, Default)]
@@ -219,7 +219,7 @@ pub struct PackageReleaseEntry {
     pub(crate) version: String,
     pub(crate) url: String,
     // TODO: Replace plugin_api_version & subsystem_api_version with these
-    // module_type: String,
+    // plugin_type: String,
     // api_version: SemVer,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) plugin_api_version: Option<SemVer>,
