@@ -119,12 +119,11 @@ fn split_glob_prefix(pattern: &str) -> (&Path, &str) {
 }
 
 /// Walk all patterns and return a map: file_path -> base
-fn walk_patterns(
+pub fn walk_patterns(
     base: &Path,
     patterns: &Vec<String>,
 ) -> io::Result<HashMap<PathBuf, PathBuf>> {
     let mut result: HashMap<PathBuf, PathBuf> = HashMap::new();
-
     for pat in patterns {
         let (prefix, suffix) = split_glob_prefix(&pat);
 
@@ -138,6 +137,21 @@ fn walk_patterns(
         };
 
         let canonical_base = dunce::canonicalize(resolved_base)?;
+
+        // Handle case where there are no wildcards (empty suffix)
+        if suffix.is_empty() {
+            // This is a direct file/directory path with no wildcards
+            let target_path = if prefix.is_absolute() {
+                prefix.to_path_buf()
+            } else {
+                base.join(prefix)
+            };
+            
+            if target_path.is_file() {
+                result.insert(target_path.clone(), canonical_base);
+            }
+            continue;
+        }
 
         let walker = GlobWalkerBuilder::from_patterns(&canonical_base, &[suffix])
             .build()?;
