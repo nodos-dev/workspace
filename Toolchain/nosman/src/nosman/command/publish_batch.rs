@@ -1,19 +1,37 @@
+use std::collections::HashSet;
+use std::ffi::OsString;
 use std::path::PathBuf;
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
-use glob_match::glob_match;
 
 use crate::nosman::command::{get_version_check_arg, Command, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument};
-use crate::nosman::command::publish::{PublishCommand, PublishOptions};
+use crate::nosman::command::publish::{walk_patterns, PublishCommand, PublishOptions};
 use crate::nosman::constants;
 
-use path_slash::PathExt as _;
 use crate::nosman::command::unpublish::UnpublishCommand;
 use crate::nosman::index::VersionCheckStrategy;
 use crate::nosman::package::get_package_manifests;
 use crate::nosman::platform::{get_host_platform, Platform};
 use crate::nosman::workspace::Workspace;
+
+fn get_git_repo_root(path: &PathBuf) -> Option<PathBuf> {
+    // Return the root of the git repository for the given path
+    let mut current = path.clone();
+    loop {
+        if current.join(".git").exists() {
+            return Some(current);
+        }
+        if !current.pop() {
+            return None; // Reached the root of the filesystem without finding a .git directory
+        }
+        let parent = current.parent();
+        if parent.is_none() || parent.unwrap().as_os_str().is_empty() {
+            return None; // Reached the root of the filesystem
+        }
+        current = parent.unwrap().to_path_buf();
+    }
+}
 
 pub struct PublishBatchCommand {
 }
@@ -70,79 +88,96 @@ impl PublishBatchCommand {
             let relative_path = parent.strip_prefix(&repo_path).unwrap();
             let (publish_options, found) = PublishOptions::from_file(&parent.join(constants::PUBLISH_OPTIONS_FILE_NAME));
             if !found {
-                println!("{}", format!("Module at {} does not contain a {} file, skipping release", relative_path.display(), constants::PUBLISH_OPTIONS_FILE_NAME).dimmed());
+                println!("{}", format!("Package at {} does not contain a {} file, skipping release", relative_path.display(), constants::PUBLISH_OPTIONS_FILE_NAME).dimmed());
                 continue;
             }
 			if let Some(targets) = publish_options.target_platforms {
                 if !targets.contains(&target_platform.to_string()) {
-                    println!("{}", format!("Target platform {} is not in the list of target platforms in {} for Module at {}", target_platform.to_string(), constants::PUBLISH_OPTIONS_FILE_NAME, relative_path.display()));
+                    println!("{}", format!("Target platform {} is not in the list of target platforms in {} for package at {}", target_platform.to_string(), constants::PUBLISH_OPTIONS_FILE_NAME, relative_path.display()));
 					continue;
 				}
             }
             // If nospub.globs contain any of the changed files, add parent to to_be_published
             if changed_files_opt.is_some() {
                 let changed_files = changed_files_opt.as_ref().unwrap();
-                let mut found = false;
-                let mut watch_globs = Vec::new();
-                watch_globs.extend(publish_options.release_globs.iter());
+                let mut watch_globs: Vec<String> = Vec::new();
+                watch_globs.extend(publish_options.release_globs.clone());
                 if let Some(triggers) = &publish_options.additional_publish_triggering_globs {
-                    watch_globs.extend(triggers.iter());
+                    watch_globs.extend(triggers.clone());
                 }
                 let nospub_file = constants::PUBLISH_OPTIONS_FILE_NAME.to_string();
-                watch_globs.push(&nospub_file);
-                for glob in &watch_globs {
-                    // Prepend the parent path to the glob
-                    let local = relative_path.join(glob);
-                    let glob_str = local.to_slash_lossy().to_string();
-                    for changed_file in changed_files {
-                        if glob_match(glob_str.as_str(), changed_file.to_str().unwrap()) {
-                            found = true;
-                            break;
-                        }
+                watch_globs.push(nospub_file);
+
+                let files = walk_patterns(&parent, &watch_globs)?;
+
+                let repo_root = get_git_repo_root(&repo_path).expect("Failed to find git repository root");
+                let file_set: HashSet<_> = files.iter().map(|(file_path, _)| dunce::canonicalize(file_path).expect("Failed to canonicalize file path").into_os_string()).collect();
+                let changed_file_set: HashSet<_> = changed_files.iter().map(|file| dunce::canonicalize(repo_root.join(file)).expect("Failed to canonicalize changed file").into_os_string()).collect();
+
+                // Add debugging
+                if verbose {
+                    println!("Repo root: {:?}", repo_root);
+                    println!("Package root: {:?}", parent);
+                    println!("Files in package:");
+                    for file in &file_set {
+                        println!("  {:?}", file);
                     }
-                    if found {
-                        break;
+                    println!("Changed files:");
+                    for file in &changed_file_set {
+                        println!("  {:?}", file);
                     }
                 }
-                if !found {
+
+                let intersection: Vec<&OsString> = file_set.intersection(&changed_file_set)
+                    .collect();
+                if verbose {
+                    if !intersection.is_empty() {
+                        for file in &intersection {
+                            println!("{}", format!("Changed file found in package at {}: {}", relative_path.display(), file.to_string_lossy()).dimmed());
+                        }
+                    } else {
+                        println!("{}", format!("No changed files found in package at {}", relative_path.display()).dimmed());
+                    }
+                }
+                if intersection.is_empty() {
                     continue;
                 }
             }
             to_be_published.push(parent.to_path_buf());
         }
 
-        for module_root in &to_be_published {
-            println!("{}", format!("Will publish module at {:?}", module_root).green());
+        for package_root in &to_be_published {
+            println!("{}", format!("Will publish package at {:?}", package_root).green());
         }
 
         if to_be_published.is_empty() {
-            println!("{}", "No modules need publishing".yellow());
+            println!("{}", "No packages need publishing".yellow());
             return Ok(());
         }
         let mut published = Vec::new();
         let mut rollback = false;
-        for module_root in to_be_published {
-            let res = PublishCommand {}.publish(workspace, dry_run, verbose, 
-                                                    &module_root, None, None, 
-                                                    version_suffix, &version_check_strategy, None, 
-                                                    remote_name, vendor, publisher_name, 
-                                                    publisher_email, release_tags, Some(&target_platform.to_string()),
-                                                    release_notes);
+        for package_root in to_be_published {
+            let res = PublishCommand {}.publish(workspace, dry_run, verbose,
+                                                &package_root, None, None,
+                                                version_suffix, &version_check_strategy, None,
+                                                remote_name, vendor, publisher_name,
+                                                publisher_email, release_tags, Some(&target_platform.to_string()),
+                                                release_notes);
             if let Ok(id) = res {
                 published.push(id);
             }
             else {
-                println!("{}", format!("Failed to publish module at {:?}: {}", module_root, res.err().unwrap()).red());
+                println!("{}", format!("Failed to publish package at {:?}: {}", package_root, res.err().unwrap()).red());
                 rollback = true;
                 break;
             }
         }
         if rollback {
-            println!("{}", "Rolling back published modules".red());
+            println!("{}", "Rolling back published packages".red());
             for id in published {
                 UnpublishCommand {}.run_unpublish(&workspace, dry_run, verbose, remote_name, &id.name, Option::from(&id.version))?
             }
-            return Err(InvalidArgument { message: "Failed to publish all modules".to_string() });
+            return Err(InvalidArgument { message: "Failed to publish all packages".to_string() });
         }
 
         Ok(())
@@ -151,8 +186,8 @@ impl PublishBatchCommand {
 
 pub fn get_cli() -> clap::Command {
     clap::Command::new("publish-batch")
-        .about("Publish all/changed modules under the git repository.")
-        .after_help(format!("This command will publish all/changed modules under the git repository to the specified remote.\n\
+        .about("Publish all/changed packages under the git repository.")
+        .after_help(format!("This command will publish all/changed packages under the git repository to the specified remote.\n\
     It will use the {} files to compare file changes & adding files to the release. In the {} file, 'trigger_publish_globs' field will be used check file changes. \
     The 'release_globs' field however, will both be used for including files to the release as well as checking file changes.", constants::PUBLISH_OPTIONS_FILE_NAME, constants::PUBLISH_OPTIONS_FILE_NAME))
         .arg(Arg::new("remote")
@@ -169,11 +204,11 @@ pub fn get_cli() -> clap::Command {
             .long("compare-with")
             .short('c')
             .help("Compare current with the given branch, tag or ref.\n\
-        If not provided or empty, it will publish all modules found under the provided repo.")
+        If not provided or empty, it will publish all packages found under the provided repo.")
         )
         .arg(Arg::new("version_suffix")
             .long("version-suffix")
-            .help("Suffix to append to the version of the modules to be published.")
+            .help("Suffix to append to the version of the packages to be published.")
             .default_value("")
         )
         .arg(Arg::new("vendor")
