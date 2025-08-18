@@ -88,7 +88,7 @@ impl PublishBatchCommand {
                 if let Some(triggers) = &publish_options.additional_publish_triggering_globs {
                     watch_globs.extend(triggers.iter());
                 }
-                let nospub_file = ".nospub".to_string();
+                let nospub_file = constants::PUBLISH_OPTIONS_FILE_NAME.to_string();
                 watch_globs.push(&nospub_file);
                 for glob in &watch_globs {
                     // Prepend the parent path to the glob
