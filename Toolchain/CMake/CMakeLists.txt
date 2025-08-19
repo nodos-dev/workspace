@@ -114,13 +114,7 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 			nos_fatal_error("Multiple Nodos Plugin SDKs with the same version found under Engine folder. This is not supported.")
 		endif()
 
-		# If 1.4 and later, use Plugin/Include, and get rid of nosSubsystemSDK
-		string(REPLACE "." ";" nos_version_components ${nos_version})
-		list(GET nos_version_components 0 ver_major)
-		list(GET nos_version_components 1 ver_minor)
-		list(GET nos_version_components 2 ver_patch)
-
-		if ((ver_major GREATER_EQUAL 1) AND (ver_minor GREATER_EQUAL 4))
+		if (nos_version VERSION_GREATER_EQUAL "1.4.0")
 			add_library(${nos_plugin_sdk_target} INTERFACE)
 			target_compile_definitions(${nos_plugin_sdk_target} INTERFACE "-DNOMINMAX")
 			target_include_directories(${nos_plugin_sdk_target} INTERFACE ${nos_sdk_dir}/Plugin/Include)

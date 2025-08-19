@@ -58,7 +58,12 @@ macro(nos_find_sdk requested_version out_nos_plugin_sdk out_nos_subsystem_sdk ou
 		set(${out_sdk_dir} ${nos_sdk_dir})
 		string(REPLACE "." "_" version_target_suffix ${found_version})
 		set(${out_nos_plugin_sdk} nosPluginSDK_${version_target_suffix})
-		set(${out_nos_subsystem_sdk} nosSubsystemSDK_${version_target_suffix})
+
+		if (found_version VERSION_GREATER_EQUAL "1.4.0")
+			set(${out_nos_subsystem_sdk} ${out_nos_plugin_sdk})
+		else()
+			set(${out_nos_subsystem_sdk} nosSubsystemSDK_${version_target_suffix})
+		endif()
 	endif()
 
 	list(GET NOS_VERSIONS ${found_version_idx} found_version)
