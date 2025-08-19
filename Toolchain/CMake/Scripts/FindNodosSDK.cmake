@@ -61,8 +61,10 @@ macro(nos_find_sdk requested_version out_nos_plugin_sdk out_nos_subsystem_sdk ou
 
 		if (found_version VERSION_GREATER_EQUAL "1.4.0")
 			set(${out_nos_subsystem_sdk} ${out_nos_plugin_sdk})
+			set(FLATC_EXECUTABLE "${nos_sdk_dir}/Plugin/Binaries/flatc" CACHE PATH "Path to the flatc executable" FORCE)
 		else()
 			set(${out_nos_subsystem_sdk} nosSubsystemSDK_${version_target_suffix})
+			set(FLATC_EXECUTABLE "${nos_sdk_dir}/bin/flatc" CACHE PATH "Path to the flatc executable" FORCE)
 		endif()
 	endif()
 
@@ -91,13 +93,13 @@ macro(nos_find_plugin_sdk requested_plugin_sdk_version out_nos_plugin_sdk out_sd
 		COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" sdk-info ${requested_plugin_sdk_version} plugin
 		RESULT_VARIABLE result_code
 		OUTPUT_VARIABLE sdk_info_json
-		ERROR_QUIET
 	)
 	if (NOT result_code EQUAL 0)
 		nos_fatal_error("Unable to find compatible Plugin SDK version for requested version ${requested_plugin_sdk_version}.")
 	endif()
+
 	# Parse the JSON output to extract the SDK directory
-	string(JSON sdk_plugin_version  ERROR_VARIABLE err GET "${sdk_info_json}" "version")
+	string(JSON plugin_sdk_version  ERROR_VARIABLE err GET "${sdk_info_json}" "version")
 	if (NOT err STREQUAL "NOTFOUND")
 		message(FATAL_ERROR "Unable to parse JSON output: ${err}")
 	endif()
@@ -106,11 +108,16 @@ macro(nos_find_plugin_sdk requested_plugin_sdk_version out_nos_plugin_sdk out_sd
 		message(FATAL_ERROR "Unable to parse JSON output: ${err}")
 	endif()
 
-	message(STATUS "Using Nodos Plugin SDK version ${sdk_plugin_version}")
+	message(STATUS "Using Nodos Plugin SDK version ${plugin_sdk_version}")
 
-	string(REPLACE "." "_" sdk_plugin_version_target_suffix "${sdk_plugin_version}")
+	string(REPLACE "." "_" plugin_sdk_version_target_suffix "${plugin_sdk_version}")
 
-	set(${out_nos_plugin_sdk} nosPluginSDK_${sdk_plugin_version_target_suffix})
+	set(${out_nos_plugin_sdk} nosPluginSDK_${plugin_sdk_version_target_suffix})
 	set(${out_sdk_dir} ${sdk_path})
 
+	if (sdk_plugin_version VERSION_GREATER_EQUAL "39.11.0")
+		set(FLATC_EXECUTABLE "${nos_sdk_dir}/Plugin/Binaries/flatc" CACHE PATH "Path to the flatc executable" FORCE)
+	else()
+		set(FLATC_EXECUTABLE "${nos_sdk_dir}/bin/flatc" CACHE PATH "Path to the flatc executable" FORCE)
+	endif()
 endmacro()
