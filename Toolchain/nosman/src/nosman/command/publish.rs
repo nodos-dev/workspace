@@ -5,8 +5,8 @@ use std::io::{Read};
 use std::os::unix::fs::PermissionsExt;
 #[cfg(target_os = "windows")]
 use std::io::{Write};
-use std::{io, path};
-use std::path::{Path, PathBuf};
+use std::{path};
+use std::path::{PathBuf};
 use std::time::Duration;
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
@@ -17,7 +17,7 @@ use tempfile::{tempdir};
 #[cfg(target_os = "windows")]
 use zip::write::{SimpleFileOptions};
 use chrono::{Utc};
-use globwalk::{DirEntry, GlobWalkerBuilder};
+use globwalk::{GlobWalkerBuilder};
 use crate::nosman::command::{get_version_check_arg, Command, CommandError, CommandResult};
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::{common, constants};
@@ -102,68 +102,6 @@ impl PublishOptions {
         options.release_globs = vec!["**".to_string()];
         options
     }
-}
-
-/// Split a glob pattern into (prefix_path, glob_suffix)
-fn split_glob_prefix(pattern: &str) -> (&Path, &str) {
-    let meta_chars = ['*', '?', '[', ']'];
-    let first_meta_idx = pattern
-        .char_indices()
-        .find(|(_, c)| meta_chars.contains(c))
-        .map(|(i, _)| i);
-
-    match first_meta_idx {
-        Some(idx) => (Path::new(&pattern[..idx]), &pattern[idx..]),
-        None => (Path::new(pattern), ""),
-    }
-}
-
-/// Walk all patterns and return a map: file_path -> base
-pub fn walk_patterns(
-    base: &Path,
-    patterns: &Vec<String>,
-) -> io::Result<HashMap<PathBuf, PathBuf>> {
-    let mut result: HashMap<PathBuf, PathBuf> = HashMap::new();
-    for pat in patterns {
-        let (prefix, suffix) = split_glob_prefix(&pat);
-
-        // Resolve the base directory for this glob
-        let resolved_base: PathBuf = if prefix.as_os_str().is_empty() {
-            base.to_path_buf()
-        } else if prefix.is_absolute() {
-            prefix.to_path_buf()
-        } else {
-            base.join(prefix)
-        };
-
-        let canonical_base = dunce::canonicalize(resolved_base)?;
-
-        // Handle case where there are no wildcards (empty suffix)
-        if suffix.is_empty() {
-            // This is a direct file/directory path with no wildcards
-            let target_path = if prefix.is_absolute() {
-                prefix.to_path_buf()
-            } else {
-                base.join(prefix)
-            };
-            
-            if target_path.is_file() {
-                result.insert(target_path.clone(), canonical_base);
-            }
-            continue;
-        }
-
-        let walker = GlobWalkerBuilder::from_patterns(&canonical_base, &[suffix])
-            .build()?;
-
-        for entry in walker {
-            let entry: DirEntry = entry?;
-            if entry.file_type().is_file() {
-                result.insert(entry.path().to_path_buf(), canonical_base.clone());
-            }
-        }
-    }
-    Ok(result)
 }
 
 pub struct PublishCommand {
@@ -320,11 +258,17 @@ impl PublishCommand {
             pb.set_message("Scanning files".to_string());
             let mut files_to_release = vec![];
 
-            let file_map = walk_patterns(&abs_path, &publish_options.release_globs)?;
-
-            for (file_path, _base_path) in file_map.iter() {
-                pb.println(format!("\t{}", file_path.display()).as_str());
-                files_to_release.push(file_path.clone());
+            let walker = GlobWalkerBuilder::from_patterns(&abs_path, &publish_options.release_globs)
+                .build()
+                .unwrap_or_else(|e| panic!("Failed to glob dirs {:?}: {}", publish_options.release_globs, e));
+            for entry in walker {
+                let entry = entry.unwrap();
+                if entry.file_type().is_dir() {
+                    continue;
+                }
+                let path = entry.path().to_path_buf();
+                pb.println(format!("\t{}", path.display()).as_str());
+                files_to_release.push(path);
             }
 
             let host_platform = get_host_platform();
@@ -371,7 +315,7 @@ impl PublishCommand {
 
             for (file_path, buffer) in file_buffer_pairs.iter() {
                 pb.set_message(format!("Creating a release: {}", file_path.display()).as_str().to_string());
-                let stripped = file_path.strip_prefix(file_map.get(file_path).unwrap())
+                let stripped = file_path.strip_prefix(&abs_path)
                     .unwrap_or_else(|e| panic!("Failed to strip prefix {:?} from {:?}: {}", abs_path, file_path, e));
                 #[cfg(target_os = "windows")]
                 {

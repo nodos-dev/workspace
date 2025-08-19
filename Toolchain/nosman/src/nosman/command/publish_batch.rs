@@ -1,12 +1,11 @@
-use std::collections::HashSet;
-use std::ffi::OsString;
 use std::path::PathBuf;
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
-
+use glob_match::glob_match;
+use path_slash::PathBufExt;
 use crate::nosman::command::{get_version_check_arg, Command, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument};
-use crate::nosman::command::publish::{walk_patterns, PublishCommand, PublishOptions};
+use crate::nosman::command::publish::{PublishCommand, PublishOptions};
 use crate::nosman::constants;
 
 use crate::nosman::command::unpublish::UnpublishCommand;
@@ -14,24 +13,6 @@ use crate::nosman::index::VersionCheckStrategy;
 use crate::nosman::package::get_package_manifests;
 use crate::nosman::platform::{get_host_platform, Platform};
 use crate::nosman::workspace::Workspace;
-
-fn get_git_repo_root(path: &PathBuf) -> Option<PathBuf> {
-    // Return the root of the git repository for the given path
-    let mut current = path.clone();
-    loop {
-        if current.join(".git").exists() {
-            return Some(current);
-        }
-        if !current.pop() {
-            return None; // Reached the root of the filesystem without finding a .git directory
-        }
-        let parent = current.parent();
-        if parent.is_none() || parent.unwrap().as_os_str().is_empty() {
-            return None; // Reached the root of the filesystem
-        }
-        current = parent.unwrap().to_path_buf();
-    }
-}
 
 pub struct PublishBatchCommand {
 }
@@ -100,46 +81,29 @@ impl PublishBatchCommand {
             // If nospub.globs contain any of the changed files, add parent to to_be_published
             if changed_files_opt.is_some() {
                 let changed_files = changed_files_opt.as_ref().unwrap();
-                let mut watch_globs: Vec<String> = Vec::new();
-                watch_globs.extend(publish_options.release_globs.clone());
+                let mut found = false;
+                let mut watch_globs = Vec::new();
+                watch_globs.extend(publish_options.release_globs.iter());
                 if let Some(triggers) = &publish_options.additional_publish_triggering_globs {
-                    watch_globs.extend(triggers.clone());
+                    watch_globs.extend(triggers.iter());
                 }
                 let nospub_file = constants::PUBLISH_OPTIONS_FILE_NAME.to_string();
-                watch_globs.push(nospub_file);
-
-                let files = walk_patterns(&parent, &watch_globs)?;
-
-                let repo_root = get_git_repo_root(&repo_path).expect("Failed to find git repository root");
-                let file_set: HashSet<_> = files.iter().map(|(file_path, _)| dunce::canonicalize(file_path).expect("Failed to canonicalize file path").into_os_string()).collect();
-                let changed_file_set: HashSet<_> = changed_files.iter().map(|file| dunce::canonicalize(repo_root.join(file)).expect("Failed to canonicalize changed file").into_os_string()).collect();
-
-                // Add debugging
-                if verbose {
-                    println!("Repo root: {:?}", repo_root);
-                    println!("Package root: {:?}", parent);
-                    println!("Files in package:");
-                    for file in &file_set {
-                        println!("  {:?}", file);
-                    }
-                    println!("Changed files:");
-                    for file in &changed_file_set {
-                        println!("  {:?}", file);
-                    }
-                }
-
-                let intersection: Vec<&OsString> = file_set.intersection(&changed_file_set)
-                    .collect();
-                if verbose {
-                    if !intersection.is_empty() {
-                        for file in &intersection {
-                            println!("{}", format!("Changed file found in package at {}: {}", relative_path.display(), file.to_string_lossy()).dimmed());
+                watch_globs.push(&nospub_file);
+                for glob in &watch_globs {
+                    // Prepend the parent path to the glob
+                    let local = relative_path.join(glob);
+                    let glob_str = local.to_slash_lossy().to_string();
+                    for changed_file in changed_files {
+                        if glob_match(glob_str.as_str(), changed_file.to_str().unwrap()) {
+                            found = true;
+                            break;
                         }
-                    } else {
-                        println!("{}", format!("No changed files found in package at {}", relative_path.display()).dimmed());
+                    }
+                    if found {
+                        break;
                     }
                 }
-                if intersection.is_empty() {
+                if !found {
                     continue;
                 }
             }
