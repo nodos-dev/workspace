@@ -50,22 +50,18 @@ pub fn get_engine_sdk_infos(workspace: &Workspace) -> Result<Vec<SdkInfo>, Comma
         let subsystem_sdk_version = info_json.get("subsystem_sdk_version")
 			.and_then(|v| v.as_str())
 			.unwrap_or_else(|| plugin_sdk_version);
-        let bin_dir = sdk_dir.join("bin");
-        let include_dir = sdk_dir.join("include");
-        if bin_dir.exists() && include_dir.exists() {
-            let path_str = dunce::canonicalize(dunce::canonicalize(sdk_dir)
-                .expect("Failed to canonicalize SDK directory"))
-                .expect("Failed to canonicalize SDK directory").to_str()
-                .expect("Failed to convert path to string").to_string();
-			let sdk_info = SdkInfo {
-				version: version.to_string(),
-                process_sdk_version: process_sdk_version.to_string(),
-                plugin_sdk_version: plugin_sdk_version.to_string(),
-                subsystem_sdk_version: subsystem_sdk_version.to_string(),
-                path: path_str,
-            };
-            result.push(sdk_info);
-        }
+        let path_str = dunce::canonicalize(dunce::canonicalize(sdk_dir)
+            .expect("Failed to canonicalize SDK directory"))
+            .expect("Failed to canonicalize SDK directory").to_str()
+            .expect("Failed to convert path to string").to_string();
+        let sdk_info = SdkInfo {
+            version: version.to_string(),
+            process_sdk_version: process_sdk_version.to_string(),
+            plugin_sdk_version: plugin_sdk_version.to_string(),
+            subsystem_sdk_version: subsystem_sdk_version.to_string(),
+            path: path_str,
+        };
+        result.push(sdk_info);
     }
     Ok(result)
 }

@@ -40,10 +40,10 @@ set(NOS_SDK_DIRS "")
 
 macro(_nos_process_engine_folder engine_folder binary_dir_index)
 	if(IS_DIRECTORY ${engine_folder})
-		# If engine directory does not contain a CMakeLists.txt, include SDK/cmake/VersionInfo.cmake.
+		# If engine directory does not contain a CMakeLists.txt, include SDK/CMake/VersionInfo.cmake.
 		if(NOT EXISTS "${engine_folder}/CMakeLists.txt")
-			message(STATUS "Including ${engine_folder}/SDK/cmake/VersionInfo.cmake")
-			include(${engine_folder}/SDK/cmake/VersionInfo.cmake)
+			message(STATUS "Including ${engine_folder}/SDK/CMake/VersionInfo.cmake")
+			include(${engine_folder}/SDK/CMake/VersionInfo.cmake)
 		else()
 			add_subdirectory(${engine_folder} "${CMAKE_CURRENT_BINARY_DIR}/EngineDir${binary_dir_index}")
 		endif()
@@ -97,9 +97,9 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 		list(GET NOS_SUBSYSTEM_SDK_VERSIONS ${val} nos_subsystem_sdk_version)
 	
 		if (NOT nos_subsystem_sdk_version)
-		message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} (Plugin SDK: ${nos_plugin_sdk_version}) at ${nos_sdk_dir}")
+			message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} (Plugin SDK: ${nos_plugin_sdk_version}) at ${nos_sdk_dir}")
 		else()
-		message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} (Plugin SDK: ${nos_plugin_sdk_version}, Subsystem SDK: ${nos_subsystem_sdk_version}) at ${nos_sdk_dir}")
+			message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} (Plugin SDK: ${nos_plugin_sdk_version}, Subsystem SDK: ${nos_subsystem_sdk_version}) at ${nos_sdk_dir}")
 		endif()
 		# Convert version 1.2.3 to 1_2_3
 		string(REPLACE "." "_" version_target_suffix "${nos_version}")
@@ -111,27 +111,41 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 		set(nos_subsystem_sdk_target nosSubsystemSDK_${subsystem_sdk_target_suffix})
 		# Create nosPluginSDK target
 		if(TARGET ${nos_plugin_sdk_target})
-			nos_fatal_error("Multiple Nodos plugin SDKs with the same version found under Engine folder. This is not supported.")
+			nos_fatal_error("Multiple Nodos Plugin SDKs with the same version found under Engine folder. This is not supported.")
 		endif()
-	
-		add_library(${nos_plugin_sdk_target} INTERFACE)
-		target_compile_definitions(${nos_plugin_sdk_target} INTERFACE "-DNOMINMAX")
-		target_include_directories(${nos_plugin_sdk_target} INTERFACE ${nos_sdk_dir}/include)
-			
-		# Create nosSubsystemSDK target
-		add_library(${nos_subsystem_sdk_target} INTERFACE)
-		target_compile_definitions(${nos_subsystem_sdk_target} INTERFACE "-DNOMINMAX")
-		target_include_directories(${nos_subsystem_sdk_target} INTERFACE ${nos_sdk_dir}/include)
-	
+
+		# If 1.4 and later, use Plugin/Include, and get rid of nosSubsystemSDK
+		string(REPLACE "." ";" nos_version_components ${nos_version})
+		list(GET nos_version_components 0 ver_major)
+		list(GET nos_version_components 1 ver_minor)
+		list(GET nos_version_components 2 ver_patch)
+
+		if ((ver_major GREATER_EQUAL 1) AND (ver_minor GREATER_EQUAL 4))
+			add_library(${nos_plugin_sdk_target} INTERFACE)
+			target_compile_definitions(${nos_plugin_sdk_target} INTERFACE "-DNOMINMAX")
+			target_include_directories(${nos_plugin_sdk_target} INTERFACE ${nos_sdk_dir}/Plugin/Include)
+		else()
+			add_library(${nos_plugin_sdk_target} INTERFACE)
+			target_compile_definitions(${nos_plugin_sdk_target} INTERFACE "-DNOMINMAX")
+			target_include_directories(${nos_plugin_sdk_target} INTERFACE ${nos_sdk_dir}/include)
+
+			# Create nosSubsystemSDK target
+			add_library(${nos_subsystem_sdk_target} INTERFACE)
+			target_compile_definitions(${nos_subsystem_sdk_target} INTERFACE "-DNOMINMAX")
+			target_include_directories(${nos_subsystem_sdk_target} INTERFACE ${nos_sdk_dir}/include)
+			set_target_properties(${nos_subsystem_sdk_target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+		endif()
+
 		# Exclude from all
 		set_target_properties(${nos_plugin_sdk_target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
-		set_target_properties(${nos_subsystem_sdk_target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 		# Add natvis
 		set(natvis_file "${nos_sdk_dir}/nosSDKCommon.natvis")
 		if(EXISTS ${natvis_file})
 			target_sources(${nos_plugin_sdk_target} INTERFACE ${natvis_file})
-			target_sources(${nos_subsystem_sdk_target} INTERFACE ${natvis_file})
+			if (TARGET ${nos_subsystem_sdk_target})
+				target_sources(${nos_subsystem_sdk_target} INTERFACE ${natvis_file})
+			endif()
 		endif()
 	
 		# If binaries folder exists, add a custom target for nosLauncher and nosEditor and VS_DEBUGGER options
@@ -141,7 +155,7 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 			set(nos_launcher_target nosLauncher_${version_target_suffix})
 			add_custom_target(${nos_launcher_target}
 				COMMAND ${nos_binaries_dir}/nosLauncher${CMAKE_EXECUTABLE_SUFFIX}
-				WORKING_DIRECTORY ${nos_sdk_dir}/bin
+				WORKING_DIRECTORY ${nos_binaries_dir}
 				DEPENDS ${nos_plugin_sdk_target} ${nos_subsystem_sdk_target}
 			)
 	
@@ -149,7 +163,7 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 			set(nos_editor_target nosEditor_${version_target_suffix})
 			add_custom_target(${nos_editor_target}
 				COMMAND ${nos_binaries_dir}/nosEditor${CMAKE_EXECUTABLE_SUFFIX}
-				WORKING_DIRECTORY ${nos_sdk_dir}/bin
+				WORKING_DIRECTORY ${nos_binaries_dir}
 				DEPENDS ${nos_plugin_sdk_target} ${nos_subsystem_sdk_target}
 			)
 	
