@@ -95,49 +95,59 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 		list(GET NOS_SDK_DIRS ${val} nos_sdk_dir)
 		list(GET NOS_PLUGIN_SDK_VERSIONS ${val} nos_plugin_sdk_version)
 		list(GET NOS_SUBSYSTEM_SDK_VERSIONS ${val} nos_subsystem_sdk_version)
+
+		# Convert version 1.2.3 to 1_2_3
+		string(REPLACE "." "_" version_target_suffix "${nos_version}")
+
+		if (nos_version VERSION_GREATER_EQUAL "1.4.0")
+			set(sdk_root ${nos_sdk_dir}/Plugin)
+			set(sdk_include_dir ${nos_sdk_dir}/Plugin/Include)
+		else()
+			set(sdk_root ${nos_sdk_dir})
+			set(sdk_include_dir ${nos_sdk_dir}/include)
+		endif()
 	
 		if (NOT nos_subsystem_sdk_version)
 			message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} (Plugin SDK: ${nos_plugin_sdk_version}) at ${nos_sdk_dir}")
 		else()
 			message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} (Plugin SDK: ${nos_plugin_sdk_version}, Subsystem SDK: ${nos_subsystem_sdk_version}) at ${nos_sdk_dir}")
 		endif()
-		# Convert version 1.2.3 to 1_2_3
-		string(REPLACE "." "_" version_target_suffix "${nos_version}")
 		string(REPLACE "." "_" plugin_sdk_version_target_suffix "${nos_plugin_sdk_version}")
-		string(REPLACE "." "_" subsystem_sdk_target_suffix "${nos_subsystem_sdk_version}")
 
-
+		# nosPluginSDK target
+		# -------------------
 		set(nos_plugin_sdk_target nosPluginSDK_${plugin_sdk_version_target_suffix})
-		set(nos_subsystem_sdk_target nosSubsystemSDK_${subsystem_sdk_target_suffix})
-		# Create nosPluginSDK target
+
 		if(TARGET ${nos_plugin_sdk_target})
 			nos_fatal_error("Multiple Nodos Plugin SDKs with the same version found under Engine folder. This is not supported.")
 		endif()
+		
+		# Create targets
+		add_library(${nos_plugin_sdk_target} INTERFACE)
+		target_compile_definitions(${nos_plugin_sdk_target} INTERFACE "-DNOMINMAX")
+		target_include_directories(${nos_plugin_sdk_target} INTERFACE ${sdk_include_dir})
 
-		if (nos_version VERSION_GREATER_EQUAL "1.4.0")
-			add_library(${nos_plugin_sdk_target} INTERFACE)
-			target_compile_definitions(${nos_plugin_sdk_target} INTERFACE "-DNOMINMAX")
-			target_include_directories(${nos_plugin_sdk_target} INTERFACE ${nos_sdk_dir}/Plugin/Include)
-		else()
-			add_library(${nos_plugin_sdk_target} INTERFACE)
-			target_compile_definitions(${nos_plugin_sdk_target} INTERFACE "-DNOMINMAX")
-			target_include_directories(${nos_plugin_sdk_target} INTERFACE ${nos_sdk_dir}/include)
+		# Exclude from all
+		set_target_properties(${nos_plugin_sdk_target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+		
+		# Add natvis
+		set(natvis_file "${sdk_root}/nosSDKCommon.natvis")
+		if(EXISTS ${natvis_file})
+			target_sources(${nos_plugin_sdk_target} INTERFACE ${natvis_file})
+		endif()
+
+		# -------------------
+
+		if (nos_subsystem_sdk_version)
+			string(REPLACE "." "_" subsystem_sdk_target_suffix "${nos_subsystem_sdk_version}")
+			set(nos_subsystem_sdk_target nosSubsystemSDK_${subsystem_sdk_target_suffix})
 
 			# Create nosSubsystemSDK target
 			add_library(${nos_subsystem_sdk_target} INTERFACE)
 			target_compile_definitions(${nos_subsystem_sdk_target} INTERFACE "-DNOMINMAX")
-			target_include_directories(${nos_subsystem_sdk_target} INTERFACE ${nos_sdk_dir}/include)
+			target_include_directories(${nos_subsystem_sdk_target} INTERFACE ${sdk_include_dir})
 			set_target_properties(${nos_subsystem_sdk_target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
-		endif()
-
-		# Exclude from all
-		set_target_properties(${nos_plugin_sdk_target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
-
-		# Add natvis
-		set(natvis_file "${nos_sdk_dir}/nosSDKCommon.natvis")
-		if(EXISTS ${natvis_file})
-			target_sources(${nos_plugin_sdk_target} INTERFACE ${natvis_file})
-			if (TARGET ${nos_subsystem_sdk_target})
+			if (EXISTS ${natvis_file})
 				target_sources(${nos_subsystem_sdk_target} INTERFACE ${natvis_file})
 			endif()
 		endif()
