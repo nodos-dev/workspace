@@ -43,11 +43,11 @@ impl LangTool {
 
 static DATA_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/data");
 
-fn get_template_dir_for<'a>(name: &str, plugin_type: &PluginType, version: &str) -> &'a Dir<'a> {
+fn get_template_dir_for<'a>(name: &str, plugin_type: &PluginType, version: &str) -> Option<&'a Dir<'a>> {
     let template_dir = if *plugin_type == PluginType::Default {
-        DATA_DIR.get_dir(format!("templates/nodos-{}/{}/plugin", version, name)).unwrap()
+        DATA_DIR.get_dir(format!("templates/nodos-{}/{}/plugin", version, name))
     } else {
-        DATA_DIR.get_dir(format!("templates/nodos-{}/{}/subsystem", version, name)).unwrap()
+        DATA_DIR.get_dir(format!("templates/nodos-{}/{}/subsystem", version, name))
     };
     template_dir
 }
@@ -119,7 +119,9 @@ impl CreateCommand {
             if let Ok(engines) = engines {
                 let mut major_minors = HashSet::<SemVer>::new();
                 for engine in engines {
-                    if let Some(semver) = SemVer::parse_from_str(engine.version.as_str()) {
+                    if let Some(mut semver) = SemVer::parse_from_str(engine.version.as_str()) {
+                        semver.patch = None;
+                        semver.build_number = None;
                         major_minors.insert(semver);
                     }
                 }
@@ -127,7 +129,7 @@ impl CreateCommand {
                     // Multiple versions found, select the latest one:
                     let mut versions: Vec<SemVer> = major_minors.into_iter().collect();
                     versions.sort_by(|a, b| {
-                        a.cmp(&b) // Descending order
+                        b.cmp(&a) // Descending order
                     });
                     selected_version = Some(versions[0].clone());
                 } else if major_minors.len() == 1 {
@@ -148,6 +150,12 @@ impl CreateCommand {
 
         let tool_template_dir = get_template_dir_for(lang_tool.tool(), &plugin_type, &version_str);
         let lang_template_dir = get_template_dir_for(lang_tool.lang(), &plugin_type, &version_str);
+
+        if tool_template_dir.is_none() || lang_template_dir.is_none() {
+            return Err(InvalidArgument { message: format!("No template found for plugin type {:?} and version {}", plugin_type, version_str) });
+        }
+        let tool_template_dir = tool_template_dir.unwrap();
+        let lang_template_dir = lang_template_dir.unwrap();
 
         let manifest_path_ext = get_plugin_manifest_file_ext(selected_version.as_ref(), &plugin_type);
 
