@@ -60,7 +60,7 @@ macro(nos_find_sdk requested_version out_nos_plugin_sdk out_nos_subsystem_sdk ou
 		set(${out_nos_plugin_sdk} nosPluginSDK_${version_target_suffix})
 
 		if (found_version VERSION_GREATER_EQUAL "1.4.0")
-			set(${out_nos_subsystem_sdk} ${out_nos_plugin_sdk})
+			set(${out_nos_subsystem_sdk} ${${out_nos_plugin_sdk}})
 			set(FLATC_EXECUTABLE "${nos_sdk_dir}/Plugin/Binaries/flatc" CACHE PATH "Path to the flatc executable" FORCE)
 		else()
 			set(${out_nos_subsystem_sdk} nosSubsystemSDK_${version_target_suffix})
@@ -80,7 +80,7 @@ macro(nos_find_sdk requested_version out_nos_plugin_sdk out_nos_subsystem_sdk ou
 		string(REPLACE "." "_" subsystem_sdk_target_suffix "${found_subsystem_sdk_version}")
 		set(${out_nos_subsystem_sdk} nosSubsystemSDK_${subsystem_sdk_target_suffix})
 	else()
-		set(${out_nos_subsystem_sdk} ${out_nos_plugin_sdk})
+		set(${out_nos_subsystem_sdk} ${${out_nos_plugin_sdk}})
 	endif()
 endmacro()
 
