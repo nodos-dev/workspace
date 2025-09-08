@@ -140,9 +140,12 @@ pub fn get_string<'a>(json: &'a Value, field: &str, file: &Path) -> &'a str {
         .unwrap_or_else(|| panic!("{} field is not a string in {:?}", field, file))
 }
 
-pub fn read_or_fail(file: &PathBuf, tag: &str) -> String {
+pub fn read_file_contents(file: &PathBuf, tag: &str) -> Result<String, CommandError> {
     fs::read_to_string(file)
-        .unwrap_or_else(|e| panic!("Failed to read {} file {:?}: {}", tag, file, e))
+        .map_err(|e| CommandError::IO {
+            file: file.to_string_lossy().to_string(),
+            message: format!("Failed to read {} file: {}", tag, e),
+        })
 }
 
 pub static NODOS_1_4: SemVer = SemVer { major: 1, minor: Some(4), patch: None, build_number: None };

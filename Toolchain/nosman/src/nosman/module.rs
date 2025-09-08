@@ -124,7 +124,7 @@ pub fn load_dylib_with_search_paths(verbose: bool, binary_path: &OsString, addit
 
 pub fn load_module_from_manifest(package: &LocalPackageEntry, workspace: &Workspace) -> Result<Library, CommandError> {
     let path = package.get_abs_manifest_path(workspace);
-    let manifest_file_contents = common::read_or_fail(&path, "package manifest");
+    let manifest_file_contents = common::read_file_contents(&path, "package manifest")?;
     let manifest: serde_json::Value = serde_json::from_str(&manifest_file_contents).unwrap_or_else(|e| panic!("Failed to parse package manifest file {}: {}", path.display(), e));
     load_module(false, &package.package_type, manifest, package.get_abs_manifest_path(workspace).parent().unwrap().to_path_buf(), workspace)
 }
@@ -162,7 +162,7 @@ pub fn load_module(verbose: bool, package_type: &PackageType, manifest: serde_js
         let dep_res = workspace.get_latest_local_package_for_version(dep_name, dep_version);
         if let Ok(installed_module) = dep_res {
             let dep_manifest_file_path = workspace.root.join(&installed_module.manifest_path);
-            let dep_manifest_file_contents = common::read_or_fail(&dep_manifest_file_path, "dependency manifest");
+            let dep_manifest_file_contents = common::read_file_contents(&dep_manifest_file_path, "dependency manifest")?;
             let dep_manifest: serde_json::Value = serde_json::from_str(&dep_manifest_file_contents).unwrap_or_else(|e| panic!("Failed to parse dependency manifest file {}: {}", dep_manifest_file_path.display(), e));
             for path_str in dep_manifest["additional_search_paths"].as_array().unwrap_or(&vec![]) {
                 let module_dir = dep_manifest_file_path.parent().unwrap();

@@ -22,7 +22,13 @@ pub fn silently_agree_eulas(workspace_dir: &std::path::PathBuf) {
             println!("Nodos Engine EULA at {}: {}", path.display(), "Accepted".green());
             continue;
         }
-        let eula_str = common::read_or_fail(&eula_unconfirmed, "unconfirmed EULA");
+        let eula_str = match common::read_file_contents(&eula_unconfirmed, "unconfirmed EULA") {
+            Ok(content) => content,
+            Err(e) => {
+                eprintln!("Failed to read EULA file: {}", e);
+                continue;
+            }
+        };
         let mut eula_json: serde_json::Value = serde_json::from_str(&eula_str).unwrap_or_else(|e| panic!("Failed to parse EULA_UNCONFIRMED file {:?}: {}", eula_unconfirmed, e));
         eula_json["accepted"] = serde_json::Value::Bool(true);
         eula_json["acceptation_date_iso"] = serde_json::Value::String(chrono::Utc::now().to_rfc3339());

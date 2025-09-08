@@ -64,8 +64,15 @@ impl PublishOptionsFileContent {
         let mut nospub = Self::empty();
         let found = nospub_file.exists();
         if found {
-            let contents = common::read_or_fail(nospub_file, "publish options");
-            nospub = serde_json::from_str(&contents).unwrap();
+            match common::read_file_contents(nospub_file, "publish options") {
+                Ok(contents) => {
+                    nospub = serde_json::from_str(&contents).unwrap();
+                }
+                Err(e) => {
+                    eprintln!("Warning: Failed to read publish options file: {}", e);
+                    return (Self::empty(), false);
+                }
+            }
         }
         (nospub, found)
     }
@@ -200,8 +207,8 @@ impl PublishCommand {
                         {
                             let get_api_version_func = lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>(get_api_version_func_name.as_bytes())
                                 .or_else(|_| {
-									lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>("nosGetSubsystemAPIVersion".as_bytes())
-								}).unwrap_or_else(|e| panic!("Failed to get symbol {}: {}", get_api_version_func_name, e));
+                                    lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>("nosGetSubsystemAPIVersion".as_bytes())
+                                }).unwrap_or_else(|e| panic!("Failed to get symbol {}: {}", get_api_version_func_name, e));
                             let mut major = 0;
                             let mut minor = 0;
                             let mut patch = 0;
