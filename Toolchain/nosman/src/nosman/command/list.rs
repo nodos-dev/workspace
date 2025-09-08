@@ -48,8 +48,9 @@ impl ListCommand {
                 }
             }
             if remote {
-                workspace.set_output_mode(crate::nosman::workspace::OutputMode::Silent);
-                workspace.fetch_package_releases(package_name);
+                workspace.with_output_mode_scoped(crate::nosman::workspace::OutputMode::Silent, |ws| {
+                    ws.fetch_package_releases(package_name);
+                });
                 println!("{}", "Remote versions".green());
                 if let Some(releases) = workspace.index_cache.packages.get(package_name) {
                     for release_entry in &releases.1 {
@@ -88,13 +89,17 @@ impl ListCommand {
                 }
             }
             if remote {
-                workspace.set_output_mode(crate::nosman::workspace::OutputMode::Silent);
-                let mut latest = workspace.fetch_latest_versions();
-                println!("{}", "Remote packages".green());
-                latest.sort_by(|a, b| a.0.cmp(&b.0));
-                for (name, entry) in latest {
-                    println!("  {} (latest: {})", name.to_string().green(), entry.version.to_string().yellow());
-                }
+                workspace.with_output_mode_scoped(crate::nosman::workspace::OutputMode::Silent, |ws| {
+                    let latest = ws.fetch_latest_versions();
+                    println!("{}", "Remote packages".green());
+                    let mut latest_owned: Vec<(String, String)> = latest.iter()
+                        .map(|(name, entry)| ((*name).clone(), entry.version.clone()))
+                        .collect();
+                    latest_owned.sort_by(|a, b| a.0.cmp(&b.0));
+                    for (name, version) in latest_owned {
+                        println!("  {} (latest: {})", name.green(), version.yellow());
+                    }
+                });
             }
         }
         Ok(())

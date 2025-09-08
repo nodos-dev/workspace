@@ -4,7 +4,7 @@ use std::{fs, io};
 use std::cmp::PartialEq;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration};
 use bitflags::bitflags;
 use colored::Colorize;
 use crate::nosman::common::get_progress_bar;
@@ -34,10 +34,22 @@ pub enum OutputMode {
     Default,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum AutoRescanResult {
+    /// No action was needed - workspace was up to date
+    NoActionNeeded,
+    /// Full workspace rescan was performed due to missing index file
+    FullRescanMissingIndex,
+    /// Full workspace rescan was performed due to missing manifest files
+    FullRescanMissingManifests,
+    /// Partial rescan was performed on specific folders with updated manifests
+    PartialRescanUpdatedManifests(Vec<PathBuf>),
+}
+
 #[derive(Debug, Default)]
 struct WorkspaceRuntimeParams {
     status: WorkspaceStatus,
-    output_mode: OutputMode,
+    output_mode_stack: Vec<OutputMode>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -130,7 +142,7 @@ impl Workspace {
             remotes: Vec::new(),
             packages: HashMap::new(),
             index_cache: Index { packages: HashMap::new() },
-            runtime: WorkspaceRuntimeParams { status: WorkspaceStatus::DoesNotExist, output_mode: OutputMode::Default },
+            runtime: WorkspaceRuntimeParams { status: WorkspaceStatus::DoesNotExist, output_mode_stack: vec![OutputMode::Default] },
         }
     }
     pub fn from_root(path: &PathBuf) -> Workspace {
@@ -317,11 +329,25 @@ impl Workspace {
         println!("{}", "All modules removed successfully".green());
         Ok(())
     }
-    fn is_silent(&self) -> bool {
-        self.runtime.output_mode == OutputMode::Silent
+    pub fn is_silent(&self) -> bool {
+        self.runtime.output_mode_stack.last().unwrap_or(&OutputMode::Default) == &OutputMode::Silent
     }
-    pub fn set_output_mode(&mut self, mode: OutputMode) {
-        self.runtime.output_mode = mode;
+    pub fn push_output_mode(&mut self, mode: OutputMode) {
+        self.runtime.output_mode_stack.push(mode);
+    }
+    pub fn pop_output_mode(&mut self) {
+        if self.runtime.output_mode_stack.len() > 1 {
+            self.runtime.output_mode_stack.pop();
+        }
+    }
+    pub fn with_output_mode_scoped<T, F>(&mut self, mode: OutputMode, f: F) -> T 
+    where 
+        F: FnOnce(&mut Self) -> T 
+    {
+        self.push_output_mode(mode);
+        let result = f(self);
+        self.pop_output_mode();
+        result
     }
     pub fn scan_packages_in_folder(&mut self, folder: PathBuf, flags: ScanModulesFlags) {
         // Scan folders with .noscfg and .nossys files
@@ -466,6 +492,115 @@ impl Workspace {
             count += versions.len();
         }
         count
+    }
+
+    /// Automatically rescans the workspace if needed based on manifest file status.
+    /// - If any manifest files are missing, performs a full rescan
+    /// - If manifest files are only updated, rescans only the folders containing those files
+    /// Returns an AutoRescanResult indicating what action was taken
+    #[allow(dead_code)]
+    pub fn auto_rescan_if_needed(&mut self) -> Result<AutoRescanResult, CommandError> {
+        // If workspace is not ready, return early - no auto-rescan needed
+        if !self.ready() {
+            return Ok(AutoRescanResult::NoActionNeeded);
+        }
+
+        // Get the modification time of the workspace index file
+        let index_path = self.get_nosman_index_filepath();
+        let index_modified_time = match fs::metadata(&index_path).and_then(|m| m.modified()) {
+            Ok(time) => time,
+            Err(_) => {
+                self.rescan(RescanFlags::ScanPackages)?;
+                return Ok(AutoRescanResult::FullRescanMissingIndex);
+            }
+        };
+
+        // Collect all packages for parallel processing
+        let all_packages: Vec<&LocalPackageEntry> = self.packages
+            .values()
+            .flat_map(|versions| versions.values())
+            .collect();
+
+        // Use parallel iterator to check manifest files
+        use rayon::prelude::*;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        
+        let missing_manifests = AtomicBool::new(false);
+        let updated_folders = Mutex::new(Vec::new());
+        
+        all_packages.par_iter().for_each(|package| {
+            // If we already found missing manifests, skip further processing
+            if missing_manifests.load(Ordering::Relaxed) {
+                return;
+            }
+            
+            let manifest_path = self.root.join(&package.manifest_path);
+            
+            // Check if manifest file still exists
+            if !manifest_path.exists() {
+                missing_manifests.store(true, Ordering::Relaxed);
+                return;
+            }
+            
+            // Check if manifest file has been modified since the index was last saved
+            if let Ok(metadata) = fs::metadata(&manifest_path) {
+                if let Ok(modified_time) = metadata.modified() {
+                    if modified_time > index_modified_time {
+                        // Get the folder containing this manifest
+                        if let Some(folder) = manifest_path.parent() {
+                            let folder = folder.to_path_buf();
+                            let mut folders = updated_folders.lock().unwrap();
+                            if !folders.contains(&folder) {
+                                folders.push(folder);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        let missing_manifests = missing_manifests.load(Ordering::Relaxed);
+        let updated_folders = updated_folders.into_inner().unwrap();
+
+        // If any manifests are missing, do a full rescan
+        if missing_manifests {
+            self.rescan(RescanFlags::ScanPackages)?;
+            return Ok(AutoRescanResult::FullRescanMissingManifests);
+        }
+
+        // If no updates, nothing to do
+        if updated_folders.is_empty() {
+            return Ok(AutoRescanResult::NoActionNeeded);
+        }
+
+        // Store the folders for the result
+        let updated_folders_result = updated_folders.clone();
+
+        // Rescan only the updated folders
+        self.with_output_mode_scoped(OutputMode::Silent, |ws| {
+            for folder in &updated_folders {
+                // Remove packages from this folder first
+                let folder_relative = get_rel_path_based_on(folder, &ws.root);
+                ws.packages.retain(|_name, versions| {
+                    versions.retain(|_version, package| {
+                        let package_folder = package.manifest_path.parent()
+                            .map(|p| p.to_path_buf())
+                            .unwrap_or_else(|| PathBuf::new());
+                        package_folder != folder_relative
+                    });
+                    !versions.is_empty()
+                });
+
+                // Rescan this specific folder
+                ws.scan_packages_in_folder(folder.clone(), ScanModulesFlags::ForceReplaceInRegistry | ScanModulesFlags::RegisterCommands);
+            }
+        });
+
+        // Save the updated workspace
+        self.save()?;
+        self.runtime.status = WorkspaceStatus::Ready;
+        
+        Ok(AutoRescanResult::PartialRescanUpdatedManifests(updated_folders_result))
     }
 }
 
