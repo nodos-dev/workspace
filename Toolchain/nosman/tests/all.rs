@@ -7,7 +7,7 @@ use nosman::nosman::command::pin::PinCommand;
 use nosman::nosman::command::sdk_info::SdkInfoCommand;
 use nosman::nosman::common::NODOS_1_4;
 use nosman::nosman::index::{PluginType, SemVer};
-use nosman::nosman::workspace::Workspace;
+use nosman::nosman::workspace::{OutputMode, Workspace};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::path::PathBuf;
@@ -46,6 +46,7 @@ impl WorkspaceGen {
         if !ws.ready() {
             ws.recreate().expect("Failed to create test workspace");
         }
+        ws.push_output_mode(OutputMode::Silent);
         WorkspaceGen { workspace: ws }
     }
     fn clear_all() -> io::Result<()> {
@@ -565,5 +566,215 @@ fn sdk_info_plugin_version_1_4() {
 fn sdk_info_process_version_1_4() {
     let mut test = WorkspaceGen::new_random();
     test_sdk_info(&mut test, "1.4.0.b4431", "process");
+}
+
+#[test]
+fn auto_rescan_if_needed_workspace_not_ready() {
+    use nosman::nosman::workspace::AutoRescanResult;
+    
+    // Create a workspace from a path that doesn't have an index file
+    let random_string: String = (0..8)
+        .map(|_| RNG.lock().unwrap().gen_range(b'a'..=b'z'))
+        .map(char::from)
+        .collect();
+    let test_path = PathBuf::from(format!("./test_workspaces/{}", random_string));
+    
+    // Create the directory but don't initialize it with recreate()
+    fs::create_dir_all(&test_path).expect("Failed to create test directory");
+    
+    let mut workspace = Workspace::from_root(&test_path);
+    assert!(!workspace.ready(), "Workspace should not be ready initially");
+    
+    // auto_rescan_if_needed should do nothing when workspace is not ready
+    let result = workspace.auto_rescan_if_needed();
+    assert!(result.is_ok(), "auto_rescan_if_needed should succeed when workspace is not ready");
+    
+    match result.unwrap() {
+        AutoRescanResult::NoActionNeeded => {
+            // This is expected - no action should be taken when workspace is not ready
+        },
+        other => panic!("Expected NoActionNeeded, got {:?}", other),
+    }
+    
+    // Workspace should still not be ready since no rescan was performed
+    assert!(!workspace.ready(), "Workspace should still not be ready after auto_rescan_if_needed");
+}
+
+#[test]
+fn auto_rescan_if_needed_no_index_file() {
+    use nosman::nosman::workspace::AutoRescanResult;
+    
+    let mut test = WorkspaceGen::new_random();
+    
+    // Remove the index file to force a full rescan
+    let index_path = test.workspace.get_nosman_index_filepath();
+    if index_path.exists() {
+        fs::remove_file(&index_path).expect("Failed to remove index file");
+    }
+    
+    let result = test.workspace.auto_rescan_if_needed();
+    assert!(result.is_ok(), "auto_rescan_if_needed should succeed when index file is missing");
+    
+    match result.unwrap() {
+        AutoRescanResult::FullRescanMissingIndex => {
+            // This is expected
+        },
+        other => panic!("Expected FullRescanMissingIndex, got {:?}", other),
+    }
+    
+    assert!(index_path.exists(), "Index file should be recreated after auto_rescan_if_needed");
+}
+
+#[test]
+fn auto_rescan_if_needed_no_changes() {
+    use nosman::nosman::workspace::AutoRescanResult;
+    
+    let mut test = WorkspaceGen::new_random();
+    
+    // Install a package to have some content in the workspace
+    let package_name = "nos.sys.vulkan";
+    let version = String::from("6.2.1.b612");
+    InstallCommand {}
+        .run_install(
+            &mut test.workspace,
+            package_name,
+            Some(&version),
+            &PathBuf::from("."),
+            None,
+            InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
+        )
+        .expect("Failed to install package");
+    
+    // Save workspace to establish baseline
+    test.workspace.save().expect("Failed to save workspace");
+    
+    // auto_rescan_if_needed should do nothing when no changes detected
+    let result = test.workspace.auto_rescan_if_needed();
+    assert!(result.is_ok(), "auto_rescan_if_needed should succeed when no changes");
+    
+    match result.unwrap() {
+        AutoRescanResult::NoActionNeeded => {
+            // This is expected
+        },
+        other => panic!("Expected NoActionNeeded, got {:?}", other),
+    }
+    
+    // Verify package is still there
+    let versions = test.workspace.get_packages(package_name);
+    assert_eq!(versions.len(), 1, "Package should still be present after auto_rescan_if_needed");
+}
+
+#[test]
+fn auto_rescan_if_needed_missing_manifest() {
+    use nosman::nosman::workspace::AutoRescanResult;
+    
+    let mut test = WorkspaceGen::new_random();
+    
+    // Install a package to have some content
+    let package_name = "nos.sys.vulkan";
+    let version = String::from("6.2.1.b612");
+    InstallCommand {}
+        .run_install(
+            &mut test.workspace,
+            package_name,
+            Some(&version),
+            &PathBuf::from("."),
+            None,
+            InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
+        )
+        .expect("Failed to install package");
+    
+    // Save workspace
+    test.workspace.save().expect("Failed to save workspace");
+    
+    // Find and remove a manifest file
+    let mut manifest_path = None;
+    for (_name, versions) in &test.workspace.packages {
+        for (_version, package) in versions {
+            let full_manifest_path = test.workspace.root.join(&package.manifest_path);
+            if full_manifest_path.exists() {
+                manifest_path = Some(full_manifest_path);
+                break;
+            }
+        }
+        if manifest_path.is_some() {
+            break;
+        }
+    }
+    
+    if let Some(path) = manifest_path {
+        fs::remove_file(&path).expect("Failed to remove manifest file");
+        
+        // auto_rescan_if_needed should perform full rescan when manifest is missing
+        let result = test.workspace.auto_rescan_if_needed();
+        assert!(result.is_ok(), "auto_rescan_if_needed should succeed when manifest is missing");
+        
+        match result.unwrap() {
+            AutoRescanResult::FullRescanMissingManifests => {
+                // This is expected
+            },
+            other => panic!("Expected FullRescanMissingManifests, got {:?}", other),
+        }
+    }
+}
+
+#[test]
+fn auto_rescan_if_needed_updated_manifest() {
+    use std::time::Duration;
+    use nosman::nosman::workspace::AutoRescanResult;
+    
+    let mut test = WorkspaceGen::new_random();
+    
+    // Install a package to have some content
+    let package_name = "nos.sys.vulkan";
+    let version = String::from("6.2.1.b612");
+    InstallCommand {}
+        .run_install(
+            &mut test.workspace,
+            package_name,
+            Some(&version),
+            &PathBuf::from("."),
+            None,
+            InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
+        )
+        .expect("Failed to install package");
+    
+    // Save workspace to establish baseline
+    test.workspace.save().expect("Failed to save workspace");
+    
+    // Sleep briefly to ensure time difference
+    std::thread::sleep(Duration::from_millis(100));
+    
+    // Find and touch a manifest file to update its modification time
+    let mut manifest_path = None;
+    for (_name, versions) in &test.workspace.packages {
+        for (_version, package) in versions {
+            let full_manifest_path = test.workspace.root.join(&package.manifest_path);
+            if full_manifest_path.exists() {
+                manifest_path = Some(full_manifest_path);
+                break;
+            }
+        }
+        if manifest_path.is_some() {
+            break;
+        }
+    }
+    
+    if let Some(path) = manifest_path {
+        // Update the file's modification time by reading and writing it
+        let content = fs::read_to_string(&path).expect("Failed to read manifest file");
+        fs::write(&path, content).expect("Failed to write manifest file");
+        
+        // auto_rescan_if_needed should handle updated manifest
+        let result = test.workspace.auto_rescan_if_needed();
+        assert!(result.is_ok(), "auto_rescan_if_needed should succeed when manifest is updated");
+        
+        match result.unwrap() {
+            AutoRescanResult::PartialRescanUpdatedManifests(folders) => {
+                assert!(!folders.is_empty(), "Should have at least one updated folder");
+            },
+            other => panic!("Expected PartialRescanUpdatedManifests, got {:?}", other),
+        }
+    }
 }
 

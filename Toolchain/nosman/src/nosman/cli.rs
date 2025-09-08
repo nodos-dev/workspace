@@ -138,7 +138,22 @@ pub fn run_cli() {
         let match_res = command.matched_args(&workspace_ref.borrow(), &matches);
         match match_res {
             Some(matched_args) => {
-                workspace_ref.borrow().exit_if_required_but_not_found((*command).needs_workspace());
+                let needs_workspace = (*command).needs_workspace();
+                workspace_ref.borrow().exit_if_required_but_not_found(needs_workspace);
+                
+                // Auto-rescan workspace if needed when workspace is required
+                if needs_workspace && workspace_ref.borrow().ready() {
+                    match workspace_ref.borrow_mut().auto_rescan_if_needed() {
+                        Ok(_rescan_result) => {
+                            // Auto-rescan completed successfully - no output needed
+                        },
+                        Err(e) => {
+                            print_error(&e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                
                 match (*command).run(&mut workspace_ref.borrow_mut(), matches.subcommand_name(), matched_args) {
                     Ok(_) => {
                         // nothing
