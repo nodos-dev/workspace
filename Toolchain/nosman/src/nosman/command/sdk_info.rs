@@ -73,21 +73,38 @@ struct SdkInfoOutput {
 }
 
 impl SdkInfoCommand {
+    fn get_sdk_path_for_version(base_path: &str, version: &str, sdk_subdir: &str, min_major: u32, min_minor: u32) -> String {
+        if let Some(sem_ver) = SemVer::parse_from_str(version) {
+            let threshold = SemVer::new(min_major, Some(min_minor), Some(0), Some(0));
+            if sem_ver >= threshold {
+                return std::path::Path::new(base_path).join(sdk_subdir).to_string_lossy().to_string();
+            }
+        }
+        base_path.to_string()
+    }
+
     pub fn run_get_sdk_info(&self, workspace: &Workspace, requested_version: &str, sdk_type: &str) -> CommandResult {
         // Search ./Engine directory under workspace dir and find the version.json with bin/ include/ folders in it
         let engines = get_engine_sdk_infos(workspace)?;
 
-		let mut selected_versions = engines.iter().map(|x| {
-			match sdk_type {
-				"engine" => SdkInfoOutput { version: x.version.to_string(), path: x.path.to_string() },
-				"plugin" => SdkInfoOutput { version: x.plugin_sdk_version.to_string(), path: x.path.to_string() },
-				"subsystem" => SdkInfoOutput { version: x.subsystem_sdk_version.to_string(), path: x.path.to_string() },
-				"process" => SdkInfoOutput { version: x.process_sdk_version.to_string(), path: x.path.to_string() },
-				_ => return SdkInfoOutput{version: "".to_string(), path: "".to_string()},
-			}
-		}).collect::<Vec<SdkInfoOutput>>();
-
-
+        let mut selected_versions = engines.iter().map(|x| {
+            let (version, path) = match sdk_type {
+                "engine" => (x.version.clone(), x.path.clone()),
+                "plugin" => {
+                    let version = x.plugin_sdk_version.clone();
+                    let path = Self::get_sdk_path_for_version(&x.path, &version, "Plugin", 39, 11);
+                    (version, path)
+                },
+                "subsystem" => (x.subsystem_sdk_version.clone(), x.path.clone()),
+                "process" => {
+                    let version = x.process_sdk_version.clone();
+                    let path = Self::get_sdk_path_for_version(&x.path, &version, "Process", 19, 1);
+                    (version, path)
+                },
+                _ => (String::new(), String::new()),
+            };
+            SdkInfoOutput { version, path }
+        }).collect::<Vec<SdkInfoOutput>>();
         // Sort the engines by version, latest first
         selected_versions.sort_by(|a, b| {
             let a_sem_ver = SemVer::parse_from_str(&a.version).unwrap_or_else(|| panic!("Failed to parse SDK version {}: {}", a.version, a.path));

@@ -112,11 +112,7 @@ macro(nos_find_plugin_sdk requested_sdk_version out_sdk_target out_sdk_dir)
 			message(FATAL_ERROR "Unable to parse JSON output: ${err}")
 		endif()
 
-		if (plugin_sdk_version VERSION_GREATER_EQUAL "39.11.0")
-			set(plugin_sdk_path ${sdk_path}/Plugin)
-		else()
-			set(plugin_sdk_path ${sdk_path})
-		endif()
+		set(plugin_sdk_path ${sdk_path})
 
 		message(STATUS "Using Nodos Plugin SDK version ${plugin_sdk_version}")
 
