@@ -219,20 +219,25 @@ impl LocalPackageEntry {
             Err(_) => Err(Runtime { message: format!("Failed to get function {}", std::str::from_utf8(fn_name).unwrap()) })
         }
     }
-    pub fn needs_rescan(&self, workspace: &Workspace) -> bool {
+    pub fn needs_rescan(&self, workspace: &Workspace, compare_commands: bool) -> bool {
         if !workspace.root.join(&self.manifest_path).exists() {
             return true;
         }
         let res = LocalPackageEntry::new(workspace, self.manifest_path.clone(),
                                          self.package_type.clone(),
                                          /* we might consider not loading CLI extensions here and discarding it from comparison at return */
-                                         true);
+                                         compare_commands);
         if let Err(msg) = res {
             eprintln!("{}", msg);
             return true;
         }
         let package = res.unwrap();
-        &package != self
+        self.package_type != package.package_type
+            || self.manifest_path != package.manifest_path
+            || self.info != package.info
+            || self.public_include_folder != package.public_include_folder
+            || self.type_schema_files != package.type_schema_files
+            || (compare_commands && self.commands != package.commands)
     }
 }
 
