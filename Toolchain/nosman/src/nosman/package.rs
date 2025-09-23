@@ -219,6 +219,21 @@ impl LocalPackageEntry {
             Err(_) => Err(Runtime { message: format!("Failed to get function {}", std::str::from_utf8(fn_name).unwrap()) })
         }
     }
+    pub fn needs_rescan(&self, workspace: &Workspace) -> bool {
+        if !workspace.root.join(&self.manifest_path).exists() {
+            return true;
+        }
+        let res = LocalPackageEntry::new(workspace, self.manifest_path.clone(),
+                                         self.package_type.clone(),
+                                         /* we might consider not loading CLI extensions here and discarding it from comparison at return */
+                                         true);
+        if let Err(msg) = res {
+            eprintln!("{}", msg);
+            return true;
+        }
+        let package = res.unwrap();
+        &package != self
+    }
 }
 
 impl fmt::Display for PackageIdentifier {

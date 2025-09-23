@@ -1,28 +1,31 @@
 use clap::{Arg, ArgAction, ArgMatches};
 use crate::nosman::command::{Command, CommandError, CommandResult};
-
-use crate::nosman::workspace::{Workspace, OutputMode};
+use crate::nosman::package::LocalPackageEntry;
+use crate::nosman::workspace::{Workspace, OutputMode, ScanModulesFlags};
 
 pub struct InfoCommand {
 }
 
 impl InfoCommand {
     fn run_get_info(&self, workspace: &mut Workspace, package_name: &str, version: &str, relaxed: bool) -> CommandResult {
-        let package = workspace.with_output_mode_scoped(OutputMode::Silent, |ws| {
-            if relaxed {
-                let res = ws.get_latest_local_package_for_version(package_name, version);
-                if let Err(msg) = res {
-                    return Err(CommandError::InvalidArgument { message: msg });
-                }
-                Ok(res.unwrap().clone())
-            } else {
-                let res = ws.get_package(package_name, version);
-                if res.is_none() {
-                    return Err(CommandError::InvalidArgument { message: format!("Package {} version {} is not installed", package_name, version) });
-                }
-                Ok(res.unwrap().clone())
+        let mut package = workspace.with_output_mode_scoped(OutputMode::Silent, |ws| {
+            match Self::get_package(package_name, version, relaxed, ws) {
+                Ok(value) => value,
+                Err(value) => return value,
             }
         })?;
+        // Rescan
+        if package.needs_rescan(workspace) {
+            package = workspace.with_output_mode_scoped(OutputMode::Silent, |ws| {
+                let full_path = ws.root.join(&package.manifest_path.parent().unwrap());
+                ws.scan_packages_in_folder(full_path.to_path_buf(), ScanModulesFlags::all());
+                ws.save()?;
+                match Self::get_package(package_name, version, relaxed, ws) {
+                    Ok(value) => value,
+                    Err(value) => return value,
+                }
+            })?;
+        }
         // Convert paths to full paths:
         let mut m = package;
         m.manifest_path = workspace.root.join(&m.manifest_path);
@@ -35,6 +38,22 @@ impl InfoCommand {
         let json_str = serde_json::to_string_pretty(&m).unwrap();
         println!("{}", json_str);
         Ok(())
+    }
+
+    fn get_package(package_name: &str, version: &str, relaxed: bool, ws: &mut Workspace) -> Result<Result<LocalPackageEntry, CommandError>, Result<LocalPackageEntry, CommandError>> {
+        Ok(if relaxed {
+            let res = ws.get_latest_local_package_for_version(package_name, version);
+            if let Err(msg) = res {
+                return Err(Err(CommandError::InvalidArgument { message: msg }));
+            }
+            Ok(res.unwrap().clone())
+        } else {
+            let res = ws.get_package(package_name, version);
+            if res.is_none() {
+                return Err(Err(CommandError::InvalidArgument { message: format!("Package {} version {} is not installed", package_name, version) }));
+            }
+            Ok(res.unwrap().clone())
+        })
     }
 }
 
