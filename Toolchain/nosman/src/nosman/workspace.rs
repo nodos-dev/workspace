@@ -498,7 +498,7 @@ impl Workspace {
     /// - If any manifest files are missing, performs a full rescan
     /// - If manifest files are only updated, rescans only the folders containing those files
     /// Returns an AutoRescanResult indicating what action was taken
-    
+
     pub fn auto_rescan_if_needed(&mut self) -> Result<AutoRescanResult, CommandError> {
         // If workspace is not ready, return early - no auto-rescan needed
         if !self.ready() {
