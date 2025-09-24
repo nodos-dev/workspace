@@ -124,11 +124,18 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 		else()
 			message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} (Plugin SDK: ${nos_plugin_sdk_version}, Subsystem SDK: ${nos_subsystem_sdk_version}) at ${nos_sdk_dir}")
 		endif()
-		string(REPLACE "." "_" plugin_sdk_version_target_suffix "${nos_plugin_sdk_version}")
-
+		
+		# Extract folder name from SDK directory path and sanitize for CMake target names
+		get_filename_component(engine_folder_name "${nos_sdk_dir}" DIRECTORY)
+		get_filename_component(engine_folder_name "${engine_folder_name}" NAME)
+		# Replace all non-alphanumeric characters with underscores, then clean up
+		string(REGEX REPLACE "[^a-zA-Z0-9]" "_" engine_targets_suffix "${engine_folder_name}")
+		string(REGEX REPLACE "_+" "_" engine_targets_suffix "${engine_targets_suffix}")
+		string(REGEX REPLACE "^_|_$" "" engine_targets_suffix "${engine_targets_suffix}")
+		
 		# nosPluginSDK target
 		# -------------------
-		set(nos_plugin_sdk_target nosPluginSDK_${plugin_sdk_version_target_suffix})
+		set(nos_plugin_sdk_target nosPluginSDK_${engine_targets_suffix})
 
 		if(TARGET ${nos_plugin_sdk_target})
 			nos_fatal_error("Multiple Nodos Plugin SDKs with the same version found under Engine folder. This is not supported.")
@@ -168,7 +175,7 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 		set(nos_binaries_dir "${nos_sdk_dir}/../Binaries")
 		if(EXISTS "${nos_binaries_dir}")
 			# Create nosLauncher target
-			set(nos_launcher_target nosLauncher_${version_target_suffix})
+			set(nos_launcher_target nosLauncher_${version_target_suffix}__${engine_targets_suffix})
 			add_custom_target(${nos_launcher_target}
 				COMMAND ${nos_binaries_dir}/nosLauncher${CMAKE_EXECUTABLE_SUFFIX}
 				WORKING_DIRECTORY ${nos_binaries_dir}
@@ -176,7 +183,7 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 			)
 	
 			# Create nosEditor target
-			set(nos_editor_target nosEditor_${version_target_suffix})
+			set(nos_editor_target nosEditor_${version_target_suffix}__${engine_targets_suffix})
 			add_custom_target(${nos_editor_target}
 				COMMAND ${nos_binaries_dir}/nosEditor${CMAKE_EXECUTABLE_SUFFIX}
 				WORKING_DIRECTORY ${nos_binaries_dir}
