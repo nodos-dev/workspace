@@ -4,6 +4,29 @@ function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_fo
 		nos_fatal_error("Flatbuffers compiler not found. Please set FLATC_EXECUTABLE variable.")
 	endif()
 
+	# Ensure destination directory exists
+	file(MAKE_DIRECTORY ${dst_folder})
+
+	# Prepare common flatc arguments
+	set(flatc_common_args
+		--${out_language}
+		--gen-mutable
+		--gen-name-strings
+		--gen-object-api
+		--gen-compare
+		--cpp-std=c++17
+		--cpp-static-reflection
+		--scoped-enums
+		--unknown-json
+		--reflect-types
+		--reflect-names
+		--cpp-include array
+		# --force-empty-vectors
+		# --force-empty
+		# --force-defaults
+		--object-prefix "T"
+	)
+
 	list(APPEND fbs_files)
 	foreach(fbs_folder ${fbs_folders})
 		file(GLOB_RECURSE files ${fbs_folder}/*.fbs)
@@ -13,37 +36,61 @@ function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_fo
 	foreach(fbs_file ${fbs_files})
 		get_filename_component(fbs_file_name ${fbs_file} NAME_WE)
 		set(fbs_out_header "${fbs_file_name}_generated.h")
-		set(include_params "")
+		set(include_params)
 
 		foreach(include ${include_folders})
-			set(include_params ${include_params} -I ${include})
+			list(APPEND include_params -I ${include})
 		endforeach()
 
 		set(generated_file ${dst_folder}/${fbs_out_header})
+		
+		# Construct complete command list (used for both configure-time and build-time)
+		set(flatc_command "${FLATC_EXECUTABLE}")
+		# Add include parameters (if any)
+		if(include_params)
+			list(APPEND flatc_command ${include_params})
+		endif()
+		list(APPEND flatc_command -o "${dst_folder}")
+		list(APPEND flatc_command ${flatc_common_args})
+		list(APPEND flatc_command "${fbs_file}")
+		
+		# Check if we need to generate at configure time
+		set(need_generation FALSE)
+		if(NOT EXISTS ${generated_file})
+			set(need_generation TRUE)
+		else()
+			# Check if source is newer than generated file using Unix timestamps
+			file(TIMESTAMP ${fbs_file} fbs_timestamp "%s")
+			file(TIMESTAMP ${generated_file} generated_timestamp "%s")
+			if(fbs_timestamp GREATER generated_timestamp)
+				set(need_generation TRUE)
+			else()
+				message(STATUS "${fbs_out_header} is up to date")
+			endif()
+		endif()
+
+		# Generate at configure time if needed
+		if(need_generation)
+			nos_colored_message(COLOR MAGENTA "-- Generating ${fbs_out_header}")
+			execute_process(
+				COMMAND ${flatc_command}
+					--object-suffix "" # Workaround for passing empty string to command in CMake
+				RESULT_VARIABLE flatc_result
+				OUTPUT_VARIABLE flatc_output
+				ERROR_VARIABLE flatc_error
+			)
+			
+			if(NOT flatc_result EQUAL 0)
+				message(FATAL_ERROR "Failed to generate flatbuffers for ${fbs_file}:\nOutput: ${flatc_output}\nError: ${flatc_error}")
+			endif()
+		endif()
+
 		message(STATUS "Build Task (${out_target_name}): ${fbs_file} -> ${generated_file}")
 		list(APPEND out_list ${generated_file})
+		
 		add_custom_command(OUTPUT ${generated_file}
-			COMMAND ${FLATC_EXECUTABLE}
-			-o ${dst_folder}
-			${include_params}
-			${fbs_file}
-			--${out_language}
-			--gen-mutable
-			--gen-name-strings
-			--gen-object-api
-			--gen-compare
-			--cpp-std=c++17
-			--cpp-static-reflection
-			--scoped-enums
-			--unknown-json
-			--reflect-types
-			--reflect-names
-			--cpp-include array
-			# --force-empty-vectors
-			# --force-empty
-			# --force-defaults
-			--object-prefix "T"
-			--object-suffix ""
+			COMMAND ${flatc_command}
+				--object-suffix "" # Workaround for passing empty string to command in CMake
 			DEPENDS ${fbs_file}
 			COMMENT "Generating flatbuffers: ${fbs_file} (with ${FLATC_EXECUTABLE})"
 			VERBATIM)
@@ -176,16 +223,15 @@ function(nos_get_package name version out_target_name)
 			
 			# Optional: Get "public_include_folder" from JSON output. If not found skip it
 			string(JSON nos_plugin_include_folder ERROR_VARIABLE err GET "${nosman_output}" "public_include_folder")
+			cmake_path(SET ${target_name}_INCLUDE_DIR "${plugin_path}/Include")
 			if (err STREQUAL "NOTFOUND")
 				message(STATUS "Found ${name} ${version} include folder: ${nos_plugin_include_folder}")
 				cmake_path(SET ${target_name}_INCLUDE_DIR "${nos_plugin_include_folder}")
 				message(STATUS "Found public header files in package ${name}-${version}. Adding to target.")
 				nos_get_files_recursive(${${target_name}_INCLUDE_DIR} ".h;.hpp;.hxx;.hh;.inl" include_files)
 				target_sources(${target_name} PUBLIC ${include_files})
-				target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
-			else()
-				message(STATUS "No public header files found in package ${name}-${version}.")
 			endif()
+			target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
 			set_target_properties(${target_name} PROPERTIES FOLDER "nosman")
 			target_link_directories(${target_name} INTERFACE ${plugin_path}/Libraries)
 		else()
@@ -211,7 +257,7 @@ function(nos_get_plugin name version out_target_name)
 	set(${out_target_name} ${${out_target_name}} PARENT_SCOPE)
 endfunction()
 
-function(_nos_add_plugin NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_TYPES ALTERNATIVE_MANIFEST_FILE_EXTS)
+function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_TYPES ALTERNATIVE_MANIFEST_FILE_EXTS)
 	project(${NAME})
 	nos_colored_message(COLOR CYAN "Processing plugin ${NAME}")
 
@@ -323,11 +369,11 @@ function(_nos_add_plugin NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_
 endfunction()
 
 function(nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS)
-	_nos_add_plugin(${NAME} "${INCLUDE_FOLDERS}" "nosplugin" ".nosdef;Node Definitions;.nosnode;Node Definitions" "nossys;noscfg")
+	_nos_add_plugin(${NAME} "${DEPENDENCIES}" "${INCLUDE_FOLDERS}" "nosplugin" ".nosdef;Node Definitions;.nosnode;Node Definitions" "nossys;noscfg")
 endfunction()
 
 function(nos_add_subsystem NAME DEPENDENCIES INCLUDE_FOLDERS)
-	_nos_add_plugin(${NAME} "${INCLUDE_FOLDERS}" "nosplugin" "" "nossys")
+	_nos_add_plugin(${NAME} "${DEPENDENCIES}" "${INCLUDE_FOLDERS}" "nosplugin" "" "nossys")
 endfunction()
 
 macro(nos_get_targets targets dir)
