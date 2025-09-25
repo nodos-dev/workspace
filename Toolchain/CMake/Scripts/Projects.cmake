@@ -222,8 +222,8 @@ function(nos_get_package name version out_target_name)
 			source_group("Types" FILES ${fbs_files})
 			
 			# Optional: Get "public_include_folder" from JSON output. If not found skip it
-			string(JSON nos_plugin_include_folder ERROR_VARIABLE err GET "${nosman_output}" "public_include_folder")
 			cmake_path(SET ${target_name}_INCLUDE_DIR "${plugin_path}/Include")
+			string(JSON nos_plugin_include_folder ERROR_VARIABLE err GET "${nosman_output}" "public_include_folder")
 			if (err STREQUAL "NOTFOUND")
 				message(STATUS "Found ${name} ${version} include folder: ${nos_plugin_include_folder}")
 				cmake_path(SET ${target_name}_INCLUDE_DIR "${nos_plugin_include_folder}")

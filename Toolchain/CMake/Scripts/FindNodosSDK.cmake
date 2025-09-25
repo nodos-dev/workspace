@@ -60,11 +60,11 @@ macro(nos_find_sdk requested_version out_nos_plugin_sdk out_nos_subsystem_sdk ou
 	list(GET NOS_PLUGIN_SDK_VERSIONS ${found_version_idx} found_plugin_sdk_version)
 	list(GET NOS_SUBSYSTEM_SDK_VERSIONS ${found_version_idx} found_subsystem_sdk_version)
 	message(STATUS "Using Nodos version ${found_version}")
-	string(REPLACE "." "_" plugin_sdk_version_target_suffix "${found_plugin_sdk_version}")
-	set(${out_nos_plugin_sdk} nosPluginSDK_${plugin_sdk_version_target_suffix})
+	__nos_generate_sdk_target_name("nosPluginSDK" "${found_plugin_sdk_version}" "${nos_sdk_dir}" plugin_sdk_target_name)
+	set(${out_nos_plugin_sdk} ${plugin_sdk_target_name})
 	if (found_subsystem_sdk_version)
-		string(REPLACE "." "_" subsystem_sdk_target_suffix "${found_subsystem_sdk_version}")
-		set(${out_nos_subsystem_sdk} nosSubsystemSDK_${subsystem_sdk_target_suffix})
+		__nos_generate_sdk_target_name("nosSubsystemSDK" "${found_subsystem_sdk_version}" "${nos_sdk_dir}" subsystem_sdk_target_name)
+		set(${out_nos_subsystem_sdk} ${subsystem_sdk_target_name})
 	else()
 		set(${out_nos_subsystem_sdk} ${${out_nos_plugin_sdk}})
 	endif()
@@ -116,9 +116,14 @@ macro(nos_find_plugin_sdk requested_sdk_version out_sdk_target out_sdk_dir)
 
 		message(STATUS "Using Nodos Plugin SDK version ${plugin_sdk_version}")
 
-		string(REPLACE "." "_" plugin_sdk_version_target_suffix "${plugin_sdk_version}")
+		set(root_nodos_sdk_folder ${sdk_path})
+		if (plugin_sdk_version VERSION_GREATER_EQUAL "39.11.0")
+			# Get the parent folder of root_nodos_sdk_folder
+			get_filename_component(root_nodos_sdk_folder "${root_nodos_sdk_folder}" DIRECTORY)
+		endif()
 
-		set(${out_sdk_target} nosPluginSDK_${plugin_sdk_version_target_suffix})
+		__nos_generate_sdk_target_name("nosPluginSDK" "${plugin_sdk_version}" "${root_nodos_sdk_folder}" plugin_sdk_target_name)
+		set(${out_sdk_target} ${plugin_sdk_target_name})
 		set(${out_sdk_dir} ${plugin_sdk_path})
 
 		if (plugin_sdk_version VERSION_GREATER_EQUAL "39.11.0")

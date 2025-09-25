@@ -72,3 +72,41 @@ function(nos_fatal_error)
 	__nos_color_format_text(BOLD COLOR RED ${ARGN})
 	message(FATAL_ERROR ${COLOR_FORMATTED_TEXT})
 endfunction()
+
+function(nos_get_sanitized_engine_folder_name nos_sdk_dir out)
+    # Extract folder name from SDK directory path and sanitize for CMake target names
+    get_filename_component(engine_folder_name "${nos_sdk_dir}" DIRECTORY)
+    get_filename_component(engine_folder_name "${engine_folder_name}" NAME)
+    # Replace all non-alphanumeric characters with underscores, then clean up
+    string(REGEX REPLACE "[^a-zA-Z0-9]" "_" sanitized_engine_folder_name "${engine_folder_name}")
+    string(REGEX REPLACE "_+" "_" sanitized_engine_folder_name "${sanitized_engine_folder_name}")
+    string(REGEX REPLACE "^_|_$" "" sanitized_engine_folder_name "${sanitized_engine_folder_name}")
+
+    set(${out} "${sanitized_engine_folder_name}" PARENT_SCOPE)
+endfunction()
+
+function(__nos_generate_sdk_target_name sdk_type sdk_version nos_sdk_dir out)
+    # Generate target name in format: ${sdk_type}_${version_suffix}__${sanitized_engine_folder_name}
+    # Args:
+    #   sdk_type: "nosPluginSDK" or "nosSubsystemSDK"
+    #   sdk_version: version string like "1.2.3" 
+    #   nos_sdk_dir: SDK directory path
+    #   out: output variable name
+    
+    nos_get_sanitized_engine_folder_name(${nos_sdk_dir} sanitized_engine_folder_name)
+    string(REPLACE "." "_" version_target_suffix "${sdk_version}")
+    set(${out} "${sdk_type}_${version_target_suffix}__${sanitized_engine_folder_name}" PARENT_SCOPE)
+endfunction()
+
+function(__nos_generate_nodos_target_name target_type nodos_version nos_sdk_dir out)
+    # Generate target name in format: ${target_type}_${version_suffix}__${sanitized_engine_folder_name}
+    # Args:
+    #   target_type: "nosLauncher" or "nosEditor"
+    #   nodos_version: nodos version string like "1.2.3" 
+    #   nos_sdk_dir: SDK directory path
+    #   out: output variable name
+    
+    nos_get_sanitized_engine_folder_name(${nos_sdk_dir} sanitized_engine_folder_name)
+    string(REPLACE "." "_" version_target_suffix "${nodos_version}")
+    set(${out} "${target_type}_${version_target_suffix}__${sanitized_engine_folder_name}" PARENT_SCOPE)
+endfunction()
