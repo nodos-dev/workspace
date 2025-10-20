@@ -268,8 +268,7 @@ function(nos_get_plugin name version out_target_name)
 	set(${out_target_name} ${${out_target_name}} PARENT_SCOPE)
 endfunction()
 
-function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_TYPES ALTERNATIVE_MANIFEST_FILE_EXTS)
-	project(${NAME})
+function(_nos_add_plugin NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_TYPES ALTERNATIVE_MANIFEST_FILE_EXTS)
 	nos_colored_message(COLOR CYAN "Processing plugin ${NAME}")
 
 	set(plugin_root "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -424,4 +423,84 @@ endfunction()
 function(nos_get_module name version out_target_name)
 	nos_get_package(${name} ${version} ${out_target_name})
 	set(${out_target_name} ${${out_target_name}} PARENT_SCOPE)
+endfunction()
+
+function(nos_get_module_info_by_path path out_name out_version out_json)
+	execute_process(
+		COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" info "" "" ${path}
+		RESULT_VARIABLE nosman_result
+		OUTPUT_VARIABLE nosman_output
+	)
+	if(nosman_result EQUAL 0)
+		string(STRIP ${nosman_output} nosman_output)
+		set(err_name "")
+		string(JSON module_name ERROR_VARIABLE err_name GET "${nosman_output}" info id name)
+		string(JSON module_version ERROR_VARIABLE err_version GET "${nosman_output}" info id version)
+		message(STATUS "Module at path ${path} is ${module_name} version ${module_version}")
+
+		set(${out_name} ${module_name} PARENT_SCOPE)
+		set(${out_version} ${module_version} PARENT_SCOPE)
+		set(${out_json} ${nosman_output} PARENT_SCOPE)
+	else()
+		nos_fatal_error("Failed to find module info from path ${path}.")
+	endif()
+endfunction()
+
+function(nos_normalize_plugin_name INPUT OUTPUT_VAR)
+    # Step 1: split by '.'
+    string(REPLACE "." ";" PARTS "${INPUT}")
+
+    # Step 2: first item stays lowercase
+    list(POP_FRONT PARTS FIRST)
+    set(RESULT "${FIRST}")
+
+    # Step 3: uppercase the first character of every subsequent part
+    foreach(PART IN LISTS PARTS)
+        string(SUBSTRING "${PART}" 0 1 FIRST_CHAR)
+        string(SUBSTRING "${PART}" 1 -1 REMAINDER)
+        string(TOUPPER "${FIRST_CHAR}" FIRST_CHAR)
+        set(RESULT "${RESULT}${FIRST_CHAR}${REMAINDER}")
+    endforeach()
+
+    # Output to parent scope
+    set(${OUTPUT_VAR} "${RESULT}" PARENT_SCOPE)
+endfunction()
+
+function(nos_find_all_plugin_dependencies json out_target_names out_target_dirs out_target_include_dirs)
+	# Get the number of dependency entries
+	string(JSON dep_count LENGTH "${json}" info dependencies)
+
+	if(dep_count EQUAL 0)
+		message(STATUS "No dependencies found.")
+		set(${out_target_names} "" PARENT_SCOPE)
+		return()
+	endif()
+
+	# Iterate over all dependencies
+	math(EXPR dep_count "${dep_count} - 1")
+	foreach(i RANGE ${dep_count})
+		set(found_target "")
+		string(JSON dep_name GET "${json}" info dependencies ${i} name)
+		string(JSON dep_version GET "${json}" info dependencies ${i} version)
+		message(STATUS "Finding dependency: ${dep_name} version ${dep_version}")
+		nos_get_module("${dep_name}" "${dep_version}" found_target)
+		nos_find_module_path("${dep_name}" "${dep_version}" found_dir)
+		list(APPEND _deps "${found_target}")
+		list(APPEND _dep_dirs "${found_dir}")
+		nos_normalize_plugin_name(${dep_name} target_name)
+		list(APPEND _dep_include_dirs "${found_dir}/Include/${target_name}")
+	endforeach()
+	message(STATUS "Found dependency targets: ${_deps}")
+	message(STATUS "Found dependency directories: ${_dep_dirs}")
+	message(STATUS "Found dependency include directories: ${_dep_include_dirs}")
+	set(${out_target_names} "${_deps}" PARENT_SCOPE)
+	set(${out_target_dirs} "${_dep_dirs}" PARENT_SCOPE)
+	set(${out_target_include_dirs} "${_dep_include_dirs}" PARENT_SCOPE)
+endfunction()
+
+function(nos_find_plugin_sdk_dependency json out_found_version)
+	# Get the number of sdk dependency entries
+	string(JSON found_dep_version GET "${json}" sdk_dependency)
+
+	set(${out_found_version} "${found_dep_version}" PARENT_SCOPE)
 endfunction()
