@@ -211,6 +211,8 @@ if ((NOT NOS_INVOKED_FROM_NOSMAN) AND (EXISTS "${NODOS_WORKSPACE_DIR}/Toolchain/
 	endif()
 endif()
 
+unset(NOS_INVOKED_FROM_NOSMAN CACHE)
+
 # Find nosman
 if (NOT DEFINED NOSMAN_EXECUTABLE)
 	if (EXISTS "${NODOS_WORKSPACE_DIR}/nodos${CMAKE_EXECUTABLE_SUFFIX}")
@@ -233,23 +235,11 @@ if (NOT EXISTS "${NOSMAN_WORKSPACE_DIR}/.nosman/index")
 	)
 endif()
 
-# This CMakeLists.txt should only be invoked from nosman to generate the project files.
-if(NOT NOS_INVOKED_FROM_NOSMAN)
-	execute_process(
-		COMMAND ${NOSMAN_EXECUTABLE} dev gen
-		RESULT_VARIABLE NOSMAN_RESULT
-	)
-	return()
-endif()
-
-unset(NOS_INVOKED_FROM_NOSMAN CACHE)
-
 # Includes for plugins
 include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/FindNodosSDK.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Projects.cmake)
 
 if(NOT DEFINED MODULE_DIRS OR MODULE_DIRS STREQUAL "")
-	message(STATUS "MODULE_DIRS not defined. Defaulting to ${NODOS_WORKSPACE_DIR}/Module")
 	set(MODULE_DIRS "${NODOS_WORKSPACE_DIR}/Module" CACHE INTERNAL "Plugin directories" FORCE)
 endif()
 
@@ -286,6 +276,3 @@ foreach(dir ${ALL_MODULE_DIRS})
 		math(EXPR NOS_MODULE_DIR_INDEX "${NOS_MODULE_DIR_INDEX} + 1")
 	endif()
 endforeach()
-
-unset(MODULE_DIRS CACHE)
-unset(ALL_MODULE_DIRS CACHE)
