@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 use clap::{Arg, ArgAction, ArgMatches};
@@ -33,6 +33,11 @@ pub fn get_cli() -> clap::Command {
                 .short('p')
                 .help("Path to the project folder to generate files in")
                 .default_value("Project"))
+            .arg(Arg::new("module_name")
+                .long("module-name")
+                .short('m')
+                .help("Module name to generate if only one of them is wanted")
+                .default_value(""))
             .arg(Arg::new("extra_args")
                 .last(true)
                 .help("Arguments to pass to the underlying tool when generating project files")
@@ -166,12 +171,53 @@ impl Command for DevPullCommand {
 pub struct DevGenCommand {}
 
 impl DevGenCommand {
-    fn run_gen(&self, lang_tool: &String, project_folder: &String, extra_args: Vec<String>) -> CommandResult {
+    fn run_gen(&self, lang_tool: &String, project_folder: &String, module_name: &String, extra_args: Vec<String>) -> CommandResult {
         // Only cpp/cmake is supported for now
         if lang_tool != "cpp/cmake" {
             return Err(InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool) });
         }
         let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", project_folder, "-DNOS_INVOKED_FROM_NOSMAN=ON"];
+
+        let mut module_dir_arg: String;
+        if(module_name.is_empty()){
+            module_dir_arg = String::from("-U MODULE_DIRS");
+        }
+        else{
+            let mut nodos_rescan = std::process::Command::new("nodos");
+            let rescan_status = nodos_rescan.arg("rescan").output().is_ok();
+            if !rescan_status{
+                return Err(CommandError::Runtime{message: format!("Error during rescan")});
+            }
+
+            let mut nodos = std::process::Command::new("nodos");
+            let mut nodos_cmd_args = vec!["list", "--local", "--package-name", module_name];
+            let nodos_cmd_args_str = nodos_cmd_args.iter().map(|s| s.as_ref()).collect::<Vec<&OsStr>>().join(OsStr::new(" "));
+            println!("{}: {:?}", "Running nodos with".green(), nodos_cmd_args_str);
+            let output = nodos
+                .args(&nodos_cmd_args)
+                .output()
+                .map_err(|e| CommandError::Runtime { message: format!("Failed to run nodos: {}", e) })?;
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let mut paths = Vec::new();
+
+            for line in stdout.lines() {
+                if let Some(start) = line.find('(') {
+                    if let Some(end) = line.find(')') {
+                        let path_str = &line[start + 1..end];
+                        if !path_str.contains("Downloaded") {
+                            let path = Path::new(path_str.trim());
+                            paths.push(path.to_string_lossy().into_owned());
+                        }
+                    }
+                }
+            }
+
+            let module_dirs_str = paths.join(";");
+            module_dir_arg = format!("-DMODULE_DIRS={}", module_dirs_str);
+        }
+        cmake_args.push(module_dir_arg.as_str());
+
         for arg in extra_args.iter() {
             cmake_args.push(arg);
         }
@@ -199,11 +245,12 @@ impl Command for DevGenCommand {
     fn run(&self, _workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let lang_tool = args.get_one::<String>("language/tool").unwrap();
         let project_folder = args.get_one::<String>("project_folder").unwrap();
+        let module_name = args.get_one::<String>("module_name").unwrap();
         let mut extra_args = Vec::new();
         if let Some(args) = args.get_one::<String>("extra_args") {
             extra_args = args.split_whitespace().map(|s| s.to_string()).collect();
         }
-        self.run_gen(lang_tool, project_folder, extra_args)
+        self.run_gen(lang_tool, project_folder, module_name, extra_args)
     }
 
     fn needs_workspace(&self) -> bool {
