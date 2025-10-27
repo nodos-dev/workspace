@@ -33,6 +33,11 @@ pub fn get_cli() -> clap::Command {
                 .short('p')
                 .help("Path to the project folder to generate files in")
                 .default_value("Project"))
+            .arg(Arg::new("module_dirs")
+                .help("Module paths to generate if only one of them is wanted")
+                .num_args(0..=1) // 0 or 1 argument allowed
+                .value_name("module_dirs")
+                .allow_hyphen_values(true))
             .arg(Arg::new("extra_args")
                 .last(true)
                 .help("Arguments to pass to the underlying tool when generating project files")
@@ -166,12 +171,25 @@ impl Command for DevPullCommand {
 pub struct DevGenCommand {}
 
 impl DevGenCommand {
-    fn run_gen(&self, lang_tool: &String, project_folder: &String, extra_args: Vec<String>) -> CommandResult {
+    fn run_gen(&self, lang_tool: &String, project_folder: &String, module_dirs: Option<String>, extra_args: Vec<String>) -> CommandResult {
         // Only cpp/cmake is supported for now
         if lang_tool != "cpp/cmake" {
             return Err(InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool) });
         }
         let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", project_folder, "-DNOS_INVOKED_FROM_NOSMAN=ON"];
+
+        let mut formatted_args = Vec::new(); // holds the actual Strings
+        if let Some(val) = module_dirs{
+            if val.is_empty() {
+                cmake_args.push("-U MODULE_DIRS");
+            } else {
+                // store formatted string so it lives long enough
+                formatted_args.push(format!("-DMODULE_DIRS={}", val));
+                // push a reference to it
+                cmake_args.push(formatted_args.last().unwrap().as_str());
+            }
+        }
+
         for arg in extra_args.iter() {
             cmake_args.push(arg);
         }
@@ -203,7 +221,19 @@ impl Command for DevGenCommand {
         if let Some(args) = args.get_one::<String>("extra_args") {
             extra_args = args.split_whitespace().map(|s| s.to_string()).collect();
         }
-        self.run_gen(lang_tool, project_folder, extra_args)
+        let path: Option<String>;
+        match args.get_one::<String>("module_dirs"){
+            None => {
+                path = None;
+            }
+            Some(p) if p == "*" => {
+                path = Some(String::from(""));
+            }
+            Some(p) => {
+                path = Some(p.clone());
+            }
+        }
+        self.run_gen(lang_tool, project_folder, path, extra_args)
     }
 
     fn needs_workspace(&self) -> bool {
