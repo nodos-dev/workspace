@@ -36,7 +36,7 @@ pub fn get_cli() -> clap::Command {
             .arg(Arg::new("module_dirs")
                 .help("Module paths to generate if only one of them is wanted")
                 .num_args(0..=1) // 0 or 1 argument allowed
-                .value_name("MODULE_DIRS")
+                .value_name("module_dirs")
                 .allow_hyphen_values(true))
             .arg(Arg::new("extra_args")
                 .last(true)
