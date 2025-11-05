@@ -38,16 +38,6 @@ pub struct PackageInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
-pub struct GenericPackageManifest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub schema_version: Option<u32>,
-    pub info: PackageInfo,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cli_extension_bin_path: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub type_schema_files: Vec<String>,
-}
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub struct LocalPackageEntry {
     #[serde(alias = "module_type")]
     pub package_type: PackageType,

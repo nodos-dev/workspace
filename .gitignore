@@ -12,3 +12,4 @@
 /Artifacts/
 /Project*
 /Samples
+.clang-format
