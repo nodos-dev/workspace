@@ -176,7 +176,7 @@ jobs:
           set -euo pipefail
       
           VERSION="v${{ needs.build_nosman.outputs.version }}"
-          REPO="nodos-dev/nodos"
+          REPO="nodos-dev/workspace"
 
           shopt -s globstar nullglob
           FILES=()
