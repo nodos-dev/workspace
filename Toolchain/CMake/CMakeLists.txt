@@ -195,11 +195,12 @@ endif()
 if ((NOT NOS_INVOKED_FROM_NOSMAN) AND (EXISTS "${NODOS_WORKSPACE_DIR}/Toolchain/nosman/src"))
 	set(NOSMAN_BUILD_DIR "${NODOS_WORKSPACE_DIR}/Toolchain/nosman/target")
 
-	message(STATUS "Found nosman sources. Checking/building nosman...")
+	message(STATUS "Found nosman sources. Building nosman...")
 	execute_process(
-		COMMAND cargo build --release --quiet
+		COMMAND cargo build --release
 		WORKING_DIRECTORY "${NODOS_WORKSPACE_DIR}/Toolchain/nosman"
 		RESULT_VARIABLE NOSMAN_RESULT
+		COMMAND_ECHO STDOUT
 	)
 	if (NOSMAN_RESULT EQUAL 0)
 		# Copy the executable to the root

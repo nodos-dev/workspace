@@ -1,4 +1,7 @@
 # Copyright MediaZ Teknoloji A.S. All Rights Reserved.
+set(NOS_SOURCE_FILE_TYPES ".cpp" ".cc" ".cxx" ".c" ".inl" ".h" ".hxx" ".hpp" ".py" ".rc")
+set(NOS_HEADER_FILE_TYPES ".h" ".hxx" ".hpp" ".natvis")
+
 function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_folders out_target_name)
 	if(NOT DEFINED FLATC_EXECUTABLE)
 		nos_fatal_error("Flatbuffers compiler not found. Please set FLATC_EXECUTABLE variable.")
@@ -230,6 +233,8 @@ function(nos_get_package name version out_target_name)
 				message(STATUS "Found public header files in package ${name}-${version}. Adding to target.")
 				nos_get_files_recursive(${${target_name}_INCLUDE_DIR} ".h;.hpp;.hxx;.hh;.inl" include_files)
 				target_sources(${target_name} PUBLIC ${include_files})
+				nos_get_files_recursive(${plugin_path} ".natvis" natvis_files)
+				target_sources(${target_name} INTERFACE ${natvis_files})
 			endif()
 			target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
 			set_target_properties(${target_name} PROPERTIES FOLDER "nosman")
@@ -270,14 +275,12 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 		nos_fatal_error("Nodos CMake helpers for adding a plugin requires a folder named 'Source' at the root. Either manually setup your CMake script or create the 'Source' folder.")
 	endif()
 
-	set(source_file_types ".cpp" ".cc" ".cxx" ".c" ".inl" ".h" ".hxx" ".hpp" ".py" ".rc" ".natvis")
-	nos_get_files_recursive(${source_folder} "${source_file_types}" source_files)
+	nos_get_files_recursive(${source_folder} "${NOS_SOURCE_FILE_TYPES}" source_files)
 	if (NOT source_files)
 		nos_fatal_error("No source files found in ${source_folder}")
 	endif()
 	
-	set(header_file_types ".h" ".hxx" ".hpp")
-	nos_get_files_recursive(${public_include_folder} "${header_file_types}" header_files)
+	nos_get_files_recursive(${public_include_folder} "${NOS_HEADER_FILE_TYPES}" header_files)
 
 	set(config_file_types ".json")
 	nos_get_files_recursive(${config_folder} "${config_file_types}" config_files)
