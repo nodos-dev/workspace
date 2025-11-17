@@ -56,8 +56,9 @@ pub fn run_cli() {
     if args.len() == 1 {
         // Get parent process name. If it is a file explorer, open Nodos
         if launched_from_file_explorer() {
-            let workspace_dir = std::env::current_dir().expect("Unable to access current working directory.");
-            nosman::command::launch::launch_nodos(&workspace_dir, false);
+            let workspace_dir = std::env::current_exe().expect("Unable to access current executable path.")
+                .parent().expect("Unable to access parent directory of executable.").to_path_buf();
+            command::launch::launch_nodos(&workspace_dir, false);
             return;
         }
     }
