@@ -7,6 +7,12 @@ function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_fo
 		nos_fatal_error("Flatbuffers compiler not found. Please set FLATC_EXECUTABLE variable.")
 	endif()
 
+	foreach (folder ${fbs_folders})
+		if(NOT EXISTS ${folder})
+			nos_fatal_error("Flatbuffers schema folder not found: ${folder}")
+		endif()
+	endforeach()
+
 	# Ensure destination directory exists
 	file(MAKE_DIRECTORY ${dst_folder})
 
