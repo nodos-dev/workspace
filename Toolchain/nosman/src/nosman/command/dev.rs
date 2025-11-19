@@ -67,6 +67,37 @@ pub fn get_cli() -> clap::Command {
         )
 }
 
+/// Recursively scans directories for git repositories
+fn find_git_repositories(dirs: Vec<PathBuf>) -> Result<Vec<PathBuf>, CommandError> {
+    let mut git_dirs = Vec::new();
+    for dir in dirs {
+        let mut stack = Vec::new();
+        stack.push(dir);
+        while let Some(dir) = stack.pop() {
+            if dir.join(".git").is_dir() {
+                git_dirs.push(dir);
+                continue;
+            }
+            let read_dir = std::fs::read_dir(&dir).map_err(|e| CommandError::Runtime {
+                message: format!("Failed to read directory {}: {}", dir.display(), e)
+            })?;
+            
+            for entry in read_dir {
+                let entry = entry.map_err(|e| CommandError::Runtime {
+                    message: format!("Failed to get directory entry: {}", e)
+                })?;
+                let path = entry.path();
+                if path.is_dir() && path.join(".git").is_dir() {
+                    git_dirs.push(path);
+                } else if path.is_dir() {
+                    stack.push(path);
+                }
+            }
+        }
+    }
+    Ok(git_dirs)
+}
+
 pub struct DevPullCommand {}
 
 impl DevPullCommand {
@@ -75,26 +106,7 @@ impl DevPullCommand {
         let pb = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
         pb.set_message("Scanning for git repositories...");
-        let mut git_dirs = Vec::new();
-        for dir in dirs {
-            let mut stack = Vec::new();
-            stack.push(dir);
-            while let Some(dir) = stack.pop() {
-                if dir.join(".git").is_dir() {
-                    git_dirs.push(dir);
-                    continue;
-                }
-                for entry in std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("Failed to read directory {}: {}", dir.display(), e)) {
-                    let entry = entry.unwrap_or_else(|e| panic!("Failed to get directory entry: {}", e));
-                    let path = entry.path();
-                    if path.is_dir() && path.join(".git").is_dir() {
-                        git_dirs.push(path);
-                    } else if path.is_dir() {
-                        stack.push(path);
-                    }
-                }
-            }
-        }
+        let git_dirs = find_git_repositories(dirs)?;
         pb.set_message("Pulling...");
         git_dirs.par_iter().for_each(|path| {
             // Get remote url
@@ -254,43 +266,65 @@ impl DevStatusCommand {
         let pb = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
         pb.set_message("Scanning for git repositories...");
-        let mut git_dirs = Vec::new();
-        for dir in dirs {
-            let mut stack = Vec::new();
-            stack.push(dir);
-            while let Some(dir) = stack.pop() {
-                if dir.join(".git").is_dir() {
-                    git_dirs.push(dir);
-                    continue;
-                }
-                for entry in std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("Failed to read directory {}: {}", dir.display(), e)) {
-                    let entry = entry.expect("Failed to read entry");
-                    let path = entry.path();
-                    if path.is_dir() && path.join(".git").is_dir() {
-                        git_dirs.push(path);
-                    } else if path.is_dir() {
-                        stack.push(path);
-                    }
-                }
-            }
-        }
+        let git_dirs = find_git_repositories(dirs)?;
         pb.set_message("Scanning...");
         // Mutex locked mutable output map
-        let output_map_locked = Mutex::new(HashMap::<PathBuf, String>::new());
+        let output_map_locked = Mutex::new(HashMap::<PathBuf, (String, String, bool)>::new());
         git_dirs.par_iter().for_each(|path| {
+            // Get current branch
+            let branch = std::process::Command::new("git")
+                .arg("rev-parse")
+                .arg("--abbrev-ref")
+                .arg("HEAD")
+                .current_dir(&path)
+                .output()
+                .expect("Failed to run git rev-parse --abbrev-ref HEAD");
+            let branch_name = if branch.status.success() {
+                String::from_utf8_lossy(&branch.stdout).trim().to_string()
+            } else {
+                "unknown".to_string()
+            };
+
             // Run git status
             let status = std::process::Command::new("git")
                 .arg("status")
+                .arg("--porcelain")
                 .current_dir(&path)
                 .output()
                 .expect("Failed to run git status");
             let status_str = String::from_utf8_lossy(&status.stdout).to_string();
+            let has_changes = !status_str.trim().is_empty();
+
             let mut output_map = output_map_locked.lock().unwrap();
-            output_map.insert(path.clone(), status_str);
+            output_map.insert(path.clone(), (branch_name, status_str, has_changes));
         });
         pb.finish_and_clear();
-        for (path, status) in output_map_locked.into_inner().unwrap() {
-            println!("{}: {}", path.display().to_string().green(), status);
+
+        // Sort: changed repos first, then unchanged
+        let mut repos: Vec<_> = output_map_locked.into_inner().unwrap().into_iter().collect();
+        repos.sort_by_key(|(_, (_, _, has_changes))| !*has_changes);
+
+        for (path, (branch, status, has_changes)) in repos {
+            if has_changes {
+                println!(
+                    "{} ({}):",
+                    path.display().to_string().green().bold(),
+                    branch.cyan()
+                );
+
+                for line in status.lines() {
+                    let line = line.trim_end();
+                    println!("{}", line);
+                }
+                println!();
+            } else {
+                println!("{}", format!(
+                    "{} ({}) {}",
+                    path.display().to_string().green(),
+                    branch.cyan(),
+                    "(no changes)").dimmed()
+                );
+            }
         }
         Ok(())
     }
