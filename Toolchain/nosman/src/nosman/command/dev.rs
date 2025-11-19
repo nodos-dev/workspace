@@ -107,21 +107,16 @@ impl DevPullCommand {
         pb.enable_steady_tick(Duration::from_millis(100));
         pb.set_message("Scanning for git repositories...");
         let git_dirs = find_git_repositories(dirs)?;
-        pb.set_message("Pulling...");
+        
+        let total_count = git_dirs.len();
+        let completed_count = Mutex::new(0usize);
+        
+        pb.set_message(format!("Pulling (0/{})...", total_count));
+        
+        // Mutex locked mutable output map
+        let output_map_locked = Mutex::new(HashMap::<PathBuf, (String, String, bool, Option<String>)>::new());
+        
         git_dirs.par_iter().for_each(|path| {
-            // Get remote url
-            let remote = std::process::Command::new("git")
-                .arg("remote")
-                .arg("get-url")
-                .arg("origin")
-                .current_dir(&path)
-                .output()
-                .expect("Failed to run git remote get-url origin");
-            if !remote.status.success() {
-                pb.println(format!("{}{}\n  {}", "Failed to get remote URL: ".red(), path.display(), String::from_utf8_lossy(&remote.stderr)));
-                return;
-            }
-            let remote_url = String::from_utf8_lossy(&remote.stdout).trim().to_string();
             // Get current branch
             let branch = std::process::Command::new("git")
                 .arg("rev-parse")
@@ -130,38 +125,100 @@ impl DevPullCommand {
                 .current_dir(&path)
                 .output()
                 .expect("Failed to run git rev-parse --abbrev-ref HEAD");
-            if !branch.status.success() {
-                pb.println(format!("{}{}\n  {}", "Failed to get current branch: ".red(), path.display(), String::from_utf8_lossy(&branch.stderr)));
-                return;
-            }
-            let branch = String::from_utf8_lossy(&branch.stdout).trim().to_string();
-            pb.println(format!("{}{} ({})", "Pulling: ".yellow(), path.display(), branch.cyan()));
+            let branch_name = if branch.status.success() {
+                String::from_utf8_lossy(&branch.stdout).trim().to_string()
+            } else {
+                "unknown".to_string()
+            };
+            
+            // Pull
             let output = std::process::Command::new("git")
                 .arg("pull")
                 .arg("--autostash")
                 .current_dir(&path)
                 .output()
                 .expect("Failed to run git pull");
-            if !output.status.success() {
-                pb.println(format!("{}{} ({}) ({}):\n  {}", "Failed to pull: ".red(), path.display(), branch.cyan(), remote_url, String::from_utf8_lossy(&output.stderr)));
-                return;
+            
+            let pull_success = output.status.success();
+            let pull_output = String::from_utf8_lossy(&output.stdout).to_string();
+            let pull_error = if !pull_success {
+                Some(String::from_utf8_lossy(&output.stderr).to_string())
+            } else {
+                None
+            };
+            
+            // Check if anything was actually pulled (not "Already up to date" or "is up to date")
+            let has_updates = pull_success && 
+                !pull_output.contains("Already up to date") && 
+                !pull_output.contains("is up to date");
+            
+            if pull_success {
+                // Submodule update recursive
+                let _ = std::process::Command::new("git")
+                    .arg("submodule")
+                    .arg("update")
+                    .arg("--init")
+                    .arg("--recursive")
+                    .current_dir(&path)
+                    .status()
+                    .expect("Failed to run git submodule update");
             }
-            // Submodule update recursive
-            let status = std::process::Command::new("git")
-                .arg("submodule")
-                .arg("update")
-                .arg("--init")
-                .arg("--recursive")
-                .current_dir(&path)
-                .status()
-                .expect("Failed to run git submodule update");
-            if !status.success() {
-                pb.println(format!("{}{} ({}) ({}):\n  {}", "Failed to update submodules: ".red(), path.display(), branch.cyan(), remote_url, String::from_utf8_lossy(&output.stderr)));
-                return;
-            }
-            pb.println(format!("{} ({}) ({}): {}", path.display().to_string().green(), branch.cyan(), remote_url, String::from_utf8_lossy(&output.stdout)));
+            
+            let mut output_map = output_map_locked.lock().unwrap();
+            output_map.insert(path.clone(), (branch_name, pull_output, has_updates, pull_error));
+            
+            // Update progress counter
+            let mut count = completed_count.lock().unwrap();
+            *count += 1;
+            pb.set_message(format!("Pulling ({}/{})...", *count, total_count));
         });
+        
         pb.finish_and_clear();
+
+        // Sort: repos with updates first, then up-to-date, then errors
+        let mut repos: Vec<_> = output_map_locked.into_inner().unwrap().into_iter().collect();
+        repos.sort_by_key(|(_, (_, _, has_updates, error))| {
+            if error.is_some() {
+                2 // Errors last
+            } else if *has_updates {
+                1 // Updates in the middle
+            } else {
+                0 // Already up to date is first
+            }
+        });
+
+        for (path, (branch, output, has_updates, error)) in repos {
+            if let Some(err) = error {
+                println!(
+                    "{} ({}):",
+                    path.display().to_string().red().bold(),
+                    branch.cyan()
+                );
+                println!("  {}", err.trim());
+                println!();
+            } else if has_updates {
+                println!(
+                    "{} ({}):",
+                    path.display().to_string().green().bold(),
+                    branch.cyan()
+                );
+                // Show only meaningful lines from git pull output
+                for line in output.lines() {
+                    let line = line.trim();
+                    if !line.is_empty() && !line.starts_with("From ") {
+                        println!("  {}", line);
+                    }
+                }
+                println!();
+            } else {
+                println!("{}", format!(
+                    "{} ({}) {}",
+                    path.display().to_string().green(),
+                    branch.cyan(),
+                    "(already up to date)").dimmed()
+                );
+            }
+        }
         Ok(())
     }
 }
@@ -300,9 +357,9 @@ impl DevStatusCommand {
         });
         pb.finish_and_clear();
 
-        // Sort: changed repos first, then unchanged
+        // Sort: unchanged repos first, then changed
         let mut repos: Vec<_> = output_map_locked.into_inner().unwrap().into_iter().collect();
-        repos.sort_by_key(|(_, (_, _, has_changes))| !*has_changes);
+        repos.sort_by_key(|(_, (_, _, has_changes))| *has_changes);
 
         for (path, (branch, status, has_changes)) in repos {
             if has_changes {
