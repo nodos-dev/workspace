@@ -19,17 +19,18 @@ struct TestCase {
 }
 
 struct TestResult {
-    module_name: String,
-    module_dir: PathBuf,
+    plugin_name: String,
+    plugin_dir: PathBuf,
     test_graph: PathBuf,
     exit_code: i32,
     duration: std::time::Duration,
+    output_file: Option<PathBuf>,
 }
 
 impl TestCommand {
-    fn collect_tests(modules_folder: &PathBuf) -> Vec<TestCase> {
+    fn collect_tests(plugins_folder: &PathBuf) -> Vec<TestCase> {
         let mut tests = Vec::new();
-        let manifests = package::get_package_manifests(modules_folder, true);
+        let manifests = package::get_package_manifests(plugins_folder, true);
         for (_plugin_type, manifest_path) in manifests {
             let package_dir = manifest_path.parent().unwrap().to_path_buf();
             let tests_dir = package_dir.join("Tests");
@@ -66,7 +67,7 @@ impl TestCommand {
         tests
     }
 
-    fn run_nodos_graph_test(workspace: &Workspace, engine_dir: Option<&Path>, graph_path: &Path, timeout: Duration) -> Result<i32, String> {
+    fn run_nodos_graph_test(workspace: &Workspace, engine_dir: Option<&Path>, graph_path: &Path, timeout: Duration) -> Result<(i32, Option<PathBuf>), String> {
         let engine_path = if let Some(dir) = engine_dir {
             let mut engine_path = dir.join("Binaries").join("nosLauncher");
             if cfg!(target_os = "windows") {
@@ -100,39 +101,72 @@ impl TestCommand {
             opt_engine_path.ok_or("No nosLauncher found in any engine Binaries folder.".to_string())?
         };
         use wait_timeout::ChildExt;
+        
+        // Create output file in system temp directory
+        let temp_dir = std::env::temp_dir();
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let output_file_path = temp_dir.join(format!("nodos_test_{}_{}.log", 
+            graph_path.file_stem().unwrap_or_default().to_string_lossy(),
+            timestamp));
+        let output_file = File::create(&output_file_path)
+            .map_err(|e| format!("Failed to create output file: {}", e))?;
+        let output_file_clone = output_file.try_clone()
+            .map_err(|e| format!("Failed to clone file handle: {}", e))?;
+        
         let mut child = std::process::Command::new(&engine_path)
             .arg("--load-graph")
             .arg(graph_path)
             .arg("--load-graph-plugins")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+            .stdout(output_file)
+            .stderr(output_file_clone)
             .spawn()
             .map_err(|e| e.to_string())?;
-        match child.wait_timeout(timeout).map_err(|e| e.to_string())? {
-            Some(status) => Ok(status.code().unwrap_or(-1)),
+        let result = match child.wait_timeout(timeout).map_err(|e| e.to_string())? {
+            Some(status) => {
+                let exit_code = status.code().unwrap_or(-1);
+                if exit_code == 0 {
+                    // Test passed, delete the output file
+                    let _ = fs::remove_file(&output_file_path);
+                    Ok((exit_code, None))
+                } else {
+                    // Test failed, keep the output file
+                    Ok((exit_code, Some(output_file_path)))
+                }
+            }
             None => {
-                // Timeout expired, kill the process
+                // Timeout expired, kill the process and keep the output file
                 let _ = child.kill();
                 let _ = child.wait();
-                Err(format!("Test timed out after {:?}", timeout))
+                Ok((-1, Some(output_file_path)))
             }
-        }
+        };
+        result
     }
 
     fn print_summary(results: &[TestResult], workspace: &Workspace) {
         use colored::*;
         use std::collections::BTreeMap;
         println!("\n{}", "Test Results".bold().underline());
-        // Group by module name and module_dir
+        // Group by plugin name and plugin_dir
         let mut grouped: BTreeMap<(&str, &PathBuf), Vec<&TestResult>> = BTreeMap::new();
         for result in results {
-            grouped.entry((result.module_name.as_str(), &result.module_dir)).or_default().push(result);
+            grouped.entry((result.plugin_name.as_str(), &result.plugin_dir)).or_default().push(result);
         }
-        for ((module, module_dir), tests) in grouped.iter() {
-            let rel_dir = pathdiff::diff_paths(module_dir, &workspace.root)
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "<unknown>".to_string());
-            println!("\n{} ({})", module.bold(), rel_dir.dimmed());
+        for ((plugin, plugin_dir), tests) in grouped.iter() {
+            let rel_dir = workspace.root.canonicalize()
+                .ok()
+                .and_then(|canonical_root| {
+                    plugin_dir.canonicalize()
+                        .ok()
+                        .and_then(|canonical_plugin| pathdiff::diff_paths(&canonical_plugin, &canonical_root))
+                })
+                .unwrap_or_else(|| plugin_dir.to_path_buf())
+                .display()
+                .to_string();
+            println!("\n{} ({})", plugin.bold(), rel_dir.dimmed());
             for result in tests {
                 let (icon, status) = if result.exit_code == 0 {
                     ("✓".green(), "PASS".green())
@@ -140,7 +174,11 @@ impl TestCommand {
                     ("✗".red(), "FAIL".red())
                 };
                 let test = result.test_graph.file_name().unwrap().to_string_lossy().dimmed();
-                println!("  {} {}  {}  ({:?})", icon, status, test, result.duration);
+                print!("  {} {}  {}  ({:?})", icon, status, test, result.duration);
+                if let Some(ref output_file) = result.output_file {
+                    print!(" ({})", output_file.display().to_string().dimmed());
+                }
+                println!();
             }
         }
         let passed = results.iter().filter(|r| r.exit_code == 0).count();
@@ -155,11 +193,11 @@ impl TestCommand {
 
 pub fn get_cli() -> clap::Command {
     clap::Command::new("test")
-        .about("Enumerate modules in a folder, look under Tests folder of each module, and run nosLauncher with --load-graph for each graph file.")
-        .arg(clap::Arg::new("modules_folder")
-            .help("Path to the folder containing modules (default: workspace root)")
-            .long("modules-folder")
-            .short('m')
+        .about("Enumerate plugins in a folder, look under Tests folder of each plugin, and run nosLauncher with --load-graph for each graph file.")
+        .arg(clap::Arg::new("plugins_folder")
+            .help("Path to the folder containing plugins (default: workspace root)")
+            .long("plugins-folder")
+            .short('p')
             .required(false)
         )
         .arg(clap::Arg::new("engine_dir")
@@ -184,39 +222,38 @@ impl Command for TestCommand {
     }
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
-        let modules_folder = args.get_one::<String>("modules_folder")
+        let plugins_folder = args.get_one::<String>("plugins_folder")
             .map(PathBuf::from)
             .unwrap_or_else(|| workspace.root.clone());
         let engine_dir = args.get_one::<String>("engine_dir").map(PathBuf::from);
         let timeout_secs = args.get_one::<u64>("timeout").copied().unwrap_or(30);
         let timeout = Duration::from_secs(timeout_secs);
-        let tests = Self::collect_tests(&modules_folder);
+        let tests = Self::collect_tests(&plugins_folder);
         if tests.is_empty() {
-            println!("{}", "No modules with tests found.".yellow());
+            println!("{}", "No plugins with tests found.".yellow());
             return Ok(());
         }
-        println!("Found {} test(s) in {} module(s).", tests.len(), tests.iter().map(|t| &t.package_name).collect::<std::collections::HashSet<_>>().len());
+        println!("Found {} test(s) in {} plugin(s).", tests.len(), tests.iter().map(|t| &t.package_name).collect::<std::collections::HashSet<_>>().len());
         let mut results = Vec::new();
         for test in &tests {
             let test_graph_relpath = test.test_graph
-                .strip_prefix(&modules_folder)
+                .strip_prefix(&plugins_folder)
                 .unwrap_or(&test.test_graph);
-            println!("{} {} (module: {})", "Running test graph:".green(), test_graph_relpath.display(), test.package_name);
+            println!("{} {} (plugin: {})", "Running test graph:".green(), test_graph_relpath.display(), test.package_name);
             let start = Instant::now();
-            let exit_code = match Self::run_nodos_graph_test(workspace, engine_dir.as_deref(), &test.test_graph, timeout) {
-                Ok(code) => code,
-                Err(e) => {
+            let (exit_code, output_file) = Self::run_nodos_graph_test(workspace, engine_dir.as_deref(), &test.test_graph, timeout)
+                .unwrap_or_else(|e| {
                     eprintln!("{} {}: {}", "Error when running test graph".red(), test_graph_relpath.display(), e);
-                    -1
-                }
-            };
+                    (-1, None)
+                });
             let duration = start.elapsed();
             results.push(TestResult {
-                module_name: test.package_name.clone(),
-                module_dir: test.package_dir.clone(),
+                plugin_name: test.package_name.clone(),
+                plugin_dir: test.package_dir.clone(),
                 test_graph: test.test_graph.clone(),
                 exit_code,
                 duration,
+                output_file,
             });
         }
         Self::print_summary(&results, workspace);

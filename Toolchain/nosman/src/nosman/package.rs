@@ -241,7 +241,7 @@ pub fn get_package_manifests(folder: &PathBuf, silent: bool) -> Vec<(PackageType
     let pb = get_progress_bar(silent);
     pb.enable_steady_tick(Duration::from_millis(100));
 
-    pb.set_message(format!("Looking for Nodos modules in {}", folder.to_str().unwrap_or_else(|| panic!("Non-UTF-8 path: {}", folder.display()))).to_string());
+    pb.set_message(format!("Looking for Nodos packages in {}", folder.to_str().unwrap_or_else(|| panic!("Non-UTF-8 path: {}", folder.display()))).to_string());
     let res = get_package_manifest_file(&folder);
     if res.is_ok() {
         if let Some((ty, mpath)) = res.unwrap() {
