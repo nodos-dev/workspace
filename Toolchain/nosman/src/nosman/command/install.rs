@@ -161,7 +161,7 @@ impl InstallCommand {
         if let Some(p) = prefix {
             install_dir = install_dir.join(p);
         } else if package_type.is_plugin() {
-            install_dir = install_dir.join(format!("{}-{}", package_name, version));
+            install_dir = install_dir.join(package_name).join(version.as_str());
         }
 
         let pkg_type_str = if package_type.is_plugin() { "plugin" } else { "package" };
@@ -208,7 +208,7 @@ pub fn get_cli() -> clap::Command {
             .action(ArgAction::SetTrue)
         )
         .arg(Arg::new("prefix")
-            .help("Folder path relative to out_dir. The module contents will be under this folder. By default, its '<module_name>-<version>'.")
+            .help("Folder path relative to out_dir. The module contents will be under this folder. By default, its '<module_name>/<version>'.")
             .long("prefix")
             .required(false)
         )
