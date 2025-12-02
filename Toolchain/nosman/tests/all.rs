@@ -71,7 +71,7 @@ fn install_no_deps() {
             &mut test.workspace,
             package_name,
             Some(&version),
-            &PathBuf::from("."),
+            &Some(PathBuf::from(".")),
             None,
             InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
         )
@@ -105,7 +105,7 @@ fn install_brings_dependencies() {
             &mut test.workspace,
             package_name,
             Some(&version),
-            &PathBuf::from("."),
+            &Some(PathBuf::from(".")),
             None,
             InstallFlags::UpdatePackageIndex,
         )
@@ -139,7 +139,7 @@ fn install_skips_if_already_installed() {
             &mut test.workspace,
             package_name,
             Some(&version),
-            &PathBuf::from("."),
+            &Some(PathBuf::from(".")),
             None,
             InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
         )
@@ -151,7 +151,7 @@ fn install_skips_if_already_installed() {
             &mut test.workspace,
             package_name,
             Some(&version),
-            &PathBuf::from("."),
+            &Some(PathBuf::from(".")),
             None,
             InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
         )
@@ -639,7 +639,7 @@ fn auto_rescan_if_needed_no_changes() {
             &mut test.workspace,
             package_name,
             Some(&version),
-            &PathBuf::from("."),
+            &Some(PathBuf::from(".")),
             None,
             InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
         )
@@ -678,7 +678,7 @@ fn auto_rescan_if_needed_missing_manifest() {
             &mut test.workspace,
             package_name,
             Some(&version),
-            &PathBuf::from("."),
+            &Some(PathBuf::from(".")),
             None,
             InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
         )
@@ -733,7 +733,7 @@ fn auto_rescan_if_needed_updated_manifest() {
             &mut test.workspace,
             package_name,
             Some(&version),
-            &PathBuf::from("."),
+            &Some(PathBuf::from(".")),
             None,
             InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
         )
