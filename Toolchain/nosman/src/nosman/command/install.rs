@@ -14,7 +14,7 @@ use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::common::download_and_extract;
 use bitflags::bitflags;
 use crate::nosman::package::PackageIdentifier;
-use crate::nosman::workspace::ScanModulesFlags;
+use crate::nosman::workspace::ScanPackagesFlags;
 
 pub struct InstallCommand {
 }
@@ -42,7 +42,7 @@ pub enum InstallOp {
 }
 
 impl InstallCommand {
-    pub fn run_install(&self, workspace: &mut Workspace, package_name: &str, version_opt: Option<&String>, output_dir: &PathBuf, prefix: Option<&String>, flags : InstallFlags) -> Result<InstallOp, CommandError> {
+    pub fn run_install(&self, workspace: &mut Workspace, package_name: &str, version_opt: Option<&String>, output_dir: &Option<PathBuf>, prefix: Option<&String>, flags : InstallFlags) -> Result<InstallOp, CommandError> {
         let install_with_deps = !flags.contains(InstallFlags::WithoutDependencies);
         let mut exact_no_fetch = flags;
         exact_no_fetch.remove(InstallFlags::UpdatePackageIndex);
@@ -55,13 +55,13 @@ impl InstallCommand {
                     return Err(InvalidArgument { message: "Please provide a minor version too!".to_string() });
                 }
                 let version_end = version_start.get_one_up();
-                if let Some(installed_module) = workspace.get_latest_local_package_within_range(package_name, &version_start, &version_end) {
-                    println!("{}", format!("Found an already installed compatible version for {} version {}: {}", package_name, version, installed_module.info.id.version).as_str().yellow());
+                if let Some(installed_package) = workspace.get_latest_local_package_within_range(package_name, &version_start, &version_end) {
+                    println!("{}", format!("Found an already installed compatible version for {} version {}: {}", package_name, version, installed_package.info.id.version).as_str().yellow());
                     return Ok(InstallOp::Skipped)
                 }
             } else if let Some(existing) = workspace.get_package(package_name, version.as_str()) {
                 if existing.get_package_root().exists() {
-                    println!("{}", format!("Module {} version {} is already installed", package_name, version).as_str().yellow());
+                    println!("{}", format!("package {} version {} is already installed", package_name, version).as_str().yellow());
                     return Ok(InstallOp::Skipped);
                 }
             }
@@ -102,7 +102,7 @@ impl InstallCommand {
                     }
                     Some(release.version.clone()) // Clone version to avoid lifetime issues.
                 } else {
-                    return Err(InvalidArgument { message: format!("No remote contained a version in range [{}, {}) for module {}", version_start.to_string(), version_end.to_string(), package_name) });
+                    return Err(InvalidArgument { message: format!("No remote contained a version in range [{}, {}) for package {}", version_start.to_string(), version_end.to_string(), package_name) });
                 };
                 self.run_install(workspace, package_name, compatible_package.as_ref(), output_dir, prefix, exact_no_fetch)
             }
@@ -157,31 +157,47 @@ impl InstallCommand {
                 }
             }
         }
-        let mut install_dir = output_dir.clone();
+        let output_dir_inferred = if let Some(out_dir) = output_dir {
+            out_dir
+        } else {
+            &if package_type.is_plugin() {
+                workspace.root.join("Module/Downloaded") // TODO: Some day this will be Plugin
+            } else { // TODO: Engine installations?
+                workspace.root.join("Package/Downloaded")
+            }
+        };
+        let mut install_dir = output_dir_inferred.clone();
         if let Some(p) = prefix {
             install_dir = install_dir.join(p);
-        } else if package_type.is_plugin() {
-            install_dir = install_dir.join(package_name).join(version.as_str());
+        } else {
+            install_dir = install_dir.join(package_name).join(version.clone());
         }
 
         let pkg_type_str = if package_type.is_plugin() { "plugin" } else { "package" };
 
-        let final_out_dir = if install_dir.is_relative() { workspace.root.join(install_dir) } else { install_dir };
-        let module_name_version = format!("{}-{}", package_name, version);
-        println!("Downloading {} {}", pkg_type_str, module_name_version);
+        let final_out_dir = if install_dir.is_relative() {
+            workspace.root.join(install_dir)
+        } else {
+            install_dir
+        };
+        let package_name_version = format!("{}-{}", package_name, version);
+        println!("Downloading {} {}", pkg_type_str, package_name_version);
 
         download_and_extract(&package.url, &final_out_dir)?;
 
         println!("Extracted {} {} to {}", pkg_type_str, package_name, final_out_dir.display());
-        if package_type.is_plugin() {
-            let mut scan_flags = ScanModulesFlags::empty();
+        // If the package is installed under workspace, register it.
+        if final_out_dir.starts_with(&workspace.root) {
+            let mut scan_flags = ScanPackagesFlags::empty();
             if install_with_deps {
-                scan_flags.insert(ScanModulesFlags::RegisterCommands);
+                scan_flags.insert(ScanPackagesFlags::RegisterCommands);
             }
-            scan_flags.insert(ScanModulesFlags::ForceReplaceInRegistry);
+            scan_flags.insert(ScanPackagesFlags::ForceReplaceInRegistry);
             workspace.scan_packages_in_folder(final_out_dir, scan_flags);
             println!("Adding to workspace file");
             workspace.save()?;
+        } else {
+            println!("{}", "Note: Package is installed outside the workspace.".yellow());
         }
         println!("{}", format!("{}-{} installed successfully", package_name, version).as_str().green());
         Ok(InstallOp::Installed)
@@ -190,13 +206,13 @@ impl InstallCommand {
 
 pub fn get_cli() -> clap::Command {
     clap::Command::new("install")
-        .about("Install a module")
-        .arg(Arg::new("module").required(true))
+        .about("Install a package")
+        .arg(Arg::new("package").required(true))
         .arg(Arg::new("version").required(false))
         .arg(Arg::new("exact")
             .action(ArgAction::SetTrue)
             .help("If not set, version parameter will be interpreted as minimum required version within that minor/patch version.\n\
-        If no version 'x' such that 'a.b <= x < a.(b+1)' is found among installed modules, latest such version will be installed.\n\
+        If no version 'x' such that 'a.b <= x < a.(b+1)' is found among installed packages, latest such version will be installed.\n\
         If version is set to 'latest' or has no minor component, it will fail.")
             .long("exact")
             .num_args(0)
@@ -204,17 +220,16 @@ pub fn get_cli() -> clap::Command {
         )
         .arg(Arg::new("without_deps")
             .long("without-deps")
-            .help("Do not install dependencies of the module")
+            .help("Do not install dependencies of the package")
             .action(ArgAction::SetTrue)
         )
         .arg(Arg::new("prefix")
-            .help("Folder path relative to out_dir. The module contents will be under this folder. By default, its '<module_name>/<version>'.")
+            .help("Folder path relative to out_dir. The package contents will be under this folder. By default, its '<package_name>/<version>'.")
             .long("prefix")
             .required(false)
         )
         .arg(Arg::new("out_dir")
-            .help("The directory where the module will be installed")
-            .default_value("./Module/Downloaded")
+            .help("The directory where the package will be installed. By default, it is '<package_type>/Downloaded'")
             .long("out-dir")
             .required(false)
         )
@@ -226,9 +241,9 @@ impl Command for InstallCommand {
     }
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
-        let module_name = args.get_one::<String>("module").unwrap();
+        let package_name = args.get_one::<String>("package").unwrap();
         let version = args.get_one::<String>("version");
-        let output_dir = args.get_one::<String>("out_dir").map(|p| PathBuf::from(p)).unwrap_or_else(|| PathBuf::from("."));
+        let output_dir = args.get_one::<String>("out_dir").map(PathBuf::from);
         let prefix = args.get_one::<String>("prefix");
         let mut flag : InstallFlags = InstallFlags::UpdatePackageIndex;
         if *args.get_one::<bool>("exact").unwrap() {
@@ -237,7 +252,7 @@ impl Command for InstallCommand {
         if *args.get_one::<bool>("without_deps").unwrap() {
             flag.insert(InstallFlags::WithoutDependencies);
         }
-        self.run_install(workspace, module_name, version, &output_dir, prefix, flag)?;
+        self.run_install(workspace, package_name, version, &output_dir, prefix, flag)?;
         Ok(())
     }
 }

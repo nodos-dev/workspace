@@ -77,10 +77,10 @@ bitflags! {
 }
 
 #[derive(Clone, Copy)]
-pub struct ScanModulesFlags(u8);
+pub struct ScanPackagesFlags(u8);
 
 bitflags! {
-    impl ScanModulesFlags: u8 {
+    impl ScanPackagesFlags: u8 {
         const ForceReplaceInRegistry = 0b1;
         const RegisterCommands = 0b10;
     }
@@ -349,7 +349,7 @@ impl Workspace {
         self.pop_output_mode();
         result
     }
-    pub fn scan_packages_in_folder(&mut self, folder: PathBuf, flags: ScanModulesFlags) {
+    pub fn scan_packages_in_folder(&mut self, folder: PathBuf, flags: ScanPackagesFlags) {
         // Scan folders with .noscfg and .nossys files
         let folder = dunce::canonicalize(&folder).unwrap_or_else(|e| panic!("Failed to canonicalize path {}: {}", folder.display(), e));
         let package_manifests = get_package_manifests(&folder, self.is_silent());
@@ -361,7 +361,7 @@ impl Workspace {
 
         for (ty, path) in package_manifests {
             pb.set_message(format!("Scanning: {}", path.display()));
-            let res = LocalPackageEntry::new(&self, get_rel_path_based_on(&path, &self.root), ty, flags.contains(ScanModulesFlags::RegisterCommands));
+            let res = LocalPackageEntry::new(&self, get_rel_path_based_on(&path, &self.root), ty, flags.contains(ScanPackagesFlags::RegisterCommands));
             if let Err(msg) = res {
                 pb.println(format!("Error while scanning {}: {}", path.display(), msg).red().to_string());
                 continue;
@@ -370,7 +370,7 @@ impl Workspace {
             let opt_found = self.get_package(&package.info.id.name, &package.info.id.version);
             if opt_found.is_some() {
                 let found = opt_found.unwrap();
-                if flags.contains(ScanModulesFlags::ForceReplaceInRegistry) {
+                if flags.contains(ScanPackagesFlags::ForceReplaceInRegistry) {
                     pb.println(format!("Updating package entry in registry: {}. {} <=> {}", package.info.id, path.display(), found.manifest_path.display()));
                 } else {
                     pb.println(format!("Duplicate module found: {}. {} <=> {}, skipping.", package.info.id, path.display(), found.manifest_path.display()));
@@ -380,7 +380,7 @@ impl Workspace {
             self.add(package);
         }
     }
-    pub fn scan_packages(&mut self, flags: ScanModulesFlags) {
+    pub fn scan_packages(&mut self, flags: ScanPackagesFlags) {
        self.scan_packages_in_folder(self.root.clone(), flags);
     }
     pub fn recreate(&mut self) -> Result<(), CommandError> {
@@ -395,7 +395,7 @@ impl Workspace {
         }
         if flags.contains(RescanFlags::ScanPackages) {
             self.packages.clear();
-            self.scan_packages(ScanModulesFlags::ForceReplaceInRegistry | ScanModulesFlags::RegisterCommands);
+            self.scan_packages(ScanPackagesFlags::ForceReplaceInRegistry | ScanPackagesFlags::RegisterCommands);
         }
         self.save()?;
         self.runtime.status = WorkspaceStatus::Ready;
@@ -592,7 +592,7 @@ impl Workspace {
                 });
 
                 // Rescan this specific folder
-                ws.scan_packages_in_folder(folder.clone(), ScanModulesFlags::ForceReplaceInRegistry | ScanModulesFlags::RegisterCommands);
+                ws.scan_packages_in_folder(folder.clone(), ScanPackagesFlags::ForceReplaceInRegistry | ScanPackagesFlags::RegisterCommands);
             }
         });
 

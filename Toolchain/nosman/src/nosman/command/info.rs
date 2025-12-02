@@ -1,7 +1,7 @@
 use clap::{Arg, ArgAction, ArgMatches};
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::package::LocalPackageEntry;
-use crate::nosman::workspace::{Workspace, OutputMode, ScanModulesFlags};
+use crate::nosman::workspace::{Workspace, OutputMode, ScanPackagesFlags};
 
 pub struct InfoCommand {
 }
@@ -14,7 +14,7 @@ impl InfoCommand {
         if package.needs_rescan(workspace, false) {
             package = workspace.with_output_mode_scoped(OutputMode::Silent, |ws| {
                 let full_path = ws.root.join(&package.manifest_path.parent().unwrap());
-                ws.scan_packages_in_folder(full_path.to_path_buf(), ScanModulesFlags::all());
+                ws.scan_packages_in_folder(full_path.to_path_buf(), ScanPackagesFlags::all());
                 ws.save()?;
                 Self::get_package(package_name, version, relaxed, ws)
             })?;

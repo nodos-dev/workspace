@@ -11,7 +11,7 @@ use crate::nosman::command::sdk_info::get_engine_sdk_infos;
 use crate::nosman::common::{DEFAULT_NODOS_VERSION_INDEX, SUPPORTED_NODOS_VERSIONS};
 use crate::nosman::module::get_dependency_arguments;
 use crate::nosman::package::{get_plugin_manifest_file_ext, PackageIdentifier};
-use crate::nosman::workspace::{ScanModulesFlags, Workspace};
+use crate::nosman::workspace::{ScanPackagesFlags, Workspace};
 
 pub struct CreateCommand {}
 
@@ -195,7 +195,7 @@ impl CreateCommand {
         println!("{:?} project created at {:?}", plugin_type, output_dir);
 
         if workspace.ready() {
-            workspace.scan_packages_in_folder(output_dir.clone(), ScanModulesFlags::ForceReplaceInRegistry);
+            workspace.scan_packages_in_folder(output_dir.clone(), ScanPackagesFlags::ForceReplaceInRegistry);
             workspace.save()?;
         }
 

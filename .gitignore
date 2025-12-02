@@ -1,5 +1,6 @@
 /Engine/*
 /Module/*
+/Package/*
 !Engine/README.md
 !Module/README.md
 /Build/
