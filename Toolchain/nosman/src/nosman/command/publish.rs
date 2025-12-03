@@ -327,6 +327,8 @@ impl PublishCommand {
                 #[cfg(target_os = "windows")]
                 {
                     writer.start_file(stripped.to_str()
+                                          // Convert backslashes to forward slashes
+                                          .map(|s| s.replace("\\", "/"))
                                           .expect("Failed to convert path to string"), options)
                         .unwrap_or_else(|e| panic!("Failed to start file in zip {:?}: {}", file_path, e));
                     writer.write_all(&buffer).unwrap_or_else(|e| panic!("Failed to write to zip {:?}: {}", file_path, e));
