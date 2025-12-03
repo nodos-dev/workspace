@@ -28,7 +28,6 @@ pub fn load_dylib_with_search_paths(verbose: bool, binary_path: &OsString, addit
         #[cfg(target_os = "macos")]
         let original_var = env::var_os("DYLD_LIBRARY_PATH");
 
-
         {
             for lib_dir in additional_search_paths {
                 // Add this directory to the appropriate environment variable
@@ -52,12 +51,10 @@ pub fn load_dylib_with_search_paths(verbose: bool, binary_path: &OsString, addit
             }
         }
 
-
-
         let res;
         // Now load the library
         unsafe {
-            res = Library::new(&binary_path)
+            res = Library::new(binary_path)
         }
 
         {
