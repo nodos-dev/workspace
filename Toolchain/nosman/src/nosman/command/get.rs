@@ -37,9 +37,12 @@ impl GetCommand {
         if src.is_dir() {
             let opts = fs_more::directory::DirectoryMoveOptions {
                 destination_directory_rule: fs_more::directory::DestinationDirectoryRule::AllowNonEmpty {
-                    existing_destination_file_behaviour: fs_more::file::ExistingFileBehaviour::Overwrite,
-                    existing_destination_subdirectory_behaviour: fs_more::directory::ExistingSubDirectoryBehaviour::Continue,
+                    colliding_file_behaviour: fs_more::file::CollidingFileBehaviour::Overwrite,
+                    colliding_subdirectory_behaviour: fs_more::directory::CollidingSubDirectoryBehaviour::Continue,
                 },
+                allowed_strategies: fs_more::directory::DirectoryMoveAllowedStrategies::Either {
+                    copy_and_delete_options: fs_more::directory::DirectoryMoveByCopyOptions::default(),
+                }
             };
             let res = fs_more::directory::move_directory(src, dst, opts);
             if let Err(e) = res {

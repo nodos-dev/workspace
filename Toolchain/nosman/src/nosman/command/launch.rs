@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use clap::{ArgMatches};
 use colored::Colorize;
-use native_dialog::MessageDialog;
+use native_dialog::DialogBuilder;
 use crate::nosman;
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::workspace::Workspace;
@@ -13,10 +13,12 @@ pub fn launch_nodos(workspace_dir: &PathBuf, hide_output: bool) {
     // Assume workspace is cwd.
     let engines_dir = nosman::path::get_default_engines_dir(workspace_dir);
     if !engines_dir.exists() {
-        MessageDialog::new()
+        DialogBuilder::message()
             .set_title("Nodos")
             .set_text("No installed Nodos engine found in workspace.")
-            .show_alert().expect("Failed to show message dialog");
+            .alert()
+            .show()
+            .expect("Failed to show message dialog");
         std::process::exit(1);
     }
 
@@ -48,10 +50,12 @@ pub fn launch_nodos(workspace_dir: &PathBuf, hide_output: bool) {
         break;
     }
     if opt_editor_path.is_none() || opt_engine_path.is_none() {
-        MessageDialog::new()
+        DialogBuilder::message()
             .set_title("Nodos")
             .set_text("No installed Nodos engine found in workspace. Check Engine folder.")
-            .show_alert().unwrap();
+            .alert()
+            .show()
+            .expect("Failed to show message dialog");
         std::process::exit(1);
     }
     let editor_path = opt_editor_path.unwrap();

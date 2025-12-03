@@ -33,7 +33,7 @@ fn cleanup() {
 
 // Global random number generator
 lazy_static::lazy_static! {
-    static ref RNG: std::sync::Mutex<StdRng> = std::sync::Mutex::new(StdRng::from_entropy());
+    static ref RNG: std::sync::Mutex<StdRng> = std::sync::Mutex::new(StdRng::from_os_rng());
 }
 
 pub struct WorkspaceGen {
@@ -54,7 +54,7 @@ impl WorkspaceGen {
     }
     pub(crate) fn new_random() -> Self {
         let random_string: String = (0..8)
-            .map(|_| RNG.lock().unwrap().gen_range(b'a'..=b'z'))
+            .map(|_| RNG.lock().unwrap().random_range(b'a'..=b'z'))
             .map(char::from)
             .collect();
         WorkspaceGen::new(random_string.as_str())
@@ -574,7 +574,7 @@ fn auto_rescan_if_needed_workspace_not_ready() {
     
     // Create a workspace from a path that doesn't have an index file
     let random_string: String = (0..8)
-        .map(|_| RNG.lock().unwrap().gen_range(b'a'..=b'z'))
+        .map(|_| RNG.lock().unwrap().random_range(b'a'..=b'z'))
         .map(char::from)
         .collect();
     let test_path = PathBuf::from(format!("./test_workspaces/{}", random_string));

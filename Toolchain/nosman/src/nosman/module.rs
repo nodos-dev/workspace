@@ -111,7 +111,7 @@ pub fn load_dylib_with_search_paths(verbose: bool, binary_path: &OsString, addit
             }
             dll_cookies.push(cookie);
         }
-        let res = Library::new(&binary_path);
+        let res = Library::new(binary_path);
         for cookie in dll_cookies {
             RemoveDllDirectory(cookie);
         }
