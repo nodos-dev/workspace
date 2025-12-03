@@ -9,8 +9,8 @@ pub struct RemoveCommand {}
 
 pub fn get_cli() -> clap::Command {
     clap::Command::new("remove")
-        .about("Remove a module")
-        .arg(Arg::new("module").required(true))
+        .about("Remove a package")
+        .arg(Arg::new("package").required(true))
         .arg(Arg::new("version").required(true))
 }
 
@@ -29,8 +29,8 @@ impl Command for RemoveCommand {
         _command_name: Option<&str>,
         args: &ArgMatches,
     ) -> CommandResult {
-        let module_name = args.get_one::<String>("module").unwrap();
+        let package_name = args.get_one::<String>("package").unwrap();
         let version = args.get_one::<String>("version").unwrap();
-        workspace.remove(module_name, version)
+        workspace.remove(package_name, version)
     }
 }
