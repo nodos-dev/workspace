@@ -40,23 +40,22 @@ impl InfoCommand {
                 if let Err(msg) = res {
                     return Err(CommandError::InvalidArgument { message: msg });
                 }
-            }
-            Ok(res.unwrap().clone())
-        } else {
+            res.unwrap().clone()
+            } else {
         
             if !path.is_empty() {
                 let res = ws.get_package_by_path(PathBuf::from(path));
                 if res.is_none() {
                     return Err(CommandError::InvalidArgument { message: format!("There is no package in {}", path) });
                 }
-                Ok(res.unwrap().clone())
+                res.unwrap().clone()
             }
             else{
                 let res = ws.get_package(package_name, version);
                 if res.is_none() {
                     return Err(CommandError::InvalidArgument { message: format!("Package {} version {} is not installed", package_name, version) });
                 }
-                Ok(res.unwrap().clone())
+                res.unwrap().clone()
             }
         })
     }
