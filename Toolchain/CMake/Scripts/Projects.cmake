@@ -2,14 +2,25 @@
 set(NOS_SOURCE_FILE_TYPES ".cpp" ".cc" ".cxx" ".c" ".inl" ".h" ".hxx" ".hpp" ".py" ".rc")
 set(NOS_HEADER_FILE_TYPES ".h" ".hxx" ".hpp" ".natvis")
 
-function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_folders out_target_name)
+function(nos_generate_flatbuffers fbs_paths dst_folder out_language include_folders out_target_name)
 	if(NOT DEFINED FLATC_EXECUTABLE)
 		nos_fatal_error("Flatbuffers compiler not found. Please set FLATC_EXECUTABLE variable.")
 	endif()
 
-	foreach (folder ${fbs_folders})
+	list(APPEND fbs_files)
+	foreach (fbs_path ${fbs_paths})
+		if (EXISTS "${fbs_path}")
+			if (IS_DIRECTORY "${fbs_path}")
+				file(GLOB_RECURSE files ${fbs_path}/*.fbs)
+				list(APPEND fbs_files ${files})
+			else ()
+				list(APPEND fbs_files ${fbs_path})
+			endif()
+		else()
+			nos_fatal_error("Flatbuffers schema path doesn't exist: ${fbs_path}")
+		endif()
+
 		if(NOT EXISTS ${folder})
-			nos_fatal_error("Flatbuffers schema folder not found: ${folder}")
 		endif()
 	endforeach()
 
@@ -35,12 +46,6 @@ function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_fo
 		# --force-defaults
 		--object-prefix "T"
 	)
-
-	list(APPEND fbs_files)
-	foreach(fbs_folder ${fbs_folders})
-		file(GLOB_RECURSE files ${fbs_folder}/*.fbs)
-		list(APPEND fbs_files ${files})
-	endforeach()
 
 	foreach(fbs_file ${fbs_files})
 		get_filename_component(fbs_file_name ${fbs_file} NAME_WE)

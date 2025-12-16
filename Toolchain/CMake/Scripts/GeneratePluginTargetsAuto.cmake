@@ -1,6 +1,6 @@
 # Copyright MediaZ Teknoloji A.S. All Rights Reserved.
 
-function(_nos_get_custom_types_from_json JSON_FILE OUT_LIST)
+function(_nos_get_custom_type_paths_from_json JSON_FILE OUT_LIST)
     if(NOT EXISTS "${JSON_FILE}")
         message(FATAL_ERROR "JSON file not found: ${JSON_FILE}")
     endif()
@@ -31,7 +31,7 @@ function(_nos_get_custom_types_from_json JSON_FILE OUT_LIST)
 
     foreach(i RANGE 0 ${_last})
         string(JSON _value GET "${_json_content}" custom_types ${i})
-        list(APPEND _result "${_value}")
+        list(APPEND _result "${CMAKE_CURRENT_SOURCE_DIR}/${_value}")
     endforeach()
 
     set(${OUT_LIST} "${_result}" PARENT_SCOPE)
@@ -62,7 +62,7 @@ function(_nos_generate_plugin_target nos_plugin_file_path common_deps out_target
     list(APPEND INCLUDE_FOLDERS ${CMAKE_CURRENT_SOURCE_DIR} "${CMAKE_CURRENT_SOURCE_DIR}/Include" "${found_include_dirs}")
     list(APPEND MODULE_DEPENDENCIES_TARGETS ${NOS_PLUGIN_SDK_TARGET})
 
-	_nos_get_custom_types_from_json(${nos_plugin_file_path} TYPE_FOLDERS)
+	_nos_get_custom_type_paths_from_json(${nos_plugin_file_path} TYPE_FOLDERS)
 	if(TYPE_FOLDERS)
     	nos_generate_flatbuffers("${TYPE_FOLDERS}" "${CMAKE_CURRENT_SOURCE_DIR}/Include/${target_name}" "cpp" "${NOS_SDK_DIR}/Types;${found_dep_dirs}" ${target_name}_generated)
     	list(APPEND MODULE_DEPENDENCIES_TARGETS ${target_name}_generated)

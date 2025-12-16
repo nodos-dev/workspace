@@ -249,9 +249,7 @@ endif()
 
 # Use automatic target generation for plugins written for Nodos 1.4 and later
 if(USE_AUTO_TARGET_GENERATION)
-	message("Automatic target generation activated")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/GeneratePluginTargetsAuto.cmake)
 else()
-	message("Manuel target generation activated")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/GeneratePluginTargetsManuel.cmake)
 endif()
