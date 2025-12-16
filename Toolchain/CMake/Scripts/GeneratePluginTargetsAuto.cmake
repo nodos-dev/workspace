@@ -120,7 +120,6 @@ function(_nos_configure_plugin_dir dir common_dependencies)
 			set(NOS_PLUGIN_TARGET ${plugin_target})
 			add_subdirectory("${dir}" "${CMAKE_CURRENT_BINARY_DIR}/ModuleDir_${plugin_target}")
 		else()
-			MESSAGE(STATUS "Custom cmake file for plugin ${plugin_name} not found at ${dir}/CMakeLists.txt")
 			string(FIND "${plugin_target}" "nos" pos)
 			if (pos EQUAL 0)
 				string(FIND "${plugin_target}" "Sys" sys_pos)
@@ -137,7 +136,7 @@ function(_nos_configure_plugin_dir dir common_dependencies)
 endfunction()
 
 
-function(_nos_collect_plugin_directories dir common_dependencies)
+function(_nos_process_plugin_directories_recursive dir common_dependencies)
     get_filename_component(parent_dir "${dir}" DIRECTORY)
     get_filename_component(parent_name "${parent_dir}" NAME)
     if(parent_name STREQUAL "Downloaded")
@@ -161,15 +160,17 @@ function(_nos_collect_plugin_directories dir common_dependencies)
 		endif()
 	endif()
 
-	if(PLUGINS)
-		message("Found plugin directory: ${dir}/${subdir}")
-		foreach(plugin ${PLUGINS})
-    		get_filename_component(plugin_name "${plugin}" NAME)
-    		message("Found plugin file: ${plugin_name}")
-		endforeach()
-		if(EXISTS "${dir}/CMakeLists.txt")
-			message("Found custom cmake include file: ${dir}/CMakeLists.txt")
-		endif()
+	list(LENGTH PLUGINS PLUGIN_COUNT)
+
+	if (PLUGIN_COUNT GREATER 1)
+		nos_fatal_error("Multiple .nosplugin files found in directory: ${dir}")
+	elseif (PLUGIN_COUNT EQUAL 1)
+		message("Found plugin directory: ${dir}")
+
+    	list(GET PLUGINS 0 plugin)
+		get_filename_component(plugin_name "${plugin}" NAME)
+		message("Found plugin file: ${plugin_name}")
+		
 		_nos_configure_plugin_dir(${dir} ${common_dependencies})
 	endif()
 
@@ -177,7 +178,7 @@ function(_nos_collect_plugin_directories dir common_dependencies)
 
 	foreach(subdir ${SUBDIRS})
 		if(IS_DIRECTORY ${dir}/${subdir})
-			_nos_collect_plugin_directories(
+			_nos_process_plugin_directories_recursive(
 				"${dir}/${subdir}"
 				${common_dependencies}  
 			)
@@ -192,12 +193,13 @@ function(_nos_collect_plugin_directories dir common_dependencies)
 	include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/DefaultPluginFunctions.cmake)
 endfunction()
 
-set(COMMON_DEPS "" CACHE INTERNAL "All custom cmake listed plugin directories" FORCE)
+set(COMMON_DEPS "")
 foreach(cur_plugin_dir ${MODULE_DIRS})
 	# If relative, should be relative to NODOS_WORKSPACE_DIR
 	if(NOT IS_ABSOLUTE ${cur_plugin_dir})
 		set(cur_plugin_dir "${NODOS_WORKSPACE_DIR}/${cur_plugin_dir}")
 	endif()
 	nos_colored_message(COLOR GREEN "Scanning for plugins in ${cur_plugin_dir}")
-	_nos_collect_plugin_directories("${cur_plugin_dir}" COMMON_DEPS)
+	_nos_process_plugin_directories_recursive("${cur_plugin_dir}" COMMON_DEPS)
+	set(COMMON_DEPS "")
 endforeach()
