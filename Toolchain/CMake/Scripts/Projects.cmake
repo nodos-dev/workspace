@@ -268,7 +268,7 @@ function(nos_get_plugin name version out_target_name)
 	set(${out_target_name} ${${out_target_name}} PARENT_SCOPE)
 endfunction()
 
-function(_nos_add_plugin NAME INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_TYPES ALTERNATIVE_MANIFEST_FILE_EXTS)
+function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_TYPES ALTERNATIVE_MANIFEST_FILE_EXTS)
 	nos_colored_message(COLOR CYAN "Processing plugin ${NAME}")
 
 	set(plugin_root "${CMAKE_CURRENT_SOURCE_DIR}")

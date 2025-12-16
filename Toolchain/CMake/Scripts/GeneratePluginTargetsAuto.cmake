@@ -1,17 +1,48 @@
 # Copyright MediaZ Teknoloji A.S. All Rights Reserved.
 
+function(_nos_get_custom_types_from_json JSON_FILE OUT_LIST)
+    if(NOT EXISTS "${JSON_FILE}")
+        message(FATAL_ERROR "JSON file not found: ${JSON_FILE}")
+    endif()
+
+    # Read file
+    file(READ "${JSON_FILE}" _json_content)
+
+    # Check if field exists
+    string(JSON _has_custom_types ERROR_VARIABLE _err
+        GET "${_json_content}" custom_types
+    )
+
+    if(_err)
+        # Field does not exist → return empty list
+		if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Types)
+        	set(${OUT_LIST} "${CMAKE_CURRENT_SOURCE_DIR}/Types" PARENT_SCOPE)
+		else()
+        	set(${OUT_LIST} "" PARENT_SCOPE)
+		endif()
+        return()
+    endif()
+
+    # Get array length
+    string(JSON _len LENGTH "${_json_content}" custom_types)
+
+    set(_result "")
+    math(EXPR _last "${_len} - 1")
+
+    foreach(i RANGE 0 ${_last})
+        string(JSON _value GET "${_json_content}" custom_types ${i})
+        list(APPEND _result "${_value}")
+    endforeach()
+
+    set(${OUT_LIST} "${_result}" PARENT_SCOPE)
+endfunction()
+
 function(_nos_generate_plugin_target nos_plugin_file_path common_deps out_target_name)
 	message(STATUS "Configuring module ${plugin_name}")
 	nos_get_module_info_by_path(${nos_plugin_file_path} plugin_name plugin_version out_json_info)
 	
 	nos_normalize_plugin_name(${plugin_name} target_name)
 	get_filename_component(PLUGIN_DIR "${nos_plugin_file_path}" DIRECTORY)
-
-	# Check source code existence
-	if(NOT EXISTS "${PLUGIN_DIR}/Source")
-		message("Plugin has no source folder, no target generated")
-		return()
-	endif()
 
 	nos_find_plugin_sdk_dependency(${out_json_info} plugin_sdk_version)
 	if ("${plugin_sdk_version}" STREQUAL "None")
@@ -29,9 +60,19 @@ function(_nos_generate_plugin_target nos_plugin_file_path common_deps out_target
 
 	nos_find_all_plugin_dependencies(${out_json_info} found_dependency_targets found_dep_dirs found_include_dirs)
     list(APPEND INCLUDE_FOLDERS ${CMAKE_CURRENT_SOURCE_DIR} "${CMAKE_CURRENT_SOURCE_DIR}/Include" "${found_include_dirs}")
+    list(APPEND MODULE_DEPENDENCIES_TARGETS ${NOS_PLUGIN_SDK_TARGET})
 
-    nos_generate_flatbuffers("${CMAKE_CURRENT_SOURCE_DIR}/Types" "${CMAKE_CURRENT_SOURCE_DIR}/Include/${target_name}" "cpp" "${NOS_SDK_DIR}/Types;${found_dep_dirs}" ${target_name}_generated)
-    list(APPEND MODULE_DEPENDENCIES_TARGETS ${NOS_PLUGIN_SDK_TARGET} ${target_name}_generated)
+	_nos_get_custom_types_from_json(${nos_plugin_file_path} TYPE_FOLDERS)
+	if(TYPE_FOLDERS)
+    	nos_generate_flatbuffers("${TYPE_FOLDERS}" "${CMAKE_CURRENT_SOURCE_DIR}/Include/${target_name}" "cpp" "${NOS_SDK_DIR}/Types;${found_dep_dirs}" ${target_name}_generated)
+    	list(APPEND MODULE_DEPENDENCIES_TARGETS ${target_name}_generated)
+	endif()
+
+	# Check source code existence
+	if(NOT EXISTS "${PLUGIN_DIR}/Source")
+		message("Plugin has no source folder, no target generated")
+		return()
+	endif()
 
 	list(APPEND
 		MODULE_DEPENDENCIES_TARGETS
