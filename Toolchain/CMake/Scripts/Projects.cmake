@@ -414,23 +414,7 @@ macro(nos_group_targets targets folder_name)
 	endforeach()
 endmacro()
 
-# Deprecated, use _plugin functions instead.
-function(nos_get_module_info name version query out_var)
-	nos_get_package_info(${name} ${version} ${query} ${out_var})
-	set(${out_var} ${${out_var}} PARENT_SCOPE)
-endfunction()
-
-function(nos_find_module_path name version out_var)
-	nos_find_package_path(${name} ${version} ${out_var})
-	set(${out_var} ${${out_var}} PARENT_SCOPE)
-endfunction()
-
-function(nos_get_module name version out_target_name)
-	nos_get_package(${name} ${version} ${out_target_name})
-	set(${out_target_name} ${${out_target_name}} PARENT_SCOPE)
-endfunction()
-
-function(nos_get_module_info_by_path path out_name out_version out_json)
+function(nos_get_package_info_by_path path out_name out_version out_json)
 	execute_process(
 		COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" info "" "" ${path}
 		RESULT_VARIABLE nosman_result
@@ -439,15 +423,15 @@ function(nos_get_module_info_by_path path out_name out_version out_json)
 	if(nosman_result EQUAL 0)
 		string(STRIP ${nosman_output} nosman_output)
 		set(err_name "")
-		string(JSON module_name ERROR_VARIABLE err_name GET "${nosman_output}" info id name)
-		string(JSON module_version ERROR_VARIABLE err_version GET "${nosman_output}" info id version)
-		message(STATUS "Module at path ${path} is ${module_name} version ${module_version}")
+		string(JSON package_name ERROR_VARIABLE err_name GET "${nosman_output}" info id name)
+		string(JSON package_version ERROR_VARIABLE err_version GET "${nosman_output}" info id version)
+		message(STATUS "Package at path ${path} is ${package_name} version ${package_version}")
 
-		set(${out_name} ${module_name} PARENT_SCOPE)
-		set(${out_version} ${module_version} PARENT_SCOPE)
+		set(${out_name} ${package_name} PARENT_SCOPE)
+		set(${out_version} ${package_version} PARENT_SCOPE)
 		set(${out_json} ${nosman_output} PARENT_SCOPE)
 	else()
-		nos_fatal_error("Failed to find module info from path ${path}.")
+		nos_fatal_error("Failed to find package info from path ${path}.")
 	endif()
 endfunction()
 
@@ -471,7 +455,7 @@ function(nos_normalize_plugin_name INPUT OUTPUT_VAR)
     set(${OUTPUT_VAR} "${RESULT}" PARENT_SCOPE)
 endfunction()
 
-function(nos_find_all_plugin_dependencies json out_target_names out_target_dirs out_target_include_dirs)
+function(nos_find_immediate_plugin_dependencies json out_target_names out_target_dirs out_target_include_dirs)
 	# Get the number of dependency entries
 	string(JSON dep_count LENGTH "${json}" info dependencies)
 
@@ -508,4 +492,20 @@ function(nos_find_plugin_sdk_dependency json out_found_version)
 	string(JSON found_dep_version GET "${json}" sdk_dependency)
 
 	set(${out_found_version} "${found_dep_version}" PARENT_SCOPE)
+endfunction()
+
+# Deprecated, use _plugin functions instead.
+function(nos_get_module_info name version query out_var)
+	nos_get_package_info(${name} ${version} ${query} ${out_var})
+	set(${out_var} ${${out_var}} PARENT_SCOPE)
+endfunction()
+
+function(nos_find_module_path name version out_var)
+	nos_find_package_path(${name} ${version} ${out_var})
+	set(${out_var} ${${out_var}} PARENT_SCOPE)
+endfunction()
+
+function(nos_get_module name version out_target_name)
+	nos_get_package(${name} ${version} ${out_target_name})
+	set(${out_target_name} ${${out_target_name}} PARENT_SCOPE)
 endfunction()
