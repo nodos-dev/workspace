@@ -37,14 +37,14 @@ function(_nos_get_custom_type_paths_from_json JSON_FILE OUT_LIST)
     set(${OUT_LIST} "${_result}" PARENT_SCOPE)
 endfunction()
 
-function(_nos_generate_plugin_target nos_plugin_file_path common_deps out_target_name)
+function(_nos_generate_plugin_target nos_plugin_file_path common_deps out_target_name out_plugin_name)
 	message(STATUS "Configuring plugin ${plugin_name}")
 	nos_get_package_info_by_path(${nos_plugin_file_path} plugin_name plugin_version out_json_info)
 	
 	nos_normalize_plugin_name(${plugin_name} target_name)
 	get_filename_component(PLUGIN_DIR "${nos_plugin_file_path}" DIRECTORY)
 
-	nos_find_plugin_sdk_dependency(${out_json_info} plugin_sdk_version)
+	nos_find_plugin_sdk_version(${out_json_info} plugin_sdk_version)
 	if ("${plugin_sdk_version}" STREQUAL "None")
 		message(STATUS "Module is not depended on a SDK version, there is no need for a target")
 		return()
@@ -90,6 +90,7 @@ function(_nos_generate_plugin_target nos_plugin_file_path common_deps out_target
     #Helpers need C++20
     set_target_properties("${target_name}" PROPERTIES CXX_STANDARD 20)
 	set(${out_target_name} ${target_name} PARENT_SCOPE)
+	set(${out_plugin_name} ${plugin_name} PARENT_SCOPE)
 endfunction()
 
 function(_nos_configure_plugin_dir dir common_dependencies)
@@ -104,15 +105,14 @@ function(_nos_configure_plugin_dir dir common_dependencies)
 	foreach(plugin ${PLUGINS})
 		get_filename_component(plugin_name "${plugin}" NAME_WE)
 
-
 		set(_old_cmake_source_dir ${CMAKE_CURRENT_SOURCE_DIR})
 		# Set current source dir to the plugin's directory for includes
 		set(CMAKE_CURRENT_SOURCE_DIR "${dir}")
 		
-		_nos_generate_plugin_target("${plugin}" ${common_dependencies} plugin_target)
+		_nos_generate_plugin_target("${plugin}" ${common_dependencies} plugin_target plugin_name)
 		if(COMMAND "nos_plugin_on_post_target_generated")
 			nos_colored_message(COLOR CYAN "Calling post target generation function")
-			cmake_language(CALL "nos_plugin_on_post_target_generated" "${plugin_target}")
+			cmake_language(CALL "nos_plugin_on_post_target_generated" "${plugin_target}" "${plugin_name}")
 		endif()
 
 		if(EXISTS "${dir}/CMakeLists.txt")

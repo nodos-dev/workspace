@@ -51,7 +51,7 @@ pub struct LocalPackageEntry {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub commands: Vec<NosCommandDesc>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub sdk_dependency: Option<String>
+    pub sdk_version: Option<String>
 }
 
 impl Display for LocalPackageEntry {
@@ -79,7 +79,7 @@ impl LocalPackageEntry {
             public_include_folder: None,
             type_schema_files: Vec::new(),
             commands: Vec::new(),
-            sdk_dependency: None
+            sdk_version: None
         };
 
         let abs_path = workspace.root.join(&path);
@@ -130,8 +130,8 @@ impl LocalPackageEntry {
             package.register_commands(&workspace);
         }
 
-        package.sdk_dependency = manifest
-            .get("sdk_dependency")
+        package.sdk_version = manifest
+            .get("sdk_version")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
         Ok(package)

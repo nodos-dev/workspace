@@ -3,5 +3,5 @@
 function(nos_plugin_common current_dir out_target_dependencies)
 endfunction()
 
-function(nos_plugin_on_post_target_generated plugin_target)
+function(nos_plugin_on_post_target_generated plugin_target plugin_name)
 endfunction()

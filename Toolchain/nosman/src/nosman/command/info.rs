@@ -65,8 +65,8 @@ pub fn get_cli() -> clap::Command {
     clap::Command::new("info")
         .about("Returns information about an installed package in JSON format.\n\
     If no such package is installed, it will return an error.")
-        .arg(Arg::new("package").required(false).index(1))
-        .arg(Arg::new("version").required(false).index(2))
+        .arg(Arg::new("package").required(false).default_value(""))
+        .arg(Arg::new("version").required(false).default_value(""))
         .arg(Arg::new("relaxed")
             .action(ArgAction::SetTrue)
             .help("If set, version parameter will be interpreted as minimum required version within that minor/patch version.\n\
@@ -75,7 +75,7 @@ pub fn get_cli() -> clap::Command {
             .num_args(0)
             .required(false)
         )
-        .arg(Arg::new("path").required(false).long("path"))
+        .arg(Arg::new("path").required(false).default_value(""))
 }
 
 impl Command for InfoCommand {
@@ -84,10 +84,10 @@ impl Command for InfoCommand {
     }
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
-        let package_name = args.get_one::<String>("package");
-        let version = args.get_one::<String>("version");
+        let package_name = args.get_one::<String>("package").unwrap();
+        let version = args.get_one::<String>("version").unwrap();
         let relaxed = args.get_one::<bool>("relaxed").unwrap();
-        let path = args.get_one::<String>("path");
+        let path = args.get_one::<String>("path").unwrap();
         self.run_get_info(workspace, package_name, version, *relaxed, path)
     }
 
