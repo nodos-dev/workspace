@@ -77,7 +77,7 @@ function(_nos_generate_plugin_target nos_plugin_file_path common_deps out_target
 	list(APPEND
 		MODULE_DEPENDENCIES_TARGETS
     	${found_dependency_targets}
-    	${${common_deps}}   # dereference here
+    	${common_deps}   # dereference here
 	)
 	message(STATUS "Module dependencies: ${MODULE_DEPENDENCIES_TARGETS}")
     nos_add_plugin("${target_name}" "${MODULE_DEPENDENCIES_TARGETS}" "${INCLUDE_FOLDERS}")
@@ -93,7 +93,7 @@ function(_nos_generate_plugin_target nos_plugin_file_path common_deps out_target
 	set(${out_plugin_name} ${plugin_name} PARENT_SCOPE)
 endfunction()
 
-function(_nos_configure_plugin_dir dir common_dependencies)
+function(_nos_configure_plugin_dir dir common_dependencies common_definitions)
 	if(NOT IS_DIRECTORY ${dir})
 		nos_colored_message(COLOR RED "Can't process plugin because it's not folder: ${dir}")
 		return()
@@ -109,26 +109,25 @@ function(_nos_configure_plugin_dir dir common_dependencies)
 		# Set current source dir to the plugin's directory for includes
 		set(CMAKE_CURRENT_SOURCE_DIR "${dir}")
 		
-		_nos_generate_plugin_target("${plugin}" ${common_dependencies} plugin_target plugin_name)
-		if(COMMAND "nos_plugin_on_post_target_generated")
-			nos_colored_message(COLOR CYAN "Calling post target generation function")
-			cmake_language(CALL "nos_plugin_on_post_target_generated" "${plugin_target}" "${plugin_name}")
+		_nos_generate_plugin_target("${plugin}" "${common_dependencies}" plugin_target plugin_name)
+		if(NOT TARGET ${plugin_target})
+			return()
 		endif()
+		message("Adding compile defs: ${common_definitions}")
+		message("Adding compile deps: ${common_dependencies}")
+		target_compile_definitions(${plugin_target} PRIVATE ${common_definitions})
 
 		if(EXISTS "${dir}/CMakeLists.txt")
 			nos_colored_message(COLOR GREEN "Including custom cmake file for plugin: ${plugin_name}")
 			set(NOS_PLUGIN_TARGET ${plugin_target})
 			add_subdirectory("${dir}" "${CMAKE_CURRENT_BINARY_DIR}/ModuleDir_${plugin_target}")
-		else()
-			string(FIND "${plugin_target}" "nos" pos)
-			if (pos EQUAL 0)
-				string(FIND "${plugin_target}" "Sys" sys_pos)
-				if(sys_pos EQUAL 3)
-					nos_group_targets("${plugin_target}" "NOS Subsystems")
-				else()
-					nos_group_targets("${plugin_target}" "NOS Plugins")
-				endif()
-			endif()
+		endif()
+		nos_get_vendor_name(${plugin_name} plugin_vendor)
+		nos_group_targets(${plugin_target} "${plugin_vendor} Plugins")
+
+		if(COMMAND "nos_plugin_on_post_target_generated")
+			nos_colored_message(COLOR CYAN "Calling post target generation function")
+			cmake_language(CALL "nos_plugin_on_post_target_generated" "${plugin_target}" "${plugin_name}")
 		endif()
 
 		set(CMAKE_CURRENT_SOURCE_DIR "${_old_cmake_source_dir}")
@@ -136,7 +135,7 @@ function(_nos_configure_plugin_dir dir common_dependencies)
 endfunction()
 
 
-function(_nos_process_plugin_directories_recursive dir common_dependencies)
+function(_nos_process_plugin_directories_recursive dir common_dependencies common_definitions)
     get_filename_component(parent_dir "${dir}" DIRECTORY)
     get_filename_component(parent_name "${parent_dir}" NAME)
     if(parent_name STREQUAL "Downloaded")
@@ -153,8 +152,17 @@ function(_nos_process_plugin_directories_recursive dir common_dependencies)
 		if(COMMAND "nos_plugin_common")
 			nos_colored_message(COLOR CYAN "Calling common dependency function")
 
-			cmake_language(CALL "nos_plugin_common" ${dir} "${common_dependencies}")
-			message("Found common dependencies: ${${common_dependencies}}")
+			set(common_deps "")
+			set(common_defs "")
+			cmake_language(CALL "nos_plugin_common" ${dir} common_deps common_defs)
+			message("Found common dependencies: ${common_deps}")
+			message("Found common definitions: ${common_defs}")
+
+			list(APPEND common_dependencies ${common_deps})
+			list(APPEND common_definitions ${common_defs})
+
+			message("Active common deps: ${common_dependencies}")
+			message("Active common defs: ${common_definitions}")
 		else()
 			nos_fatal_error("Expected function '${plugin_name}' not found in ${plugin_cmake}")
 		endif()
@@ -171,7 +179,7 @@ function(_nos_process_plugin_directories_recursive dir common_dependencies)
 		get_filename_component(plugin_name "${plugin}" NAME)
 		message("Found plugin file: ${plugin_name}")
 		
-		_nos_configure_plugin_dir(${dir} ${common_dependencies})
+		_nos_configure_plugin_dir(${dir} "${common_dependencies}" "${common_definitions}")
 	endif()
 
 	file(GLOB SUBDIRS RELATIVE ${dir} ${dir}/*)
@@ -180,7 +188,8 @@ function(_nos_process_plugin_directories_recursive dir common_dependencies)
 		if(IS_DIRECTORY ${dir}/${subdir})
 			_nos_process_plugin_directories_recursive(
 				"${dir}/${subdir}"
-				${common_dependencies}  
+				"${common_dependencies}"  
+				"${common_definitions}"
 			)
 
 			# Reload functions
@@ -193,13 +202,11 @@ function(_nos_process_plugin_directories_recursive dir common_dependencies)
 	include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/DefaultPluginFunctions.cmake)
 endfunction()
 
-set(COMMON_DEPS "")
 foreach(cur_plugin_dir ${MODULE_DIRS})
 	# If relative, should be relative to NODOS_WORKSPACE_DIR
 	if(NOT IS_ABSOLUTE ${cur_plugin_dir})
 		set(cur_plugin_dir "${NODOS_WORKSPACE_DIR}/${cur_plugin_dir}")
 	endif()
 	nos_colored_message(COLOR GREEN "Scanning for plugins in ${cur_plugin_dir}")
-	_nos_process_plugin_directories_recursive("${cur_plugin_dir}" COMMON_DEPS)
-	set(COMMON_DEPS "")
+	_nos_process_plugin_directories_recursive("${cur_plugin_dir}" "" "")
 endforeach()

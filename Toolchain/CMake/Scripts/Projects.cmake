@@ -509,3 +509,17 @@ function(nos_get_module name version out_target_name)
 	nos_get_package(${name} ${version} ${out_target_name})
 	set(${out_target_name} ${${out_target_name}} PARENT_SCOPE)
 endfunction()
+
+function(nos_get_vendor_name plugin_name out_vendor_name)
+    # Split by dot
+    string(REPLACE "." ";" _parts "${plugin_name}")
+
+    # Get first namespace
+    list(GET _parts 0 _ns)
+
+    # Uppercase it
+    string(TOUPPER "${_ns}" _upper_ns)
+
+    # Return
+    set(${out_vendor_name} "${_upper_ns}" PARENT_SCOPE)
+endfunction()
