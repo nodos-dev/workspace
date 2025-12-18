@@ -281,13 +281,18 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 	set(source_folder "${plugin_root}/Source")
 	set(public_include_folder "${plugin_root}/Include")
 	set(shaders_folder "${plugin_root}/Shaders")
+
+	set(NOS_PLUGIN_TYPE MODULE)
+	set(NOS_LINK_PROPERTY PRIVATE)
 	if (NOT EXISTS ${source_folder})
-		nos_fatal_error("Nodos CMake helpers for adding a plugin requires a folder named 'Source' at the root. Either manually setup your CMake script or create the 'Source' folder.")
+		set(NOS_PLUGIN_TYPE INTERFACE)
+		set(NOS_LINK_PROPERTY INTERFACE)
 	endif()
 
 	nos_get_files_recursive(${source_folder} "${NOS_SOURCE_FILE_TYPES}" source_files)
 	if (NOT source_files)
-		nos_fatal_error("No source files found in ${source_folder}")
+		set(NOS_PLUGIN_TYPE INTERFACE)
+		set(NOS_LINK_PROPERTY INTERFACE)
 	endif()
 	
 	nos_get_files_recursive(${public_include_folder} "${NOS_HEADER_FILE_TYPES}" header_files)
@@ -331,7 +336,7 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 		endif()
 	endforeach()
 	set(INCLUDED_IN_PROJECT ${source_files} ${header_files} ${config_files} ${NODE_DEFINITION_FILES} ${type_schema_files} ${shader_files} ${additional_files} ${PLUGIN_MANIFEST_FILE} ${ALTERNATIVE_PLUGIN_MANIFEST_FILES})
-	add_library(${NAME} MODULE ${INCLUDED_IN_PROJECT})
+	add_library(${NAME} ${NOS_PLUGIN_TYPE} ${INCLUDED_IN_PROJECT})
 	set_target_properties(${NAME} PROPERTIES
 		PREFIX ""
 		LIBRARY_OUTPUT_DIRECTORY "${plugin_root}/Binaries"
@@ -355,8 +360,6 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 		source_group("${header_path_msvc}" FILES "${header}")
 	endforeach()
 
-	target_include_directories(${NAME} PRIVATE ${plugin_root} ${source_folder} ${public_include_folder} ${INCLUDE_FOLDERS})
-
 	foreach(dependency IN LISTS DEPENDENCIES)
 		# If target "dependency" type is UTILITY then add it as a dependency
 		if(TARGET ${dependency})
@@ -365,12 +368,14 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 			if(dependency_type STREQUAL "UTILITY")
 				add_dependencies(${NAME} ${dependency})
 			else()
-				target_link_libraries(${NAME} PRIVATE ${dependency})
+				target_link_libraries(${NAME} ${NOS_LINK_PROPERTY} ${dependency})
 			endif()
 		else()
-			target_link_libraries(${NAME} PRIVATE ${dependency})
+			target_link_libraries(${NAME} ${NOS_LINK_PROPERTY} ${dependency})
 		endif()
 	endforeach()
+
+	target_include_directories(${NAME} ${NOS_LINK_PROPERTY} ${plugin_root} ${source_folder} ${public_include_folder} ${INCLUDE_FOLDERS})
 
 	# Produce PDBs in release mode too
 	if (CMAKE_BUILD_TYPE STREQUAL "Release")

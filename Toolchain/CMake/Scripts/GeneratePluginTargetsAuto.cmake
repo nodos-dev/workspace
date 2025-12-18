@@ -37,7 +37,7 @@ function(_nos_get_custom_type_paths_from_json JSON_FILE OUT_LIST)
     set(${OUT_LIST} "${_result}" PARENT_SCOPE)
 endfunction()
 
-function(_nos_generate_plugin_target nos_plugin_file_path common_deps out_target_name out_plugin_name)
+function(_nos_generate_plugin_target nos_plugin_file_path common_deps common_defs out_target_name out_plugin_name)
 	message(STATUS "Configuring plugin ${plugin_name}")
 	nos_get_package_info_by_path(${nos_plugin_file_path} plugin_name plugin_version out_json_info)
 	
@@ -67,12 +67,6 @@ function(_nos_generate_plugin_target nos_plugin_file_path common_deps out_target
     	list(APPEND MODULE_DEPENDENCIES_TARGETS ${target_name}_generated)
 	endif()
 
-	# Check source code existence
-	if(NOT EXISTS "${PLUGIN_DIR}/Source")
-		message("Plugin has no source folder, no target generated")
-		return()
-	endif()
-
 	list(APPEND
 		MODULE_DEPENDENCIES_TARGETS
     	${found_dependency_targets}
@@ -82,14 +76,24 @@ function(_nos_generate_plugin_target nos_plugin_file_path common_deps out_target
     nos_add_plugin("${target_name}" "${MODULE_DEPENDENCIES_TARGETS}" "${INCLUDE_FOLDERS}")
 	if(TARGET "${target_name}")
 		message(STATUS "Successfully created target: ${target_name}")
+		set(${out_target_name} ${target_name} PARENT_SCOPE)
+		set(${out_plugin_name} ${plugin_name} PARENT_SCOPE)
+
+		get_target_property(target_type ${target_name} TYPE)
+		if(target_type STREQUAL "INTERFACE_LIBRARY")
+			return()
+		endif()
 	else()
 		nos_fatal_error("Failed to create target: ${target_name}")
 	endif()
 
     #Helpers need C++20
     set_target_properties("${target_name}" PROPERTIES CXX_STANDARD 20)
-	set(${out_target_name} ${target_name} PARENT_SCOPE)
-	set(${out_plugin_name} ${plugin_name} PARENT_SCOPE)
+	target_compile_definitions("${target_name}" PRIVATE ${common_defs})
+		
+	if(NOS_FORCE_DISABLE_DEPRECATED)
+		target_compile_definitions("${target_name}" PRIVATE NOS_DISABLE_DEPRECATED)
+	endif()
 endfunction()
 
 function(_nos_configure_plugin_dir dir common_dependencies common_definitions)
@@ -108,15 +112,9 @@ function(_nos_configure_plugin_dir dir common_dependencies common_definitions)
 		# Set current source dir to the plugin's directory for includes
 		set(CMAKE_CURRENT_SOURCE_DIR "${dir}")
 		
-		_nos_generate_plugin_target("${plugin}" "${common_dependencies}" plugin_target plugin_name)
+		_nos_generate_plugin_target("${plugin}" "${common_dependencies}" "${common_definitions}" plugin_target plugin_name)
 		if(NOT TARGET ${plugin_target})
 			return()
-		endif()
-
-		target_compile_definitions(${plugin_target} PRIVATE ${common_definitions})
-			
-		if(NOS_FORCE_DISABLE_DEPRECATED)
-			target_compile_definitions(${plugin_target} PRIVATE NOS_DISABLE_DEPRECATED)
 		endif()
 
 		if(EXISTS "${dir}/CMakeLists.txt")
