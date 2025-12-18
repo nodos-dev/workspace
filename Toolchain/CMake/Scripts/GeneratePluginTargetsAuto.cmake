@@ -52,7 +52,6 @@ function(_nos_generate_plugin_target nos_plugin_file_path common_deps out_target
 
 	message(STATUS "Plugin SDK version requested: ${plugin_sdk_version}")
 
-	add_compile_definitions(NOS_DISABLE_DEPRECATED)
 	nos_find_plugin_sdk(${plugin_sdk_version} NOS_PLUGIN_SDK_TARGET NOS_SDK_DIR)
     if (NOT DEFINED NOS_SDK_DIR)
         message(FATAL_ERROR "Nodos SDK with version ${plugin_sdk_version} not found, please either install it or choose different version")
@@ -113,9 +112,12 @@ function(_nos_configure_plugin_dir dir common_dependencies common_definitions)
 		if(NOT TARGET ${plugin_target})
 			return()
 		endif()
-		message("Adding compile defs: ${common_definitions}")
-		message("Adding compile deps: ${common_dependencies}")
+
 		target_compile_definitions(${plugin_target} PRIVATE ${common_definitions})
+			
+		if(NOS_FORCE_DISABLE_DEPRECATED)
+			target_compile_definitions(${plugin_target} PRIVATE NOS_DISABLE_DEPRECATED)
+		endif()
 
 		if(EXISTS "${dir}/CMakeLists.txt")
 			nos_colored_message(COLOR GREEN "Including custom cmake file for plugin: ${plugin_name}")
@@ -145,9 +147,9 @@ function(_nos_process_plugin_directories_recursive dir common_dependencies commo
 
 	file(GLOB PLUGINS "${dir}/*.nosplugin")
 
-	if(EXISTS "${dir}/Common.cmake")
-		message("Found common dependency file: ${dir}/Common.cmake")
-		include("${dir}/Common.cmake")
+	if(EXISTS "${dir}/NosPluginCommon.cmake")
+		message("Found common dependency file: ${dir}/NosPluginCommon.cmake")
+		include("${dir}/NosPluginCommon.cmake")
 		
 		if(COMMAND "nos_plugin_common")
 			nos_colored_message(COLOR CYAN "Calling common dependency function")
@@ -155,14 +157,8 @@ function(_nos_process_plugin_directories_recursive dir common_dependencies commo
 			set(common_deps "")
 			set(common_defs "")
 			cmake_language(CALL "nos_plugin_common" ${dir} common_deps common_defs)
-			message("Found common dependencies: ${common_deps}")
-			message("Found common definitions: ${common_defs}")
-
 			list(APPEND common_dependencies ${common_deps})
 			list(APPEND common_definitions ${common_defs})
-
-			message("Active common deps: ${common_dependencies}")
-			message("Active common defs: ${common_definitions}")
 		else()
 			nos_fatal_error("Expected function '${plugin_name}' not found in ${plugin_cmake}")
 		endif()
@@ -173,11 +169,8 @@ function(_nos_process_plugin_directories_recursive dir common_dependencies commo
 	if (PLUGIN_COUNT GREATER 1)
 		nos_fatal_error("Multiple .nosplugin files found in directory: ${dir}")
 	elseif (PLUGIN_COUNT EQUAL 1)
-		message("Found plugin directory: ${dir}")
-
     	list(GET PLUGINS 0 plugin)
 		get_filename_component(plugin_name "${plugin}" NAME)
-		message("Found plugin file: ${plugin_name}")
 		
 		_nos_configure_plugin_dir(${dir} "${common_dependencies}" "${common_definitions}")
 	endif()
@@ -185,21 +178,20 @@ function(_nos_process_plugin_directories_recursive dir common_dependencies commo
 	file(GLOB SUBDIRS RELATIVE ${dir} ${dir}/*)
 
 	foreach(subdir ${SUBDIRS})
-		if(IS_DIRECTORY ${dir}/${subdir})
-			_nos_process_plugin_directories_recursive(
-				"${dir}/${subdir}"
-				"${common_dependencies}"  
-				"${common_definitions}"
-			)
+		include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/DefaultNosPluginCommon.cmake)
+		_nos_process_plugin_directories_recursive(
+			"${dir}/${subdir}"
+			"${common_dependencies}"  
+			"${common_definitions}"
+		)
 
-			# Reload functions
-			if(EXISTS "${dir}/Common.cmake")
-				include("${dir}/Common.cmake")
-			endif()
+		# Reload functions
+		if(EXISTS "${dir}/NosPluginCommon.cmake")
+			include("${dir}/NosPluginCommon.cmake")
 		endif()
 	endforeach()
 
-	include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/DefaultPluginFunctions.cmake)
+	include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/DefaultNosPluginCommon.cmake)
 endfunction()
 
 foreach(cur_plugin_dir ${MODULE_DIRS})

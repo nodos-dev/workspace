@@ -479,9 +479,7 @@ function(nos_find_immediate_plugin_dependencies json out_target_names out_target
 		nos_normalize_plugin_name(${dep_name} target_name)
 		list(APPEND _dep_include_dirs "${found_dir}/Include/${target_name}")
 	endforeach()
-	message(STATUS "Found dependency targets: ${_deps}")
-	message(STATUS "Found dependency directories: ${_dep_dirs}")
-	message(STATUS "Found dependency include directories: ${_dep_include_dirs}")
+	
 	set(${out_target_names} "${_deps}" PARENT_SCOPE)
 	set(${out_target_dirs} "${_dep_dirs}" PARENT_SCOPE)
 	set(${out_target_include_dirs} "${_dep_include_dirs}" PARENT_SCOPE)

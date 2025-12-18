@@ -250,7 +250,7 @@ impl DevGenCommand {
         if lang_tool != "cpp/cmake" {
             return Err(InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool) });
         }
-        let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", project_folder, "-DNOS_INVOKED_FROM_NOSMAN=ON"];
+        let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", project_folder, "-DNOS_INVOKED_FROM_NOSMAN=ON", "-DNOS_FORCE_DISABLE_DEPRECATED=1"];
 
         let mut formatted_args = Vec::new(); // holds the actual Strings
         if let Some(val) = module_dirs{
