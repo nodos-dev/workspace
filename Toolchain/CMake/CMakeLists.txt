@@ -138,7 +138,6 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 		
 		# Create targets
 		add_library(${nos_plugin_sdk_target} INTERFACE)
-		target_compile_definitions(${nos_plugin_sdk_target} INTERFACE "-DNOMINMAX")
 		target_include_directories(${nos_plugin_sdk_target} INTERFACE ${sdk_include_dir})
 
 		# Exclude from all
@@ -157,7 +156,6 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 
 			# Create nosSubsystemSDK target
 			add_library(${nos_subsystem_sdk_target} INTERFACE)
-			target_compile_definitions(${nos_subsystem_sdk_target} INTERFACE "-DNOMINMAX")
 			target_include_directories(${nos_subsystem_sdk_target} INTERFACE ${sdk_include_dir})
 			set_target_properties(${nos_subsystem_sdk_target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
 			if (EXISTS ${natvis_file})
