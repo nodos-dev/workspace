@@ -421,7 +421,7 @@ endmacro()
 
 function(nos_get_package_info_by_path path out_name out_version out_json)
 	execute_process(
-		COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" info "" "" ${path}
+		COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" info "--manifest" ${path}
 		RESULT_VARIABLE nosman_result
 		OUTPUT_VARIABLE nosman_output
 	)
