@@ -169,51 +169,51 @@ impl SemVer {
         }
         s
     }
-    pub fn matches_constraint(&self, constraint: &SemVer) -> bool {
-        // Check if this version matches the constraint
-        // For constraint "6" (major only): matches 6.x.x
-        // For constraint "6.30" (major.minor): matches 6.30.x
-        // For constraint "6.30.1" (major.minor.patch): matches 6.30.1.x
-        // For constraint "6.30.1.b709" (full): matches exact 6.30.1.b709
+    pub fn matches_prefix(&self, prefix: &SemVer) -> bool {
+        // Check if this version matches the prefix
+        // For prefix "6" (major only): matches 6.x.x
+        // For prefix "6.30" (major.minor): matches 6.30.x
+        // For prefix "6.30.1" (major.minor.patch): matches 6.30.1.x
+        // For prefix "6.30.1.b709" (full): matches exact 6.30.1.b709
         
         // Major version must match
-        if self.major != constraint.major {
+        if self.major != prefix.major {
             return false;
         }
         
-        // If constraint specifies minor, check it
-        if let Some(constraint_minor) = constraint.minor {
+        // If prefix specifies minor, check it
+        if let Some(prefix_minor) = prefix.minor {
             match self.minor {
-                Some(self_minor) if self_minor != constraint_minor => return false,
+                Some(self_minor) if self_minor != prefix_minor => return false,
                 None => return false,
                 _ => {}
             }
         } else {
-            // Constraint is major-only, so any minor matches
+            // Prefix is major-only, so any minor matches
             return true;
         }
         
-        // If constraint specifies patch, check it
-        if let Some(constraint_patch) = constraint.patch {
+        // If prefix specifies patch, check it
+        if let Some(prefix_patch) = prefix.patch {
             match self.patch {
-                Some(self_patch) if self_patch != constraint_patch => return false,
+                Some(self_patch) if self_patch != prefix_patch => return false,
                 None => return false,
                 _ => {}
             }
         } else {
-            // Constraint is major.minor, so any patch matches
+            // Prefix is major.minor, so any patch matches
             return true;
         }
         
-        // If constraint specifies build_number, check it
-        if let Some(constraint_build) = constraint.build_number {
+        // If prefix specifies build_number, check it
+        if let Some(prefix_build) = prefix.build_number {
             match self.build_number {
-                Some(self_build) if self_build != constraint_build => return false,
+                Some(self_build) if self_build != prefix_build => return false,
                 None => return false,
                 _ => {}
             }
         } else {
-            // Constraint is major.minor.patch, so any build matches
+            // Prefix is major.minor.patch, so any build matches
             return true;
         }
         
@@ -870,9 +870,9 @@ impl Index {
         None
     }
     pub fn get_latest_compatible_release(
-        &self,
+        &mut self,
         name: &str,
-        version_constraint: &SemVer,
+        version_prefix: &SemVer,
     ) -> Option<(&PackageType, &PackageReleaseEntry)> {
         let res = self.packages.get(name);
         let (package_type, version_list) = res?;
@@ -886,7 +886,7 @@ impl Index {
                 continue;
             }
             let semver = semver?;
-            if semver.matches_constraint(version_constraint)
+            if semver.matches_prefix(version_prefix)
                 && (module.platform.is_none() || module.platform.as_ref()? == &platform)
             {
                 return Some((package_type, module));

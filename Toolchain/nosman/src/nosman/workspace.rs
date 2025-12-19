@@ -246,7 +246,7 @@ impl Workspace {
         }
         new_package
     }
-    pub fn get_latest_local_package_for_constraint(&self, name: &str, version_constraint: &SemVer) -> Option<&LocalPackageEntry> {
+    pub fn get_latest_local_package_for_prefix(&self, name: &str, version_prefix: &SemVer) -> Option<&LocalPackageEntry> {
         let version_list = self.packages.get(name);
         let version_list = version_list?;
         let mut versions: Vec<(&String, &LocalPackageEntry)> = version_list.iter().collect();
@@ -258,7 +258,7 @@ impl Workspace {
                 continue;
             }
             let semver = semver?;
-            if semver.matches_constraint(version_constraint) {
+            if semver.matches_prefix(version_prefix) {
                 return Some(package);
             }
         }
@@ -269,27 +269,27 @@ impl Workspace {
         if semver_res.is_none() {
             return Err(format!("Invalid semantic version: {}.", requested_version));
         }
-        let version_constraint = semver_res.unwrap();
-        let res = self.get_latest_local_package_for_constraint(module_name, &version_constraint);
+        let version_prefix = semver_res.unwrap();
+        let res = self.get_latest_local_package_for_prefix(module_name, &version_prefix);
         if res.is_none() {
-            return Err(format!("No installed version matching constraint '{}' for package {}", version_constraint.to_string(), module_name));
+            return Err(format!("No installed version matching prefix '{}' for package {}", version_prefix.to_string(), module_name));
         }
         Ok(res.unwrap())
     }
-    pub fn get_latest_absent_release_for(&self, name: &str, requested_version: &str) -> Result<Option<(&PackageType, &PackageReleaseEntry)>, CommandError> {
+    pub fn get_latest_absent_release_for(&mut self, name: &str, requested_version: &str) -> Result<Option<(&PackageType, &PackageReleaseEntry)>, CommandError> {
         // If the version is not a valid semantic version, return Error
         let semver = SemVer::parse_from_str(requested_version);
         if semver.is_none() {
             return Err(InvalidArgument { message: format!("{} is not a valid semantic version", requested_version) });
         }
-        let version_constraint = semver.unwrap();
-        let installed = self.get_latest_local_package_for_constraint(name, &version_constraint);
+        let version_prefix = semver.unwrap();
+        let installed = self.get_latest_local_package_for_prefix(name, &version_prefix);
         if installed.is_some() {
             return Ok(None);
         }
-        let res = self.index_cache.get_latest_compatible_release(name, &version_constraint);
+        let res = self.index_cache.get_latest_compatible_release(name, &version_prefix);
         if res.is_none() {
-            return Err(InvalidArgument { message: format!("No releases found for package {} matching constraint '{}'", name, version_constraint.to_string()) });
+            return Err(InvalidArgument { message: format!("No releases found for package {} matching prefix '{}'", name, version_prefix.to_string()) });
         }
         Ok(Some(res.unwrap()))
     }

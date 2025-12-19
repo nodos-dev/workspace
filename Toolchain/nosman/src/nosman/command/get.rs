@@ -156,8 +156,8 @@ impl GetCommand {
 
         let res;
         if let Some(version) = version {
-            let version_constraint = SemVer::parse_from_str(version).unwrap_or_else(|| panic!("Invalid semantic version: {}", version));
-            res = workspace.index_cache.get_latest_compatible_release(nodos_name, &version_constraint);
+            let version_prefix = SemVer::parse_from_str(version).unwrap_or_else(|| panic!("Invalid semantic version: {}", version));
+            res = workspace.index_cache.get_latest_compatible_release(nodos_name, &version_prefix);
         } else {
             res = workspace.index_cache.get_latest_release(nodos_name);
         }

@@ -52,11 +52,11 @@ impl DependCommand {
                 dep = module.info.id.clone();
             } else {
                 // Convert the `Option` from `parse_from_string` to a `Result` so we can use `map_err`
-                let version_constraint = SemVer::parse_from_str(&dep_id.version)
+                let version_prefix = SemVer::parse_from_str(&dep_id.version)
                     .ok_or(InvalidArgument { message: "Invalid version format".to_string() })?;
 
                 if let Some(remote_package) = workspace.index_cache.get_latest_compatible_release(
-                    &dep_id.name, &version_constraint) {
+                    &dep_id.name, &version_prefix) {
                     dep.name = dep_id.name.clone();
                     dep.version = remote_package.1.version.clone();  // Assuming remote_package.1 has a `version` field
                     println!("Found latest version {} for {}", dep.version, dep.name);}
