@@ -83,7 +83,7 @@ impl InstallCommand {
             version = version_opt.unwrap().to_string();
         }
         if !flags.contains(InstallFlags::InstallExactVersion) {
-            // Find or download a version such that 'a.b <= x < a.(b+1)' or 'a <= x < (a+1)' if only major is provided
+            // Find or download a version matching the provided prefix
             let version_prefix = SemVer::parse_from_str(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
             println!("Installing {} matching version prefix '{}'", package_name, version_prefix.to_string());
             return {
