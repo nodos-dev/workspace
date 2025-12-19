@@ -169,6 +169,14 @@ impl SemVer {
         }
         s
     }
+    pub fn upper_major(&self) -> SemVer {
+        SemVer {
+            major: self.major + 1,
+            minor: Some(0),
+            patch: None,
+            build_number: None,
+        }
+    }
     pub fn upper_minor(&self) -> SemVer {
         SemVer {
             major: self.major,
@@ -195,7 +203,9 @@ impl SemVer {
     }
     pub fn get_one_up(&self) -> SemVer {
         let version_start = self.clone();
-        if version_start.patch.is_none() {
+        if version_start.minor.is_none() {
+            version_start.upper_major()
+        } else if version_start.patch.is_none() {
             version_start.upper_minor()
         } else if version_start.build_number.is_none() {
             version_start.upper_patch()
@@ -851,17 +861,17 @@ impl Index {
         }
         None
     }
-    pub fn get_latest_compatible_release_within_range(
+    pub fn get_latest_compatible_release(
         &self,
         name: &str,
-        version_start: &SemVer,
-        version_end: &SemVer,
+        version_constraint: &SemVer,
     ) -> Option<(&PackageType, &PackageReleaseEntry)> {
         let res = self.packages.get(name);
         let (package_type, version_list) = res?;
         let mut versions: Vec<&PackageReleaseEntry> = version_list.iter().collect();
         sort_version_list(&mut versions);
         versions.reverse();
+        let version_end = version_constraint.get_one_up();
         let platform = get_host_platform().to_string();
         for module in versions {
             let semver = SemVer::parse_from_str(&module.version);
@@ -869,8 +879,8 @@ impl Index {
                 continue;
             }
             let semver = semver?;
-            if semver >= *version_start
-                && semver < *version_end
+            if semver >= *version_constraint
+                && semver < version_end
                 && (module.platform.is_none() || module.platform.as_ref()? == &platform)
             {
                 return Some((package_type, module));

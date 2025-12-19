@@ -778,3 +778,56 @@ fn auto_rescan_if_needed_updated_manifest() {
     }
 }
 
+#[test]
+fn install_with_only_major_version() {
+    let mut test = WorkspaceGen::new_random();
+    let package_name = "nos.sys.vulkan";
+    let version = String::from("6");
+    InstallCommand {}
+        .run_install(
+            &mut test.workspace,
+            package_name,
+            Some(&version),
+            &Some(PathBuf::from(".")),
+            None,
+            InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
+        )
+        .unwrap_or_else(|_| panic!("Failed to install {}", package_name));
+    let versions = test.workspace.get_packages(package_name);
+    assert_eq!(versions.len(), 1);
+}
+
+#[test]
+fn test_get_one_up() {
+    // Test major only (6 -> 7.0)
+    let version = SemVer::parse_from_str("6").unwrap();
+    let next = version.get_one_up();
+    assert_eq!(next.major, 7);
+    assert_eq!(next.minor, Some(0));
+    assert_eq!(next.patch, None);
+    assert_eq!(next.build_number, None);
+
+    // Test major.minor (6.30 -> 6.31)
+    let version = SemVer::parse_from_str("6.30").unwrap();
+    let next = version.get_one_up();
+    assert_eq!(next.major, 6);
+    assert_eq!(next.minor, Some(31));
+    assert_eq!(next.patch, None);
+    assert_eq!(next.build_number, None);
+
+    // Test major.minor.patch (6.30.1 -> 6.30.2)
+    let version = SemVer::parse_from_str("6.30.1").unwrap();
+    let next = version.get_one_up();
+    assert_eq!(next.major, 6);
+    assert_eq!(next.minor, Some(30));
+    assert_eq!(next.patch, Some(2));
+    assert_eq!(next.build_number, None);
+
+    // Test major.minor.patch.build (6.30.1.b709 -> 6.30.1.b710)
+    let version = SemVer::parse_from_str("6.30.1.b709").unwrap();
+    let next = version.get_one_up();
+    assert_eq!(next.major, 6);
+    assert_eq!(next.minor, Some(30));
+    assert_eq!(next.patch, Some(1));
+    assert_eq!(next.build_number, Some(710));
+}
