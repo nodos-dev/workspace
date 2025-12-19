@@ -461,12 +461,19 @@ function(nos_normalize_plugin_name INPUT OUTPUT_VAR)
 endfunction()
 
 function(nos_find_immediate_plugin_dependencies json out_target_names out_target_dirs out_target_include_dirs)
-	# Get the number of dependency entries
-	string(JSON dep_count LENGTH "${json}" info dependencies)
+	string(JSON dep_field_check ERROR_VARIABLE err GET "${json}" info dependencies)
+	if (err)
+		set(dep_count 0)
+	else()
+		# Get the number of dependency entries
+		string(JSON dep_count LENGTH "${json}" info dependencies)
+	endif()
 
 	if(dep_count EQUAL 0)
 		message(STATUS "No dependencies found.")
 		set(${out_target_names} "" PARENT_SCOPE)
+		set(${out_target_dirs} "" PARENT_SCOPE)
+		set(${out_target_include_dirs} "" PARENT_SCOPE)
 		return()
 	endif()
 
