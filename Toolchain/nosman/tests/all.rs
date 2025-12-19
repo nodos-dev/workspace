@@ -1,6 +1,7 @@
 use log::{info, warn};
 use nosman::nosman::command::create::{CreateCommand, LangTool};
 use nosman::nosman::command::get::GetCommand;
+use nosman::nosman::command::info::InfoCommand;
 use nosman::nosman::command::install::{InstallCommand, InstallFlags, InstallOp};
 use nosman::nosman::command::node::NodeCommand;
 use nosman::nosman::command::pin::PinCommand;
@@ -828,4 +829,124 @@ fn test_matches_prefix() {
     assert!(SemVer::parse_from_str("6.30.1.b709").unwrap().matches_prefix(&prefix));
     assert!(!SemVer::parse_from_str("6.30.1.b708").unwrap().matches_prefix(&prefix));
     assert!(!SemVer::parse_from_str("6.30.1.b710").unwrap().matches_prefix(&prefix));
+}
+
+#[test]
+fn info_by_package_and_version() {
+    let mut test = WorkspaceGen::new_random();
+    let package_name = "nos.sys.vulkan";
+    let version = String::from("6.2.1.b612");
+    
+    // Install package
+    InstallCommand {}
+        .run_install(
+            &mut test.workspace,
+            package_name,
+            Some(&version),
+            &Some(PathBuf::from(".")),
+            None,
+            InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
+        )
+        .expect("Failed to install package");
+    
+    // Get info by package name and version
+    let query = nosman::nosman::command::info::PackageQuery {
+        name: package_name,
+        version_prefix: &version,
+    };
+    let result = InfoCommand {}.run_get_info(
+        &mut test.workspace,
+        Some(&query),
+        false,
+        None,
+    );
+    
+    assert!(result.is_ok(), "Failed to get package info by name and version");
+}
+
+#[test]
+fn info_by_manifest_path() {
+    let mut test = WorkspaceGen::new_random();
+    let package_name = "nos.sys.vulkan";
+    let version = String::from("6.2.1.b612");
+    
+    // Install package
+    InstallCommand {}
+        .run_install(
+            &mut test.workspace,
+            package_name,
+            Some(&version),
+            &Some(PathBuf::from(".")),
+            None,
+            InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
+        )
+        .expect("Failed to install package");
+    
+    // Get the manifest path
+    let package = test.workspace.get_package(package_name, &version)
+        .expect("Package not found");
+    let manifest_path = test.workspace.root.join(&package.manifest_path);
+    
+    // Get info by manifest path
+    let result = InfoCommand {}.run_get_info(
+        &mut test.workspace,
+        None,
+        false,
+        Some(manifest_path.to_str().unwrap()),
+    );
+    
+    assert!(result.is_ok(), "Failed to get package info by manifest path");
+}
+
+#[test]
+fn info_error_both_package_and_manifest() {
+    let mut test = WorkspaceGen::new_random();
+    let package_name = "nos.sys.vulkan";
+    let version = String::from("6.2.1.b612");
+    
+    // Install package
+    InstallCommand {}
+        .run_install(
+            &mut test.workspace,
+            package_name,
+            Some(&version),
+            &Some(PathBuf::from(".")),
+            None,
+            InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
+        )
+        .expect("Failed to install package");
+    
+    // Get the manifest path
+    let package = test.workspace.get_package(package_name, &version)
+        .expect("Package not found");
+    let manifest_path = test.workspace.root.join(&package.manifest_path);
+    
+    // Try to use both package name and manifest path (should fail)
+    let query = nosman::nosman::command::info::PackageQuery {
+        name: package_name,
+        version_prefix: &version,
+    };
+    let result = InfoCommand {}.run_get_info(
+        &mut test.workspace,
+        Some(&query),
+        false,
+        Some(manifest_path.to_str().unwrap()),
+    );
+    
+    assert!(result.is_err(), "Should fail when both package and manifest are provided");
+}
+
+#[test]
+fn info_error_no_arguments() {
+    let mut test = WorkspaceGen::new_random();
+    
+    // Try to get info without any arguments (should fail)
+    let result = InfoCommand {}.run_get_info(
+        &mut test.workspace,
+        None,
+        false,
+        None,
+    );
+    
+    assert!(result.is_err(), "Should fail when no arguments are provided");
 }
