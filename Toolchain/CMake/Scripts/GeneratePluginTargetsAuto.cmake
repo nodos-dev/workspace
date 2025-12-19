@@ -177,6 +177,13 @@ function(_nos_process_plugin_directories_recursive dir common_dependencies commo
 
 	foreach(subdir ${SUBDIRS})
 		include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/DefaultNosPluginCommon.cmake)
+		
+		# try to find a *.nosplugin, if not, skip
+		# TODO: Ideally, this should done only at the start and only the directories containing plugins should be processed
+		file(GLOB_RECURSE FOUND_PLUGINS RELATIVE "${dir}" "${dir}/${subdir}/*.nosplugin")
+		if (NOT FOUND_PLUGINS)
+			continue()
+		endif()
 		_nos_process_plugin_directories_recursive(
 			"${dir}/${subdir}"
 			"${common_dependencies}"  
