@@ -798,36 +798,34 @@ fn install_with_only_major_version() {
 }
 
 #[test]
-fn test_get_one_up() {
-    // Test major only (6 -> 7.0)
-    let version = SemVer::parse_from_str("6").unwrap();
-    let next = version.get_one_up();
-    assert_eq!(next.major, 7);
-    assert_eq!(next.minor, Some(0));
-    assert_eq!(next.patch, None);
-    assert_eq!(next.build_number, None);
+fn test_matches_constraint() {
+    // Test major only constraint (6 matches 6.x.x)
+    let constraint = SemVer::parse_from_str("6").unwrap();
+    assert!(SemVer::parse_from_str("6.0.0").unwrap().matches_constraint(&constraint));
+    assert!(SemVer::parse_from_str("6.30.1").unwrap().matches_constraint(&constraint));
+    assert!(SemVer::parse_from_str("6.99.99").unwrap().matches_constraint(&constraint));
+    assert!(!SemVer::parse_from_str("5.99.99").unwrap().matches_constraint(&constraint));
+    assert!(!SemVer::parse_from_str("7.0.0").unwrap().matches_constraint(&constraint));
 
-    // Test major.minor (6.30 -> 6.31)
-    let version = SemVer::parse_from_str("6.30").unwrap();
-    let next = version.get_one_up();
-    assert_eq!(next.major, 6);
-    assert_eq!(next.minor, Some(31));
-    assert_eq!(next.patch, None);
-    assert_eq!(next.build_number, None);
+    // Test major.minor constraint (6.30 matches 6.30.x)
+    let constraint = SemVer::parse_from_str("6.30").unwrap();
+    assert!(SemVer::parse_from_str("6.30.0").unwrap().matches_constraint(&constraint));
+    assert!(SemVer::parse_from_str("6.30.1").unwrap().matches_constraint(&constraint));
+    assert!(SemVer::parse_from_str("6.30.99").unwrap().matches_constraint(&constraint));
+    assert!(!SemVer::parse_from_str("6.29.99").unwrap().matches_constraint(&constraint));
+    assert!(!SemVer::parse_from_str("6.31.0").unwrap().matches_constraint(&constraint));
 
-    // Test major.minor.patch (6.30.1 -> 6.30.2)
-    let version = SemVer::parse_from_str("6.30.1").unwrap();
-    let next = version.get_one_up();
-    assert_eq!(next.major, 6);
-    assert_eq!(next.minor, Some(30));
-    assert_eq!(next.patch, Some(2));
-    assert_eq!(next.build_number, None);
+    // Test major.minor.patch constraint (6.30.1 matches 6.30.1.x)
+    let constraint = SemVer::parse_from_str("6.30.1").unwrap();
+    assert!(SemVer::parse_from_str("6.30.1").unwrap().matches_constraint(&constraint));
+    assert!(SemVer::parse_from_str("6.30.1.b709").unwrap().matches_constraint(&constraint));
+    assert!(SemVer::parse_from_str("6.30.1.b999").unwrap().matches_constraint(&constraint));
+    assert!(!SemVer::parse_from_str("6.30.0").unwrap().matches_constraint(&constraint));
+    assert!(!SemVer::parse_from_str("6.30.2").unwrap().matches_constraint(&constraint));
 
-    // Test major.minor.patch.build (6.30.1.b709 -> 6.30.1.b710)
-    let version = SemVer::parse_from_str("6.30.1.b709").unwrap();
-    let next = version.get_one_up();
-    assert_eq!(next.major, 6);
-    assert_eq!(next.minor, Some(30));
-    assert_eq!(next.patch, Some(1));
-    assert_eq!(next.build_number, Some(710));
+    // Test full version constraint (6.30.1.b709 matches exactly 6.30.1.b709)
+    let constraint = SemVer::parse_from_str("6.30.1.b709").unwrap();
+    assert!(SemVer::parse_from_str("6.30.1.b709").unwrap().matches_constraint(&constraint));
+    assert!(!SemVer::parse_from_str("6.30.1.b708").unwrap().matches_constraint(&constraint));
+    assert!(!SemVer::parse_from_str("6.30.1.b710").unwrap().matches_constraint(&constraint));
 }

@@ -169,50 +169,58 @@ impl SemVer {
         }
         s
     }
-    pub fn upper_major(&self) -> SemVer {
-        SemVer {
-            major: self.major + 1,
-            minor: Some(0),
-            patch: None,
-            build_number: None,
+    pub fn matches_constraint(&self, constraint: &SemVer) -> bool {
+        // Check if this version matches the constraint
+        // For constraint "6" (major only): matches 6.x.x
+        // For constraint "6.30" (major.minor): matches 6.30.x
+        // For constraint "6.30.1" (major.minor.patch): matches 6.30.1.x
+        // For constraint "6.30.1.b709" (full): matches exact 6.30.1.b709
+        
+        // Major version must match
+        if self.major != constraint.major {
+            return false;
         }
-    }
-    pub fn upper_minor(&self) -> SemVer {
-        SemVer {
-            major: self.major,
-            minor: self.minor.map(|m| m + 1),
-            patch: None,
-            build_number: None,
-        }
-    }
-    pub fn upper_patch(&self) -> SemVer {
-        SemVer {
-            major: self.major,
-            minor: self.minor,
-            patch: self.patch.map(|p| p + 1),
-            build_number: None,
-        }
-    }
-    pub fn upper_build(&self) -> SemVer {
-        SemVer {
-            major: self.major,
-            minor: self.minor,
-            patch: self.patch,
-            build_number: self.build_number.map(|b| b + 1),
-        }
-    }
-    pub fn get_one_up(&self) -> SemVer {
-        let version_start = self.clone();
-        if version_start.minor.is_none() {
-            version_start.upper_major()
-        } else if version_start.patch.is_none() {
-            version_start.upper_minor()
-        } else if version_start.build_number.is_none() {
-            version_start.upper_patch()
+        
+        // If constraint specifies minor, check it
+        if let Some(constraint_minor) = constraint.minor {
+            match self.minor {
+                Some(self_minor) if self_minor != constraint_minor => return false,
+                None => return false,
+                _ => {}
+            }
         } else {
-            version_start.upper_build()
+            // Constraint is major-only, so any minor matches
+            return true;
         }
+        
+        // If constraint specifies patch, check it
+        if let Some(constraint_patch) = constraint.patch {
+            match self.patch {
+                Some(self_patch) if self_patch != constraint_patch => return false,
+                None => return false,
+                _ => {}
+            }
+        } else {
+            // Constraint is major.minor, so any patch matches
+            return true;
+        }
+        
+        // If constraint specifies build_number, check it
+        if let Some(constraint_build) = constraint.build_number {
+            match self.build_number {
+                Some(self_build) if self_build != constraint_build => return false,
+                None => return false,
+                _ => {}
+            }
+        } else {
+            // Constraint is major.minor.patch, so any build matches
+            return true;
+        }
+        
+        // All specified fields match
+        true
     }
+    
     pub fn satisfies_requested_version(&self, requested: &SemVer) -> bool {
         if self.major != requested.major {
             return false;
@@ -871,7 +879,6 @@ impl Index {
         let mut versions: Vec<&PackageReleaseEntry> = version_list.iter().collect();
         sort_version_list(&mut versions);
         versions.reverse();
-        let version_end = version_constraint.get_one_up();
         let platform = get_host_platform().to_string();
         for module in versions {
             let semver = SemVer::parse_from_str(&module.version);
@@ -879,8 +886,7 @@ impl Index {
                 continue;
             }
             let semver = semver?;
-            if semver >= *version_constraint
-                && semver < version_end
+            if semver.matches_constraint(version_constraint)
                 && (module.platform.is_none() || module.platform.as_ref()? == &platform)
             {
                 return Some((package_type, module));

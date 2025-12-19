@@ -252,14 +252,13 @@ impl Workspace {
         let mut versions: Vec<(&String, &LocalPackageEntry)> = version_list.iter().collect();
         versions.sort_by(|a, b| a.0.cmp(b.0));
         versions.reverse();
-        let version_end = version_constraint.get_one_up();
         for (version, package) in versions {
             let semver = SemVer::parse_from_str(version);
             if semver.is_none() {
                 continue;
             }
             let semver = semver?;
-            if semver >= *version_constraint && semver < version_end {
+            if semver.matches_constraint(version_constraint) {
                 return Some(package);
             }
         }
