@@ -156,12 +156,8 @@ impl GetCommand {
 
         let res;
         if let Some(version) = version {
-            let version_start = SemVer::parse_from_str(version).unwrap_or_else(|| panic!("Invalid semantic version: {}", version));
-            if version_start.minor.is_none() {
-                return Err(InvalidArgument { message: "Please provide a minor version too!".to_string() });
-            }
-            let version_end = version_start.get_one_up();
-            res = workspace.index_cache.get_latest_compatible_release_within_range(nodos_name, &version_start, &version_end);
+            let version_prefix = SemVer::parse_from_str(version).unwrap_or_else(|| panic!("Invalid semantic version: {}", version));
+            res = workspace.index_cache.get_latest_compatible_release(nodos_name, &version_prefix);
         } else {
             res = workspace.index_cache.get_latest_release(nodos_name);
         }

@@ -50,12 +50,8 @@ impl InstallCommand {
         if version_opt.is_some() {
             let version = version_opt.unwrap();
             if !flags.contains(InstallFlags::InstallExactVersion) {
-                let version_start = SemVer::parse_from_str(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
-                if version_start.minor.is_none() {
-                    return Err(InvalidArgument { message: "Please provide a minor version too!".to_string() });
-                }
-                let version_end = version_start.get_one_up();
-                if let Some(installed_package) = workspace.get_latest_local_package_within_range(package_name, &version_start, &version_end) {
+                let version_prefix = SemVer::parse_from_str(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
+                if let Some(installed_package) = workspace.get_latest_local_package_for_prefix(package_name, &version_prefix) {
                     println!("{}", format!("Found an already installed compatible version for {} version {}: {}", package_name, version, installed_package.info.id.version).as_str().yellow());
                     return Ok(InstallOp::Skipped)
                 }
@@ -87,22 +83,18 @@ impl InstallCommand {
             version = version_opt.unwrap().to_string();
         }
         if !flags.contains(InstallFlags::InstallExactVersion) {
-            // Find or download a version such that 'a.b <= x < a.(b+1)'
-            let version_start = SemVer::parse_from_str(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
-            if version_start.minor.is_none() {
-                return Err(InvalidArgument { message: "Please provide a minor version too!".to_string() });
-            }
-            let version_end = version_start.get_one_up();
-            println!("Installing {} with a version in range [{}, {})", package_name, version_start.to_string(), version_end.to_string());
+            // Find or download a version matching the provided prefix
+            let version_prefix = SemVer::parse_from_str(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
+            println!("Installing {} matching version prefix '{}'", package_name, version_prefix.to_string());
             return {
-                let latest_compatible_opt = workspace.index_cache.get_latest_compatible_release_within_range(package_name, &version_start, &version_end);
+                let latest_compatible_opt = workspace.index_cache.get_latest_compatible_release(&package_name, &version_prefix);
                 let compatible_package = if let Some((package_type, release)) = latest_compatible_opt {
                     if *package_type == PackageType::Nodos || *package_type == PackageType::Engine {
                         return Err(InvalidArgument { message: format!("Package {} requires special treatment", package_name) });
                     }
                     Some(release.version.clone()) // Clone version to avoid lifetime issues.
                 } else {
-                    return Err(InvalidArgument { message: format!("No remote contained a version in range [{}, {}) for package {}", version_start.to_string(), version_end.to_string(), package_name) });
+                    return Err(InvalidArgument { message: format!("No remote contained a version matching prefix '{}' for package {}", version_prefix.to_string(), package_name) });
                 };
                 self.run_install(workspace, package_name, compatible_package.as_ref(), output_dir, prefix, exact_no_fetch)
             }

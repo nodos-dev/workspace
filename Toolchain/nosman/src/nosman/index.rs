@@ -169,40 +169,58 @@ impl SemVer {
         }
         s
     }
-    pub fn upper_minor(&self) -> SemVer {
-        SemVer {
-            major: self.major,
-            minor: self.minor.map(|m| m + 1),
-            patch: None,
-            build_number: None,
+    pub fn matches_prefix(&self, prefix: &SemVer) -> bool {
+        // Check if this version matches the prefix
+        // For prefix "6" (major only): matches 6.x.x
+        // For prefix "6.30" (major.minor): matches 6.30.x
+        // For prefix "6.30.1" (major.minor.patch): matches 6.30.1.x
+        // For prefix "6.30.1.b709" (full): matches exact 6.30.1.b709
+        
+        // Major version must match
+        if self.major != prefix.major {
+            return false;
         }
-    }
-    pub fn upper_patch(&self) -> SemVer {
-        SemVer {
-            major: self.major,
-            minor: self.minor,
-            patch: self.patch.map(|p| p + 1),
-            build_number: None,
-        }
-    }
-    pub fn upper_build(&self) -> SemVer {
-        SemVer {
-            major: self.major,
-            minor: self.minor,
-            patch: self.patch,
-            build_number: self.build_number.map(|b| b + 1),
-        }
-    }
-    pub fn get_one_up(&self) -> SemVer {
-        let version_start = self.clone();
-        if version_start.patch.is_none() {
-            version_start.upper_minor()
-        } else if version_start.build_number.is_none() {
-            version_start.upper_patch()
+        
+        // If prefix specifies minor, check it
+        if let Some(prefix_minor) = prefix.minor {
+            match self.minor {
+                Some(self_minor) if self_minor != prefix_minor => return false,
+                None => return false,
+                _ => {}
+            }
         } else {
-            version_start.upper_build()
+            // Prefix is major-only, so any minor matches
+            return true;
         }
+        
+        // If prefix specifies patch, check it
+        if let Some(prefix_patch) = prefix.patch {
+            match self.patch {
+                Some(self_patch) if self_patch != prefix_patch => return false,
+                None => return false,
+                _ => {}
+            }
+        } else {
+            // Prefix is major.minor, so any patch matches
+            return true;
+        }
+        
+        // If prefix specifies build_number, check it
+        if let Some(prefix_build) = prefix.build_number {
+            match self.build_number {
+                Some(self_build) if self_build != prefix_build => return false,
+                None => return false,
+                _ => {}
+            }
+        } else {
+            // Prefix is major.minor.patch, so any build matches
+            return true;
+        }
+        
+        // All specified fields match
+        true
     }
+    
     pub fn satisfies_requested_version(&self, requested: &SemVer) -> bool {
         if self.major != requested.major {
             return false;
@@ -851,11 +869,10 @@ impl Index {
         }
         None
     }
-    pub fn get_latest_compatible_release_within_range(
-        &self,
+    pub fn get_latest_compatible_release(
+        &mut self,
         name: &str,
-        version_start: &SemVer,
-        version_end: &SemVer,
+        version_prefix: &SemVer,
     ) -> Option<(&PackageType, &PackageReleaseEntry)> {
         let res = self.packages.get(name);
         let (package_type, version_list) = res?;
@@ -869,8 +886,7 @@ impl Index {
                 continue;
             }
             let semver = semver?;
-            if semver >= *version_start
-                && semver < *version_end
+            if semver.matches_prefix(version_prefix)
                 && (module.platform.is_none() || module.platform.as_ref()? == &platform)
             {
                 return Some((package_type, module));

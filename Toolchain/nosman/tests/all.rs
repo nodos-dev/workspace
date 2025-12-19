@@ -778,3 +778,54 @@ fn auto_rescan_if_needed_updated_manifest() {
     }
 }
 
+#[test]
+fn install_with_only_major_version() {
+    let mut test = WorkspaceGen::new_random();
+    let package_name = "nos.sys.vulkan";
+    let version = String::from("6");
+    InstallCommand {}
+        .run_install(
+            &mut test.workspace,
+            package_name,
+            Some(&version),
+            &Some(PathBuf::from(".")),
+            None,
+            InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
+        )
+        .unwrap_or_else(|_| panic!("Failed to install {}", package_name));
+    let versions = test.workspace.get_packages(package_name);
+    assert_eq!(versions.len(), 1);
+}
+
+#[test]
+fn test_matches_prefix() {
+    // Test major only prefix (6 matches 6.x.x)
+    let prefix = SemVer::parse_from_str("6").unwrap();
+    assert!(SemVer::parse_from_str("6.0.0").unwrap().matches_prefix(&prefix));
+    assert!(SemVer::parse_from_str("6.30.1").unwrap().matches_prefix(&prefix));
+    assert!(SemVer::parse_from_str("6.99.99").unwrap().matches_prefix(&prefix));
+    assert!(!SemVer::parse_from_str("5.99.99").unwrap().matches_prefix(&prefix));
+    assert!(!SemVer::parse_from_str("7.0.0").unwrap().matches_prefix(&prefix));
+
+    // Test major.minor prefix (6.30 matches 6.30.x)
+    let prefix = SemVer::parse_from_str("6.30").unwrap();
+    assert!(SemVer::parse_from_str("6.30.0").unwrap().matches_prefix(&prefix));
+    assert!(SemVer::parse_from_str("6.30.1").unwrap().matches_prefix(&prefix));
+    assert!(SemVer::parse_from_str("6.30.99").unwrap().matches_prefix(&prefix));
+    assert!(!SemVer::parse_from_str("6.29.99").unwrap().matches_prefix(&prefix));
+    assert!(!SemVer::parse_from_str("6.31.0").unwrap().matches_prefix(&prefix));
+
+    // Test major.minor.patch prefix (6.30.1 matches 6.30.1.x)
+    let prefix = SemVer::parse_from_str("6.30.1").unwrap();
+    assert!(SemVer::parse_from_str("6.30.1").unwrap().matches_prefix(&prefix));
+    assert!(SemVer::parse_from_str("6.30.1.b709").unwrap().matches_prefix(&prefix));
+    assert!(SemVer::parse_from_str("6.30.1.b999").unwrap().matches_prefix(&prefix));
+    assert!(!SemVer::parse_from_str("6.30.0").unwrap().matches_prefix(&prefix));
+    assert!(!SemVer::parse_from_str("6.30.2").unwrap().matches_prefix(&prefix));
+
+    // Test full version prefix (6.30.1.b709 matches exactly 6.30.1.b709)
+    let prefix = SemVer::parse_from_str("6.30.1.b709").unwrap();
+    assert!(SemVer::parse_from_str("6.30.1.b709").unwrap().matches_prefix(&prefix));
+    assert!(!SemVer::parse_from_str("6.30.1.b708").unwrap().matches_prefix(&prefix));
+    assert!(!SemVer::parse_from_str("6.30.1.b710").unwrap().matches_prefix(&prefix));
+}

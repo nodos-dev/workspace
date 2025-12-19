@@ -246,7 +246,7 @@ impl Workspace {
         }
         new_package
     }
-    pub fn get_latest_local_package_within_range(&self, name: &str, version_start: &SemVer, version_end: &SemVer) -> Option<&LocalPackageEntry> {
+    pub fn get_latest_local_package_for_prefix(&self, name: &str, version_prefix: &SemVer) -> Option<&LocalPackageEntry> {
         let version_list = self.packages.get(name);
         let version_list = version_list?;
         let mut versions: Vec<(&String, &LocalPackageEntry)> = version_list.iter().collect();
@@ -258,7 +258,7 @@ impl Workspace {
                 continue;
             }
             let semver = semver?;
-            if semver >= *version_start && semver < *version_end {
+            if semver.matches_prefix(version_prefix) {
                 return Some(package);
             }
         }
@@ -269,32 +269,27 @@ impl Workspace {
         if semver_res.is_none() {
             return Err(format!("Invalid semantic version: {}.", requested_version));
         }
-        let version_start = semver_res.unwrap();
-        if version_start.minor.is_none() {
-            return Err("Please provide a minor version too!".to_string());
-        }
-        let version_end = version_start.get_one_up();
-        let res = self.get_latest_local_package_within_range(module_name, &version_start, &version_end);
+        let version_prefix = semver_res.unwrap();
+        let res = self.get_latest_local_package_for_prefix(module_name, &version_prefix);
         if res.is_none() {
-            return Err(format!("No installed version in range [{}, {}) for package {}", version_start.to_string(), version_end.to_string(), module_name));
+            return Err(format!("No installed version matching prefix '{}' for package {}", version_prefix.to_string(), module_name));
         }
         Ok(res.unwrap())
     }
-    pub fn get_latest_absent_release_for(&self, name: &str, requested_version: &str) -> Result<Option<(&PackageType, &PackageReleaseEntry)>, CommandError> {
+    pub fn get_latest_absent_release_for(&mut self, name: &str, requested_version: &str) -> Result<Option<(&PackageType, &PackageReleaseEntry)>, CommandError> {
         // If the version is not a valid semantic version, return Error
         let semver = SemVer::parse_from_str(requested_version);
         if semver.is_none() {
             return Err(InvalidArgument { message: format!("{} is not a valid semantic version", requested_version) });
         }
-        let semver = semver.unwrap();
-        let version_end = semver.get_one_up();
-        let installed = self.get_latest_local_package_within_range(name, &semver, &version_end);
+        let version_prefix = semver.unwrap();
+        let installed = self.get_latest_local_package_for_prefix(name, &version_prefix);
         if installed.is_some() {
             return Ok(None);
         }
-        let res = self.index_cache.get_latest_compatible_release_within_range(name, &semver, &version_end);
+        let res = self.index_cache.get_latest_compatible_release(name, &version_prefix);
         if res.is_none() {
-            return Err(InvalidArgument { message: format!("No releases found for package {} in range [{}, {})", name, semver.to_string(), version_end.to_string()) });
+            return Err(InvalidArgument { message: format!("No releases found for package {} matching prefix '{}'", name, version_prefix.to_string()) });
         }
         Ok(Some(res.unwrap()))
     }
