@@ -2,7 +2,7 @@ use rayon::iter::ParallelIterator;
 use std::collections::{HashMap, HashSet};
 use std::{fs, io};
 use std::cmp::PartialEq;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration};
 use bitflags::bitflags;
@@ -201,6 +201,53 @@ impl Workspace {
             Some(versions) => versions.get(version),
             None => None,
         }
+    }
+
+    pub fn normalize_to_workspace<'a, P: AsRef<Path>>(
+        &self, path: P,
+    ) -> Option<PathBuf> {
+        let path = path.as_ref();
+        let workspace_dir = self.root.as_path();
+
+        // Step 1: If it's absolute, make it relative to workspace
+        let relative_path = if path.is_absolute() {
+            match path.strip_prefix(workspace_dir) {
+                Ok(rel) => rel.to_path_buf(),
+                Err(_) => {
+                    // Not inside workspace — try to make it relative anyway
+                    pathdiff::diff_paths(path, workspace_dir)?
+                }
+            }
+        } else {
+            path.to_path_buf()
+        };
+
+        // Step 2: Normalize (remove redundant `.` and `..`)
+        if let Ok(canon_ws) = workspace_dir.canonicalize() {
+            if let Ok(canon_rel) = canon_ws.join(&relative_path).canonicalize() {
+                // Step 3: Check that the final path is still inside the workspace
+                if canon_rel.starts_with(&canon_ws) {
+                    return Some(relative_path);
+                }
+            }
+        }
+
+        None
+    }
+
+    pub fn get_package_by_path(&self, path: PathBuf)-> Option<&LocalPackageEntry>{
+        let normalized_path = self.normalize_to_workspace(path.clone()).unwrap();
+        for version_map in self.packages.values() {
+            for entry in version_map.values() {
+                if entry.manifest_path == path {
+                    return Some(entry);
+                }
+                else if entry.manifest_path == normalized_path{
+                    return Some(entry);
+                }
+            }
+        }
+        None
     }
     pub fn get_packages(&self, name: &str) -> Vec<&LocalPackageEntry> {
         let mut res = Vec::new();

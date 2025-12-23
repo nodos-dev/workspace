@@ -4,7 +4,7 @@ mod depend;
 mod dev;
 mod extension;
 pub mod get;
-mod info;
+pub mod info;
 pub mod init;
 pub mod install;
 pub(crate) mod launch;

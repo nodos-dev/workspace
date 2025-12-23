@@ -2,14 +2,25 @@
 set(NOS_SOURCE_FILE_TYPES ".cpp" ".cc" ".cxx" ".c" ".inl" ".h" ".hxx" ".hpp" ".py" ".rc")
 set(NOS_HEADER_FILE_TYPES ".h" ".hxx" ".hpp" ".natvis")
 
-function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_folders out_target_name)
+function(nos_generate_flatbuffers fbs_paths dst_folder out_language include_folders out_target_name)
 	if(NOT DEFINED FLATC_EXECUTABLE)
 		nos_fatal_error("Flatbuffers compiler not found. Please set FLATC_EXECUTABLE variable.")
 	endif()
 
-	foreach (folder ${fbs_folders})
+	list(APPEND fbs_files)
+	foreach (fbs_path ${fbs_paths})
+		if (EXISTS "${fbs_path}")
+			if (IS_DIRECTORY "${fbs_path}")
+				file(GLOB_RECURSE files ${fbs_path}/*.fbs)
+				list(APPEND fbs_files ${files})
+			else ()
+				list(APPEND fbs_files ${fbs_path})
+			endif()
+		else()
+			nos_fatal_error("Flatbuffers schema path doesn't exist: ${fbs_path}")
+		endif()
+
 		if(NOT EXISTS ${folder})
-			nos_fatal_error("Flatbuffers schema folder not found: ${folder}")
 		endif()
 	endforeach()
 
@@ -35,12 +46,6 @@ function(nos_generate_flatbuffers fbs_folders dst_folder out_language include_fo
 		# --force-defaults
 		--object-prefix "T"
 	)
-
-	list(APPEND fbs_files)
-	foreach(fbs_folder ${fbs_folders})
-		file(GLOB_RECURSE files ${fbs_folder}/*.fbs)
-		list(APPEND fbs_files ${files})
-	endforeach()
 
 	foreach(fbs_file ${fbs_files})
 		get_filename_component(fbs_file_name ${fbs_file} NAME_WE)
@@ -269,7 +274,6 @@ function(nos_get_plugin name version out_target_name)
 endfunction()
 
 function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_TYPES ALTERNATIVE_MANIFEST_FILE_EXTS)
-	project(${NAME})
 	nos_colored_message(COLOR CYAN "Processing plugin ${NAME}")
 
 	set(plugin_root "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -277,13 +281,18 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 	set(source_folder "${plugin_root}/Source")
 	set(public_include_folder "${plugin_root}/Include")
 	set(shaders_folder "${plugin_root}/Shaders")
+
+	set(NOS_PLUGIN_TYPE MODULE)
+	set(NOS_LINK_PROPERTY PRIVATE)
 	if (NOT EXISTS ${source_folder})
-		nos_fatal_error("Nodos CMake helpers for adding a plugin requires a folder named 'Source' at the root. Either manually setup your CMake script or create the 'Source' folder.")
+		set(NOS_PLUGIN_TYPE INTERFACE)
+		set(NOS_LINK_PROPERTY INTERFACE)
 	endif()
 
 	nos_get_files_recursive(${source_folder} "${NOS_SOURCE_FILE_TYPES}" source_files)
 	if (NOT source_files)
-		nos_fatal_error("No source files found in ${source_folder}")
+		set(NOS_PLUGIN_TYPE INTERFACE)
+		set(NOS_LINK_PROPERTY INTERFACE)
 	endif()
 	
 	nos_get_files_recursive(${public_include_folder} "${NOS_HEADER_FILE_TYPES}" header_files)
@@ -327,7 +336,7 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 		endif()
 	endforeach()
 	set(INCLUDED_IN_PROJECT ${source_files} ${header_files} ${config_files} ${NODE_DEFINITION_FILES} ${type_schema_files} ${shader_files} ${additional_files} ${PLUGIN_MANIFEST_FILE} ${ALTERNATIVE_PLUGIN_MANIFEST_FILES})
-	add_library(${NAME} MODULE ${INCLUDED_IN_PROJECT})
+	add_library(${NAME} ${NOS_PLUGIN_TYPE} ${INCLUDED_IN_PROJECT})
 	set_target_properties(${NAME} PROPERTIES
 		PREFIX ""
 		LIBRARY_OUTPUT_DIRECTORY "${plugin_root}/Binaries"
@@ -351,8 +360,6 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 		source_group("${header_path_msvc}" FILES "${header}")
 	endforeach()
 
-	target_include_directories(${NAME} PRIVATE ${plugin_root} ${source_folder} ${public_include_folder} ${INCLUDE_FOLDERS})
-
 	foreach(dependency IN LISTS DEPENDENCIES)
 		# If target "dependency" type is UTILITY then add it as a dependency
 		if(TARGET ${dependency})
@@ -361,12 +368,14 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 			if(dependency_type STREQUAL "UTILITY")
 				add_dependencies(${NAME} ${dependency})
 			else()
-				target_link_libraries(${NAME} PRIVATE ${dependency})
+				target_link_libraries(${NAME} ${NOS_LINK_PROPERTY} ${dependency})
 			endif()
 		else()
-			target_link_libraries(${NAME} PRIVATE ${dependency})
+			target_link_libraries(${NAME} ${NOS_LINK_PROPERTY} ${dependency})
 		endif()
 	endforeach()
+
+	target_include_directories(${NAME} ${NOS_LINK_PROPERTY} ${plugin_root} ${source_folder} ${public_include_folder} ${INCLUDE_FOLDERS})
 
 	# Produce PDBs in release mode too
 	if (CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -410,6 +419,91 @@ macro(nos_group_targets targets folder_name)
 	endforeach()
 endmacro()
 
+function(nos_get_package_info_by_path path out_name out_version out_json)
+	execute_process(
+		COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" info "--manifest" ${path}
+		RESULT_VARIABLE nosman_result
+		OUTPUT_VARIABLE nosman_output
+	)
+	if(nosman_result EQUAL 0)
+		string(STRIP ${nosman_output} nosman_output)
+		set(err_name "")
+		string(JSON package_name ERROR_VARIABLE err_name GET "${nosman_output}" info id name)
+		string(JSON package_version ERROR_VARIABLE err_version GET "${nosman_output}" info id version)
+		message(STATUS "Package at path ${path} is ${package_name} version ${package_version}")
+
+		set(${out_name} ${package_name} PARENT_SCOPE)
+		set(${out_version} ${package_version} PARENT_SCOPE)
+		set(${out_json} ${nosman_output} PARENT_SCOPE)
+	else()
+		nos_fatal_error("Failed to find package info from path ${path}.")
+	endif()
+endfunction()
+
+function(nos_normalize_plugin_name INPUT OUTPUT_VAR)
+    # Step 1: split by '.'
+    string(REPLACE "." ";" PARTS "${INPUT}")
+
+    # Step 2: first item stays lowercase
+    list(POP_FRONT PARTS FIRST)
+    set(RESULT "${FIRST}")
+
+    # Step 3: uppercase the first character of every subsequent part
+    foreach(PART IN LISTS PARTS)
+        string(SUBSTRING "${PART}" 0 1 FIRST_CHAR)
+        string(SUBSTRING "${PART}" 1 -1 REMAINDER)
+        string(TOUPPER "${FIRST_CHAR}" FIRST_CHAR)
+        set(RESULT "${RESULT}${FIRST_CHAR}${REMAINDER}")
+    endforeach()
+
+    # Output to parent scope
+    set(${OUTPUT_VAR} "${RESULT}" PARENT_SCOPE)
+endfunction()
+
+function(nos_find_immediate_plugin_dependencies json out_target_names out_target_dirs out_target_include_dirs)
+	string(JSON dep_field_check ERROR_VARIABLE err GET "${json}" info dependencies)
+	if (err)
+		set(dep_count 0)
+	else()
+		# Get the number of dependency entries
+		string(JSON dep_count LENGTH "${json}" info dependencies)
+	endif()
+
+	if(dep_count EQUAL 0)
+		message(STATUS "No dependencies found.")
+		set(${out_target_names} "" PARENT_SCOPE)
+		set(${out_target_dirs} "" PARENT_SCOPE)
+		set(${out_target_include_dirs} "" PARENT_SCOPE)
+		return()
+	endif()
+
+	# Iterate over all dependencies
+	math(EXPR dep_count "${dep_count} - 1")
+	foreach(i RANGE ${dep_count})
+		set(found_target "")
+		string(JSON dep_name GET "${json}" info dependencies ${i} name)
+		string(JSON dep_version GET "${json}" info dependencies ${i} version)
+		message(STATUS "Finding dependency: ${dep_name} version ${dep_version}")
+		nos_get_module("${dep_name}" "${dep_version}" found_target)
+		nos_find_module_path("${dep_name}" "${dep_version}" found_dir)
+		list(APPEND _deps "${found_target}")
+		list(APPEND _dep_dirs "${found_dir}")
+		nos_normalize_plugin_name(${dep_name} target_name)
+		list(APPEND _dep_include_dirs "${found_dir}/Include/${target_name}")
+	endforeach()
+	
+	set(${out_target_names} "${_deps}" PARENT_SCOPE)
+	set(${out_target_dirs} "${_dep_dirs}" PARENT_SCOPE)
+	set(${out_target_include_dirs} "${_dep_include_dirs}" PARENT_SCOPE)
+endfunction()
+
+function(nos_find_plugin_sdk_version json out_found_version)
+	# Get the number of sdk dependency entries
+	string(JSON found_dep_version GET "${json}" sdk_version)
+
+	set(${out_found_version} "${found_dep_version}" PARENT_SCOPE)
+endfunction()
+
 # Deprecated, use _plugin functions instead.
 function(nos_get_module_info name version query out_var)
 	nos_get_package_info(${name} ${version} ${query} ${out_var})
@@ -424,4 +518,18 @@ endfunction()
 function(nos_get_module name version out_target_name)
 	nos_get_package(${name} ${version} ${out_target_name})
 	set(${out_target_name} ${${out_target_name}} PARENT_SCOPE)
+endfunction()
+
+function(nos_get_vendor_name plugin_name out_vendor_name)
+    # Split by dot
+    string(REPLACE "." ";" _parts "${plugin_name}")
+
+    # Get first namespace
+    list(GET _parts 0 _ns)
+
+    # Uppercase it
+    string(TOUPPER "${_ns}" _upper_ns)
+
+    # Return
+    set(${out_vendor_name} "${_upper_ns}" PARENT_SCOPE)
 endfunction()

@@ -68,6 +68,7 @@ macro(nos_find_sdk requested_version out_nos_plugin_sdk out_nos_subsystem_sdk ou
 	else()
 		set(${out_nos_subsystem_sdk} ${${out_nos_plugin_sdk}})
 	endif()
+	
 	if (${found_version} VERSION_GREATER_EQUAL "1.4.0")
 		set(nos_sdk_dir ${nos_sdk_dir}/Plugin)
 		set(FLATC_EXECUTABLE "${nos_sdk_dir}/Binaries/flatc" CACHE PATH "Path to the flatc executable" FORCE)
@@ -88,6 +89,7 @@ macro(nos_find_plugin_sdk requested_sdk_version out_sdk_target out_sdk_dir)
 		get_filename_component(sdk_path "${sdk_manifest_path}" DIRECTORY)
 		set(${out_sdk_target} ${sdk_target_name})
 		set(${out_sdk_dir} ${sdk_path})
+	
 		set(FLATC_EXECUTABLE "${sdk_path}/Binaries/flatc" CACHE PATH "Path to the flatc executable" FORCE)
 	else()
 		# For all nodos sdks, call `nodos sdk-info ${requested_sdk_version} plugin` and read the json if ret code is 0
