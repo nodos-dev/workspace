@@ -1,40 +1,40 @@
 # Copyright MediaZ Teknoloji A.S. All Rights Reserved.
 
 function(_nos_get_custom_type_paths_from_json JSON_FILE OUT_LIST)
-    if(NOT EXISTS "${JSON_FILE}")
-        message(FATAL_ERROR "JSON file not found: ${JSON_FILE}")
-    endif()
+	if(NOT EXISTS "${JSON_FILE}")
+		message(FATAL_ERROR "JSON file not found: ${JSON_FILE}")
+	endif()
 
-    # Read file
-    file(READ "${JSON_FILE}" _json_content)
+	# Read file
+	file(READ "${JSON_FILE}" _json_content)
 
-    # Check if field exists
-    string(JSON _has_custom_types ERROR_VARIABLE _err
-        GET "${_json_content}" custom_types
-    )
+	# Check if field exists
+	string(JSON _has_custom_types ERROR_VARIABLE _err
+		GET "${_json_content}" custom_types
+	)
 
-    if(_err)
-        # Field does not exist → return empty list
+	if(_err)
+		# Field does not exist → return empty list
 		if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Types)
-        	set(${OUT_LIST} "${CMAKE_CURRENT_SOURCE_DIR}/Types" PARENT_SCOPE)
+			set(${OUT_LIST} "${CMAKE_CURRENT_SOURCE_DIR}/Types" PARENT_SCOPE)
 		else()
-        	set(${OUT_LIST} "" PARENT_SCOPE)
+			set(${OUT_LIST} "" PARENT_SCOPE)
 		endif()
-        return()
-    endif()
+		return()
+	endif()
 
-    # Get array length
-    string(JSON _len LENGTH "${_json_content}" custom_types)
+	# Get array length
+	string(JSON _len LENGTH "${_json_content}" custom_types)
 
-    set(_result "")
-    math(EXPR _last "${_len} - 1")
+	set(_result "")
+	math(EXPR _last "${_len} - 1")
 
-    foreach(i RANGE 0 ${_last})
-        string(JSON _value GET "${_json_content}" custom_types ${i})
-        list(APPEND _result "${CMAKE_CURRENT_SOURCE_DIR}/${_value}")
-    endforeach()
+	foreach(i RANGE 0 ${_last})
+		string(JSON _value GET "${_json_content}" custom_types ${i})
+		list(APPEND _result "${CMAKE_CURRENT_SOURCE_DIR}/${_value}")
+	endforeach()
 
-    set(${OUT_LIST} "${_result}" PARENT_SCOPE)
+	set(${OUT_LIST} "${_result}" PARENT_SCOPE)
 endfunction()
 
 function(_nos_generate_plugin_target nos_plugin_file_path common_deps common_defs out_target_name out_plugin_name)
@@ -44,36 +44,39 @@ function(_nos_generate_plugin_target nos_plugin_file_path common_deps common_def
 	nos_normalize_plugin_name(${plugin_name} target_name)
 	get_filename_component(PLUGIN_DIR "${nos_plugin_file_path}" DIRECTORY)
 
-	nos_find_plugin_sdk_version(${out_json_info} plugin_sdk_version)
+	string(JSON plugin_sdk_version ERROR_VARIABLE err GET "${out_json_info}" sdk_version)
+	if (err)
+		nos_fatal_error("Failed to read used SDK version from plugin ${nos_plugin_file_path}: ${err}")
+	endif()
 	if ("${plugin_sdk_version}" STREQUAL "None")
-		message(STATUS "Module is not depended on a SDK version, there is no need for a target")
+		message(STATUS "Plugin is not depended on a SDK version, there is no need for a target")
 		return()
 	endif()
 
 	message(STATUS "Plugin SDK version requested: ${plugin_sdk_version}")
 
 	nos_find_plugin_sdk(${plugin_sdk_version} NOS_PLUGIN_SDK_TARGET NOS_SDK_DIR)
-    if (NOT DEFINED NOS_SDK_DIR)
-        message(FATAL_ERROR "Nodos SDK with version ${plugin_sdk_version} not found, please either install it or choose different version")
-    endif()
+	if (NOT DEFINED NOS_SDK_DIR)
+		message(FATAL_ERROR "Nodos SDK with version ${plugin_sdk_version} not found, please either install it or choose different version")
+	endif()
 
 	nos_find_immediate_plugin_dependencies(${out_json_info} found_dependency_targets found_dep_dirs found_include_dirs)
-    list(APPEND INCLUDE_FOLDERS ${CMAKE_CURRENT_SOURCE_DIR} "${CMAKE_CURRENT_SOURCE_DIR}/Include" "${found_include_dirs}")
-    list(APPEND MODULE_DEPENDENCIES_TARGETS ${NOS_PLUGIN_SDK_TARGET})
+	list(APPEND plugin_include_folders ${CMAKE_CURRENT_SOURCE_DIR} "${CMAKE_CURRENT_SOURCE_DIR}/Include" "${found_include_dirs}")
+	list(APPEND plugin_dep_targets ${NOS_PLUGIN_SDK_TARGET})
 
 	_nos_get_custom_type_paths_from_json(${nos_plugin_file_path} TYPE_FOLDERS)
 	if(TYPE_FOLDERS)
-    	nos_generate_flatbuffers("${TYPE_FOLDERS}" "${CMAKE_CURRENT_SOURCE_DIR}/Include/${target_name}" "cpp" "${NOS_SDK_DIR}/Types;${found_dep_dirs}" ${target_name}_generated)
-    	list(APPEND MODULE_DEPENDENCIES_TARGETS ${target_name}_generated)
+		nos_generate_flatbuffers("${TYPE_FOLDERS}" "${CMAKE_CURRENT_SOURCE_DIR}/Include/${target_name}" "cpp" "${NOS_SDK_DIR}/Types;${found_dep_dirs}" ${target_name}_generated)
+		list(APPEND plugin_dep_targets ${target_name}_generated)
 	endif()
 
 	list(APPEND
-		MODULE_DEPENDENCIES_TARGETS
-    	${found_dependency_targets}
-    	${common_deps}   # dereference here
+		plugin_dep_targets
+		${found_dependency_targets}
+		${common_deps}   # dereference here
 	)
-	message(STATUS "Module dependencies: ${MODULE_DEPENDENCIES_TARGETS}")
-    nos_add_plugin("${target_name}" "${MODULE_DEPENDENCIES_TARGETS}" "${INCLUDE_FOLDERS}")
+	message(STATUS "Plugin dependencies: ${plugin_dep_targets}")
+	nos_add_plugin("${target_name}" "${plugin_dep_targets}" "${plugin_include_folders}")
 	if(TARGET "${target_name}")
 		message(STATUS "Successfully created target: ${target_name}")
 		set(${out_target_name} ${target_name} PARENT_SCOPE)
@@ -87,8 +90,8 @@ function(_nos_generate_plugin_target nos_plugin_file_path common_deps common_def
 		nos_fatal_error("Failed to create target: ${target_name}")
 	endif()
 
-    #Helpers need C++20
-    set_target_properties("${target_name}" PROPERTIES CXX_STANDARD 20)
+	# Helpers in Nodos SDK need C++20
+	set_target_properties("${target_name}" PROPERTIES CXX_STANDARD 20)
 	target_compile_definitions("${target_name}" PRIVATE ${common_defs})
 		
 	if(NOS_FORCE_DISABLE_DEPRECATED)
@@ -118,15 +121,14 @@ function(_nos_configure_plugin_dir dir common_dependencies common_definitions)
 		endif()
 
 		if(EXISTS "${dir}/CMakeLists.txt")
-			nos_colored_message(COLOR GREEN "Including custom cmake file for plugin: ${plugin_name}")
+			nos_colored_message(COLOR GREEN "Including custom CMake file for plugin: ${plugin_name}")
 			set(NOS_PLUGIN_TARGET ${plugin_target})
-			add_subdirectory("${dir}" "${CMAKE_CURRENT_BINARY_DIR}/ModuleDir_${plugin_target}")
+			add_subdirectory("${dir}" "${CMAKE_CURRENT_BINARY_DIR}/PluginDir_${plugin_target}")
 		endif()
 		nos_get_vendor_name(${plugin_name} plugin_vendor)
 		nos_group_targets(${plugin_target} "${plugin_vendor} Plugins")
 
 		if(COMMAND "nos_plugin_on_post_target_generated")
-			nos_colored_message(COLOR CYAN "Calling post target generation function")
 			cmake_language(CALL "nos_plugin_on_post_target_generated" "${plugin_target}" "${plugin_name}")
 		endif()
 
@@ -136,12 +138,12 @@ endfunction()
 
 
 function(_nos_process_plugin_directories_recursive dir common_dependencies common_definitions)
-    get_filename_component(parent_dir "${dir}" DIRECTORY)
-    get_filename_component(parent_name "${parent_dir}" NAME)
-    if(parent_name STREQUAL "Downloaded")
-        message(STATUS "Skipping directory under Downloaded: ${dir}")
-        return()
-    endif()
+	get_filename_component(parent_dir "${dir}" DIRECTORY)
+	get_filename_component(parent_name "${parent_dir}" NAME)
+	if(parent_name STREQUAL "Downloaded")
+		message(STATUS "Skipping directory under Downloaded: ${dir}")
+		return()
+	endif()
 
 	file(GLOB PLUGINS "${dir}/*.nosplugin")
 
@@ -167,7 +169,7 @@ function(_nos_process_plugin_directories_recursive dir common_dependencies commo
 	if (PLUGIN_COUNT GREATER 1)
 		nos_fatal_error("Multiple .nosplugin files found in directory: ${dir}")
 	elseif (PLUGIN_COUNT EQUAL 1)
-    	list(GET PLUGINS 0 plugin)
+		list(GET PLUGINS 0 plugin)
 		get_filename_component(plugin_name "${plugin}" NAME)
 		
 		_nos_configure_plugin_dir(${dir} "${common_dependencies}" "${common_definitions}")

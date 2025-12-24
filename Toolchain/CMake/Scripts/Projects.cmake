@@ -364,7 +364,7 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 		# If target "dependency" type is UTILITY then add it as a dependency
 		if(TARGET ${dependency})
 			get_target_property(dependency_type ${dependency} TYPE)
-			message(STATUS "${PROJECT_NAME}: Adding dependency ${dependency} of type ${dependency_type}")
+			message(STATUS "${NAME}: Adding dependency ${dependency} of type ${dependency_type}")
 			if(dependency_type STREQUAL "UTILITY")
 				add_dependencies(${NAME} ${dependency})
 			else()
@@ -379,7 +379,7 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 
 	# Produce PDBs in release mode too
 	if (CMAKE_BUILD_TYPE STREQUAL "Release")
-		if (MSVC)
+		if (MSVC AND (NOT (NOS_PLUGIN_TYPE STREQUAL "INTERFACE"))) # TODO: Remove NOS_PLUGIN_TYPE if its not needed.
 			target_compile_options(${NAME} PRIVATE /Zi)
 			target_link_options(${NAME} PRIVATE /DEBUG /OPT:REF /OPT:ICF)
 		endif()
@@ -441,23 +441,23 @@ function(nos_get_package_info_by_path path out_name out_version out_json)
 endfunction()
 
 function(nos_normalize_plugin_name INPUT OUTPUT_VAR)
-    # Step 1: split by '.'
-    string(REPLACE "." ";" PARTS "${INPUT}")
+	# Step 1: split by '.'
+	string(REPLACE "." ";" PARTS "${INPUT}")
 
-    # Step 2: first item stays lowercase
-    list(POP_FRONT PARTS FIRST)
-    set(RESULT "${FIRST}")
+	# Step 2: first item stays lowercase
+	list(POP_FRONT PARTS FIRST)
+	set(RESULT "${FIRST}")
 
-    # Step 3: uppercase the first character of every subsequent part
-    foreach(PART IN LISTS PARTS)
-        string(SUBSTRING "${PART}" 0 1 FIRST_CHAR)
-        string(SUBSTRING "${PART}" 1 -1 REMAINDER)
-        string(TOUPPER "${FIRST_CHAR}" FIRST_CHAR)
-        set(RESULT "${RESULT}${FIRST_CHAR}${REMAINDER}")
-    endforeach()
+	# Step 3: uppercase the first character of every subsequent part
+	foreach(PART IN LISTS PARTS)
+		string(SUBSTRING "${PART}" 0 1 FIRST_CHAR)
+		string(SUBSTRING "${PART}" 1 -1 REMAINDER)
+		string(TOUPPER "${FIRST_CHAR}" FIRST_CHAR)
+		set(RESULT "${RESULT}${FIRST_CHAR}${REMAINDER}")
+	endforeach()
 
-    # Output to parent scope
-    set(${OUTPUT_VAR} "${RESULT}" PARENT_SCOPE)
+	# Output to parent scope
+	set(${OUTPUT_VAR} "${RESULT}" PARENT_SCOPE)
 endfunction()
 
 function(nos_find_immediate_plugin_dependencies json out_target_names out_target_dirs out_target_include_dirs)
@@ -497,13 +497,6 @@ function(nos_find_immediate_plugin_dependencies json out_target_names out_target
 	set(${out_target_include_dirs} "${_dep_include_dirs}" PARENT_SCOPE)
 endfunction()
 
-function(nos_find_plugin_sdk_version json out_found_version)
-	# Get the number of sdk dependency entries
-	string(JSON found_dep_version GET "${json}" sdk_version)
-
-	set(${out_found_version} "${found_dep_version}" PARENT_SCOPE)
-endfunction()
-
 # Deprecated, use _plugin functions instead.
 function(nos_get_module_info name version query out_var)
 	nos_get_package_info(${name} ${version} ${query} ${out_var})
@@ -521,15 +514,15 @@ function(nos_get_module name version out_target_name)
 endfunction()
 
 function(nos_get_vendor_name plugin_name out_vendor_name)
-    # Split by dot
-    string(REPLACE "." ";" _parts "${plugin_name}")
+	# Split by dot
+	string(REPLACE "." ";" _parts "${plugin_name}")
 
-    # Get first namespace
-    list(GET _parts 0 _ns)
+	# Get first namespace
+	list(GET _parts 0 _ns)
 
-    # Uppercase it
-    string(TOUPPER "${_ns}" _upper_ns)
+	# Uppercase it
+	string(TOUPPER "${_ns}" _upper_ns)
 
-    # Return
-    set(${out_vendor_name} "${_upper_ns}" PARENT_SCOPE)
+	# Return
+	set(${out_vendor_name} "${_upper_ns}" PARENT_SCOPE)
 endfunction()
