@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.24.2)
 
 if (NOT DEFINED PROJECT_NAME)
-	message(STATUS "PROJECT_NAME not defined. Defaulting to 'NodosWorkspace'.")
+	nos_message(STATUS "PROJECT_NAME not defined. Defaulting to 'NodosWorkspace'.")
 	set(PROJECT_NAME "NodosWorkspace")
 endif()
 
@@ -23,7 +23,7 @@ if (NOT DEFINED NODOS_WORKSPACE_DIR)
 	cmake_path(SET NODOS_WORKSPACE_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 	# Convert to absolute path
 	get_filename_component(NODOS_WORKSPACE_CMAKE_PATH "${NODOS_WORKSPACE_CMAKE_PATH}" ABSOLUTE)
-	message(STATUS "NODOS_WORKSPACE_DIR not defined. Defaulting to ${NODOS_WORKSPACE_CMAKE_PATH}")
+	nos_message(STATUS "NODOS_WORKSPACE_DIR not defined. Defaulting to ${NODOS_WORKSPACE_CMAKE_PATH}")
 	set(NODOS_WORKSPACE_DIR "${NODOS_WORKSPACE_CMAKE_PATH}" CACHE PATH "Nodos workspace directory" FORCE)
 endif()
 
@@ -45,10 +45,10 @@ macro(_nos_try_include_sdk_file engine_folder relative_path)
 	set(cmake_lower_path "${engine_folder}/SDK/cmake/${relative_path}")
 	
 	if(EXISTS "${cmake_upper_path}")
-		message(STATUS "Including ${cmake_upper_path}")
+		nos_message(STATUS "Including ${cmake_upper_path}")
 		include("${cmake_upper_path}")
 	elseif(EXISTS "${cmake_lower_path}")
-		message(STATUS "Including ${cmake_lower_path}")
+		nos_message(STATUS "Including ${cmake_lower_path}")
 		include("${cmake_lower_path}")
 	endif()
 endmacro()
@@ -103,7 +103,7 @@ list(LENGTH NOS_VERSIONS NOS_SDK_COUNT)
 math(EXPR NOS_SDK_END_RANGE "${NOS_SDK_COUNT} - 1")
  
 if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
-	message(STATUS "Found ${NOS_SDK_END_RANGE} Nodos SDKs")
+	nos_message(STATUS "Found ${NOS_SDK_END_RANGE} Nodos SDKs")
 	foreach(val RANGE 1 ${NOS_SDK_END_RANGE})
 		list(GET NOS_VERSIONS ${val} nos_version)
 		list(GET NOS_SDK_DIRS ${val} nos_sdk_dir)
@@ -123,9 +123,9 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 		endif()
 	
 		if (NOT nos_subsystem_sdk_version)
-			message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} (Plugin SDK: ${nos_plugin_sdk_version}) at ${nos_sdk_dir}")
+			nos_message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} (Plugin SDK: ${nos_plugin_sdk_version}) at ${nos_sdk_dir}")
 		else()
-			message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} (Plugin SDK: ${nos_plugin_sdk_version}, Subsystem SDK: ${nos_subsystem_sdk_version}) at ${nos_sdk_dir}")
+			nos_message(STATUS "(${val}/${NOS_SDK_END_RANGE}) Creating targets for Nodos version ${nos_version} (Plugin SDK: ${nos_plugin_sdk_version}, Subsystem SDK: ${nos_subsystem_sdk_version}) at ${nos_sdk_dir}")
 		endif()
 
 		# nosPluginSDK target
@@ -199,7 +199,7 @@ endif()
 if ((NOT NOS_INVOKED_FROM_NOSMAN) AND (EXISTS "${NODOS_WORKSPACE_DIR}/Toolchain/nosman/src"))
 	set(NOSMAN_BUILD_DIR "${NODOS_WORKSPACE_DIR}/Toolchain/nosman/target")
 
-	message(STATUS "Found nosman sources. Building nosman...")
+	nos_message(STATUS "Found nosman sources. Building nosman...")
 	execute_process(
 		COMMAND cargo build --release
 		WORKING_DIRECTORY "${NODOS_WORKSPACE_DIR}/Toolchain/nosman"
@@ -229,11 +229,11 @@ endif()
 if (NOT EXISTS "${NOSMAN_EXECUTABLE}")
 	nos_fatal_error("nosman executable not found. Please set NOSMAN_EXECUTABLE to the path of the nosman executable.")
 else()
-	message(STATUS "Found nosman at ${NOSMAN_EXECUTABLE}")
+	nos_message(STATUS "Found nosman at ${NOSMAN_EXECUTABLE}")
 endif()
 
 if (NOT EXISTS "${NOSMAN_WORKSPACE_DIR}/.nosman/index")
-	message(STATUS "Initializing workspace at ${NOSMAN_WORKSPACE_DIR}")
+	nos_message(STATUS "Initializing workspace at ${NOSMAN_WORKSPACE_DIR}")
 	execute_process(
 		COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" init
 		RESULT_VARIABLE NOSMAN_RESULT

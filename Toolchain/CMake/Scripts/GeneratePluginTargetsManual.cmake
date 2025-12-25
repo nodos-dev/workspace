@@ -8,7 +8,7 @@ function(collect_first_cmake_directories dir out_dirs)
 
 	if(EXISTS "${dir}/CMakeLists.txt")
 		set(${out_dirs} ${${out_dirs}} ${dir} CACHE INTERNAL "Module directories" FORCE)
-		message("Found module directory: ${dir}/${subdir}")
+		nos_message("Found module directory: ${dir}/${subdir}")
 	else()
 		foreach(subdir ${SUBDIRS})
 			if(IS_DIRECTORY ${dir}/${subdir})

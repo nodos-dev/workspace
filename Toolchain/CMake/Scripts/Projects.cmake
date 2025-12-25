@@ -79,7 +79,7 @@ function(nos_generate_flatbuffers fbs_paths dst_folder out_language include_fold
 			if(fbs_timestamp GREATER generated_timestamp)
 				set(need_generation TRUE)
 			else()
-				message(STATUS "${fbs_out_header} is up to date")
+				nos_message(STATUS "${fbs_out_header} is up to date")
 			endif()
 		endif()
 
@@ -99,7 +99,7 @@ function(nos_generate_flatbuffers fbs_paths dst_folder out_language include_fold
 			endif()
 		endif()
 
-		message(STATUS "Build Task (${out_target_name}): ${fbs_file} -> ${generated_file}")
+		nos_message(STATUS "Build Task (${out_target_name}): ${fbs_file} -> ${generated_file}")
 		list(APPEND out_list ${generated_file})
 		
 		add_custom_command(OUTPUT ${generated_file}
@@ -153,7 +153,7 @@ function(nos_find_package_path name version out_var)
 	string(STRIP ${manifest_path} manifest_path)
 	get_filename_component(package_path ${manifest_path} DIRECTORY)
 	cmake_path(SET package_path "${package_path}")
-	message(STATUS "Found ${name} ${version}: ${package_path}")
+	nos_message(STATUS "Found ${name} ${version}: ${package_path}")
 	set(${out_var} ${package_path} PARENT_SCOPE)
 endfunction()
 
@@ -170,11 +170,11 @@ function(nos_get_package name version out_target_name)
 	set(${out_target_name} ${target_name} PARENT_SCOPE)
 
 	if(TARGET ${target_name})
-		message(STATUS "Package ${name}-${version} already found in project. Using existing target.")
+		nos_message(STATUS "Package ${name}-${version} already found in project. Using existing target.")
 		return()
 	endif()
 
-	message(STATUS "Searching/installing Nodos package ${name} ${version} in workspace")
+	nos_message(STATUS "Searching/installing Nodos package ${name} ${version} in workspace")
 
 	# TODO: Download if not exists.
 	if(NOSMAN_EXECUTABLE)
@@ -186,7 +186,7 @@ function(nos_get_package name version out_target_name)
 		)
 
 		if(NOT nosman_result EQUAL 0)
-			message(STATUS "Failed to install ${name} ${version} in workspace. Trying to rescan modules.")
+			nos_message(STATUS "Failed to install ${name} ${version} in workspace. Trying to rescan modules.")
 			execute_process(
 				COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" rescan --fetch-index
 				RESULT_VARIABLE nosman_result
@@ -197,7 +197,7 @@ function(nos_get_package name version out_target_name)
 				nos_fatal_error("Failed to rescan modules in workspace. Please check your NOSMAN_WORKSPACE_DIR and NOSMAN_EXECUTABLE variables.")
 			endif()
 
-			message(STATUS "Rescanning modules in workspace succeeded. Trying to install ${name} ${version} again.")
+		nos_message(STATUS "Rescanning modules in workspace succeeded. Trying to install ${name} ${version} again.")
 			execute_process(
 				COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" install ${name} ${version}
 				RESULT_VARIABLE nosman_result
@@ -217,7 +217,7 @@ function(nos_get_package name version out_target_name)
 		if(nosman_result EQUAL 0)
 			string(STRIP ${nosman_output} nosman_output)
 
-			message(STATUS "Creating target ${target_name} for package ${name}-${version}")
+			nos_message(STATUS "Creating target ${target_name} for package ${name}-${version}")
 			add_library(${target_name} INTERFACE)
 
 			# Get module path
@@ -228,9 +228,9 @@ function(nos_get_package name version out_target_name)
 			# Add fbs files to target
 			nos_get_files_recursive(${plugin_path} ".fbs" fbs_files)
 			list(LENGTH fbs_files fbs_count)
-			message(STATUS "Found ${fbs_count} schema files in package ${name}-${version}")
+			nos_message(STATUS "Found ${fbs_count} schema files in package ${name}-${version}")
 			foreach(fbs_file ${fbs_files})
-				message(STATUS "${name}-${version} schema file: ${fbs_file}")
+				nos_message(STATUS "${name}-${version} schema file: ${fbs_file}")
 			endforeach()
 			target_sources(${target_name} PRIVATE ${fbs_files})
 			source_group("Types" FILES ${fbs_files})
@@ -239,9 +239,9 @@ function(nos_get_package name version out_target_name)
 			cmake_path(SET ${target_name}_INCLUDE_DIR "${plugin_path}/Include")
 			string(JSON nos_plugin_include_folder ERROR_VARIABLE err GET "${nosman_output}" "public_include_folder")
 			if (err STREQUAL "NOTFOUND")
-				message(STATUS "Found ${name} ${version} include folder: ${nos_plugin_include_folder}")
+				nos_message(STATUS "Found ${name} ${version} include folder: ${nos_plugin_include_folder}")
 				cmake_path(SET ${target_name}_INCLUDE_DIR "${nos_plugin_include_folder}")
-				message(STATUS "Found public header files in package ${name}-${version}. Adding to target.")
+				nos_message(STATUS "Found public header files in package ${name}-${version}. Adding to target.")
 				nos_get_files_recursive(${${target_name}_INCLUDE_DIR} ".h;.hpp;.hxx;.hh" include_files)
 				target_sources(${target_name} PRIVATE ${include_files})
 				nos_get_files_recursive(${plugin_path} ".natvis" natvis_files)
@@ -274,7 +274,9 @@ function(nos_get_plugin name version out_target_name)
 endfunction()
 
 function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADDITIONAL_FILE_TYPES ALTERNATIVE_MANIFEST_FILE_EXTS)
-	nos_colored_message(COLOR CYAN "Processing plugin ${NAME}")
+	if (NOT USE_AUTO_TARGET_GENERATION)
+		nos_colored_message(COLOR CYAN "Processing plugin ${NAME}")
+	endif()
 
 	set(plugin_root "${CMAKE_CURRENT_SOURCE_DIR}")
 	set(config_folder "${plugin_root}/Config")
@@ -313,7 +315,7 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 			math(EXPR group_idx "${file_idx} + 1")
 			list(GET ADDITIONAL_FILE_TYPES ${file_idx} file_type)
 			list(GET ADDITIONAL_FILE_TYPES ${group_idx} group_name)
-			message(STATUS "Adding file type ${file_type} in source group ${group_name}")
+			nos_message(STATUS "Adding file type ${file_type} in source group ${group_name}")
 			nos_get_files_recursive(${plugin_root} ${file_type} _files)
 			source_group("${group_name}" FILES ${_files})
 			foreach(file IN LISTS _files)
@@ -364,7 +366,7 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 		# If target "dependency" type is UTILITY then add it as a dependency
 		if(TARGET ${dependency})
 			get_target_property(dependency_type ${dependency} TYPE)
-			message(STATUS "${NAME}: Adding dependency ${dependency} of type ${dependency_type}")
+			nos_message(STATUS "${NAME}: Adding dependency ${dependency} of type ${dependency_type}")
 			if(dependency_type STREQUAL "UTILITY")
 				add_dependencies(${NAME} ${dependency})
 			else()
@@ -430,7 +432,7 @@ function(nos_get_package_info_by_path path out_name out_version out_json)
 		set(err_name "")
 		string(JSON package_name ERROR_VARIABLE err_name GET "${nosman_output}" info id name)
 		string(JSON package_version ERROR_VARIABLE err_version GET "${nosman_output}" info id version)
-		message(STATUS "Package at path ${path} is ${package_name} version ${package_version}")
+		nos_message(STATUS "Package at path ${path} is ${package_name} version ${package_version}")
 
 		set(${out_name} ${package_name} PARENT_SCOPE)
 		set(${out_version} ${package_version} PARENT_SCOPE)
@@ -470,7 +472,7 @@ function(nos_find_immediate_plugin_dependencies json out_target_names out_target
 	endif()
 
 	if(dep_count EQUAL 0)
-		message(STATUS "No dependencies found.")
+		nos_message(STATUS "No dependencies found.")
 		set(${out_target_names} "" PARENT_SCOPE)
 		set(${out_target_dirs} "" PARENT_SCOPE)
 		set(${out_target_include_dirs} "" PARENT_SCOPE)
@@ -483,7 +485,7 @@ function(nos_find_immediate_plugin_dependencies json out_target_names out_target
 		set(found_target "")
 		string(JSON dep_name GET "${json}" info dependencies ${i} name)
 		string(JSON dep_version GET "${json}" info dependencies ${i} version)
-		message(STATUS "Finding dependency: ${dep_name} version ${dep_version}")
+		nos_message(STATUS "Finding dependency: ${dep_name} version ${dep_version}")
 		nos_get_module("${dep_name}" "${dep_version}" found_target)
 		nos_find_module_path("${dep_name}" "${dep_version}" found_dir)
 		list(APPEND _deps "${found_target}")
@@ -513,16 +515,13 @@ function(nos_get_module name version out_target_name)
 	set(${out_target_name} ${${out_target_name}} PARENT_SCOPE)
 endfunction()
 
-function(nos_get_vendor_name plugin_name out_vendor_name)
+function(nos_get_short_vendor_name plugin_name out_vendor_name)
 	# Split by dot
-	string(REPLACE "." ";" _parts "${plugin_name}")
+	string(REPLACE "." ";" parts "${plugin_name}")
 
 	# Get first namespace
-	list(GET _parts 0 _ns)
-
-	# Uppercase it
-	string(TOUPPER "${_ns}" _upper_ns)
+	list(GET parts 0 ns)
 
 	# Return
-	set(${out_vendor_name} "${_upper_ns}" PARENT_SCOPE)
+	set(${out_vendor_name} "${ns}" PARENT_SCOPE)
 endfunction()
