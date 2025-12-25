@@ -16,7 +16,7 @@
 # Licensed under the zlib License. See LICENSE.md                              #
 # Changes:                                                                     #
 #  - Modified for Nodos SDK CMake Tools, function names are changed            #
-function(__nos_color_format_text)
+function(_nos_color_format_text)
     cmake_parse_arguments(PARSE_ARGV 0 "_TEXT" "BOLD;DIMMED" "COLOR" "")
     
     # ANSI color codes (faster than execute_process)
@@ -84,9 +84,9 @@ endfunction()
 # the COLOR_FORMATTED_TEXT_COMBINED variable, which can be used
 # in the parent scope.
 #
-# Example:  __nos_color_format_text_append(COLOR BLUE "My blue text")
-#           __nos_color_format_text_append(BOLD COLOR RED "My bold red text")
-#           __nos_color_format_text_append(DIMMED "My dimmed text")
+# Example:  _nos_color_format_text_append(COLOR BLUE "My blue text")
+#           _nos_color_format_text_append(BOLD COLOR RED "My bold red text")
+#           _nos_color_format_text_append(DIMMED "My dimmed text")
 #
 # To print: message("${COLOR_FORMATTED_TEXT_COMBINED}")
 #
@@ -94,8 +94,8 @@ endfunction()
 # Licensed under the zlib License.
 # Changes:
 #  - Modified for Nodos SDK CMake Tools, function names are changed
-function(__nos_color_format_text_append)
-    __nos_color_format_text(${ARGN})
+function(_nos_color_format_text_append)
+    _nos_color_format_text(${ARGN})
     
     # Append formatted text to COLOR_FORMATTED_TEXT_COMBINED
     set(COLOR_FORMATTED_TEXT_COMBINED "${COLOR_FORMATTED_TEXT_COMBINED}${COLOR_FORMATTED_TEXT}" PARENT_SCOPE)
@@ -112,12 +112,12 @@ endfunction()
 # Changes:
 #  - Modified for Nodos SDK CMake Tools, function names are changed
 function(nos_colored_message)
-    __nos_color_format_text(${ARGN})
+    _nos_color_format_text(${ARGN})
     message(${COLOR_FORMATTED_TEXT})
 endfunction()
 
 function(nos_fatal_error)
-	__nos_color_format_text(BOLD COLOR RED ${ARGN})
+	_nos_color_format_text(BOLD COLOR RED ${ARGN})
 	message(FATAL_ERROR ${COLOR_FORMATTED_TEXT})
 endfunction()
 
@@ -127,7 +127,7 @@ endfunction()
 function(nos_message)
 	cmake_language(GET_MESSAGE_LOG_LEVEL current_log_level)
 	if(current_log_level MATCHES "VERBOSE|DEBUG|TRACE" OR NOS_VERBOSE)
-		__nos_color_format_text(${ARGN})
+		_nos_color_format_text(${ARGN})
 		message(${COLOR_FORMATTED_TEXT})
 	endif()
 endfunction()
@@ -144,7 +144,7 @@ function(nos_get_sanitized_engine_folder_name nos_sdk_dir out)
     set(${out} "${sanitized_engine_folder_name}" PARENT_SCOPE)
 endfunction()
 
-function(__nos_generate_sdk_target_name sdk_type sdk_version nos_sdk_dir out)
+function(_nos_generate_sdk_target_name sdk_type sdk_version nos_sdk_dir out)
     # Generate target name in format: ${sdk_type}_${version_suffix}__${sanitized_engine_folder_name}
     # Args:
     #   sdk_type: "nosPluginSDK" or "nosSubsystemSDK"
@@ -157,7 +157,7 @@ function(__nos_generate_sdk_target_name sdk_type sdk_version nos_sdk_dir out)
     set(${out} "${sdk_type}_${version_target_suffix}__${sanitized_engine_folder_name}" PARENT_SCOPE)
 endfunction()
 
-function(__nos_generate_nodos_target_name target_type nodos_version nos_sdk_dir out)
+function(_nos_generate_nodos_target_name target_type nodos_version nos_sdk_dir out)
     # Generate target name in format: ${target_type}_${version_suffix}__${sanitized_engine_folder_name}
     # Args:
     #   target_type: "nosLauncher" or "nosEditor"

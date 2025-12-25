@@ -1,15 +1,15 @@
 # Copyright MediaZ Teknoloji A.S. All Rights Reserved.
 cmake_minimum_required(VERSION 3.24.2)
 
+# Includes
+include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Utils.cmake)
+
 if (NOT DEFINED PROJECT_NAME)
-	nos_message(STATUS "PROJECT_NAME not defined. Defaulting to 'NodosWorkspace'.")
+	nos_colored_message(COLOR YELLOW "PROJECT_NAME not defined. Defaulting to 'NodosWorkspace'.")
 	set(PROJECT_NAME "NodosWorkspace")
 endif()
 
 project(${PROJECT_NAME})
-
-# Includes
-include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/Utils.cmake)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -23,7 +23,7 @@ if (NOT DEFINED NODOS_WORKSPACE_DIR)
 	cmake_path(SET NODOS_WORKSPACE_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 	# Convert to absolute path
 	get_filename_component(NODOS_WORKSPACE_CMAKE_PATH "${NODOS_WORKSPACE_CMAKE_PATH}" ABSOLUTE)
-	nos_message(STATUS "NODOS_WORKSPACE_DIR not defined. Defaulting to ${NODOS_WORKSPACE_CMAKE_PATH}")
+	nos_colored_message(COLOR YELLOW "NODOS_WORKSPACE_DIR not defined. Defaulting to ${NODOS_WORKSPACE_CMAKE_PATH}")
 	set(NODOS_WORKSPACE_DIR "${NODOS_WORKSPACE_CMAKE_PATH}" CACHE PATH "Nodos workspace directory" FORCE)
 endif()
 
@@ -93,7 +93,7 @@ if(NOT DEFINED ENGINE_FOLDER OR ENGINE_FOLDER STREQUAL "")
 		endif()
 	endforeach()
 else()
-	nos_colored_message(COLOR GREEN "Using Nodos SDK in ${ENGINE_FOLDER}...")
+	nos_colored_message(COLOR GREEN "Using Nodos SDK from ${ENGINE_FOLDER}")
 	set(ENGINE_FOLDER ${NODOS_WORKSPACE_DIR}/${ENGINE_FOLDER})
 	_nos_process_engine_folder(${ENGINE_FOLDER} 0)
 endif()
@@ -130,7 +130,7 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 
 		# nosPluginSDK target
 		# -------------------
-		__nos_generate_sdk_target_name("nosPluginSDK" "${nos_plugin_sdk_version}" "${nos_sdk_dir}" nos_plugin_sdk_target)
+		_nos_generate_sdk_target_name("nosPluginSDK" "${nos_plugin_sdk_version}" "${nos_sdk_dir}" nos_plugin_sdk_target)
 
 		if(TARGET ${nos_plugin_sdk_target})
 			nos_fatal_error("Multiple Nodos Plugin SDKs with the same version found under Engine folder. This is not supported.")
@@ -152,7 +152,7 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 		# -------------------
 
 		if (nos_subsystem_sdk_version)
-			__nos_generate_sdk_target_name("nosSubsystemSDK" "${nos_subsystem_sdk_version}" "${nos_sdk_dir}" nos_subsystem_sdk_target)
+			_nos_generate_sdk_target_name("nosSubsystemSDK" "${nos_subsystem_sdk_version}" "${nos_sdk_dir}" nos_subsystem_sdk_target)
 
 			# Create nosSubsystemSDK target
 			add_library(${nos_subsystem_sdk_target} INTERFACE)
@@ -167,7 +167,7 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 		set(nos_binaries_dir "${nos_sdk_dir}/../Binaries")
 		if(EXISTS "${nos_binaries_dir}")
 			# Create nosLauncher target
-			__nos_generate_nodos_target_name("nosLauncher" "${nos_version}" "${nos_sdk_dir}" nos_launcher_target)
+			_nos_generate_nodos_target_name("nosLauncher" "${nos_version}" "${nos_sdk_dir}" nos_launcher_target)
 			add_custom_target(${nos_launcher_target}
 				COMMAND ${nos_binaries_dir}/nosLauncher${CMAKE_EXECUTABLE_SUFFIX}
 				WORKING_DIRECTORY ${nos_binaries_dir}
@@ -175,7 +175,7 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 			)
 	
 			# Create nosEditor target
-			__nos_generate_nodos_target_name("nosEditor" "${nos_version}" "${nos_sdk_dir}" nos_editor_target)
+			_nos_generate_nodos_target_name("nosEditor" "${nos_version}" "${nos_sdk_dir}" nos_editor_target)
 			add_custom_target(${nos_editor_target}
 				COMMAND ${nos_binaries_dir}/nosEditor${CMAKE_EXECUTABLE_SUFFIX}
 				WORKING_DIRECTORY ${nos_binaries_dir}
