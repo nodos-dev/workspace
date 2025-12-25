@@ -190,6 +190,9 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 			set_target_properties(${nos_editor_target} PROPERTIES FOLDER "Nodos")
 		endif()
 	endforeach()
+else()
+	nos_colored_message(COLOR YELLOW "No Nodos SDKs found in Engine folder. Proceeding without SDK targets.")
+	set(USE_AUTO_TARGET_GENERATION TRUE)
 endif()
 
 # If Toolchain/nosman/src exists, setup cargo build command that depends on .rs files to build and copy the executable to the root
