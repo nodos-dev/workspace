@@ -127,8 +127,18 @@ endfunction()
 function(nos_message)
 	cmake_language(GET_MESSAGE_LOG_LEVEL current_log_level)
 	if(current_log_level MATCHES "VERBOSE|DEBUG|TRACE" OR NOS_VERBOSE)
-		_nos_color_format_text(${ARGN})
-		message(${COLOR_FORMATTED_TEXT})
+		# Check first argument for message type
+		list(GET ARGN 0 first_arg)
+		
+		if(first_arg STREQUAL "STATUS" OR first_arg STREQUAL "WARNING" OR
+		   first_arg STREQUAL "AUTHOR_WARNING" OR first_arg STREQUAL "SEND_ERROR" OR
+		   first_arg STREQUAL "FATAL_ERROR")
+			# Rest of arguments
+			list(REMOVE_AT ARGN 0)
+			message(${first_arg} "[Nodos] ${ARGN}")
+		else()
+			message("[Nodos] ${ARGN}")
+		endif()
 	endif()
 endfunction()
 

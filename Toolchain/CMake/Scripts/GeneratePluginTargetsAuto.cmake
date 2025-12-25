@@ -114,7 +114,7 @@ function(_nos_configure_plugin plugin_manifest_file common_dependencies common_d
 	endif()
 
 	if (EXISTS "${dir}/CMakeLists.txt")
-		nos_colored_message(DIMMED COLOR CYAN "-- Including custom CMake file for plugin: ${plugin_name}")
+		nos_colored_message(DIMMED COLOR CYAN "Including custom CMake file for plugin: ${plugin_name}")
 		set(NOS_PLUGIN_TARGET ${plugin_target})
 		add_subdirectory("${dir}" "${CMAKE_CURRENT_BINARY_DIR}/PluginDir_${plugin_target}")
 	endif()
