@@ -138,6 +138,12 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 		
 		# Create targets
 		add_library(${nos_plugin_sdk_target} INTERFACE)
+		
+		# 1.3.x and earlier had NOMINMAX defined in the SDK, which some plugins rely on
+		if (nos_version VERSION_LESS "1.4.0")
+			target_compile_definitions(${nos_plugin_sdk_target} INTERFACE "-DNOMINMAX")
+		endif()
+
 		target_include_directories(${nos_plugin_sdk_target} INTERFACE ${sdk_include_dir})
 
 		# Exclude from all
@@ -156,6 +162,10 @@ if (NOS_SDK_END_RANGE GREATER_EQUAL 1)
 
 			# Create nosSubsystemSDK target
 			add_library(${nos_subsystem_sdk_target} INTERFACE)
+			# Subsystems are deleted in 1.4.0 and later, but still add check
+			if (nos_version VERSION_LESS "1.4.0")
+				target_compile_definitions(${nos_subsystem_sdk_target} INTERFACE "-DNOMINMAX")
+			endif()
 			target_include_directories(${nos_subsystem_sdk_target} INTERFACE ${sdk_include_dir})
 			set_target_properties(${nos_subsystem_sdk_target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
 			if (EXISTS ${natvis_file})
