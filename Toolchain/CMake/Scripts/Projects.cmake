@@ -433,12 +433,16 @@ function(nos_get_package_info_by_path path out_name out_version out_json)
 		string(JSON package_name ERROR_VARIABLE err_name GET "${nosman_output}" info id name)
 		string(JSON package_version ERROR_VARIABLE err_version GET "${nosman_output}" info id version)
 		nos_message(STATUS "Package at path ${path} is ${package_name} version ${package_version}")
+		
+		if (err_name STREQUAL "NOTFOUND" OR err_version STREQUAL "NOTFOUND")
+			nos_fatal_error("Failed to get package name or version from manifest at path ${path}")
+		endif()
 
 		set(${out_name} ${package_name} PARENT_SCOPE)
 		set(${out_version} ${package_version} PARENT_SCOPE)
 		set(${out_json} ${nosman_output} PARENT_SCOPE)
 	else()
-		nos_fatal_error("Failed to find package info from path ${path}.")
+		nos_fatal_error("Failed to find package info from path ${path}: ${nosman_output}")
 	endif()
 endfunction()
 

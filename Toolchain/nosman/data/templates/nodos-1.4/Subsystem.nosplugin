@@ -8,5 +8,6 @@
         "description": "<DESCRIPTION>",
         "dependencies": <DEPENDENCY_LIST_JSON>
     },
-    "binary_path": "Binaries/<BINARY_NAME>"
+    "binary_path": "Binaries/<BINARY_NAME>",
+    "sdk_version": "41.0"
 }

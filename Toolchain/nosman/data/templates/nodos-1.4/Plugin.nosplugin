@@ -9,6 +9,5 @@
         "dependencies": <DEPENDENCY_LIST_JSON>
     },
     "binary_path": "Binaries/<BINARY_NAME>",
-    "defaults": [],
-    "custom_types": []
+    "sdk_version": "41.0"
 }
