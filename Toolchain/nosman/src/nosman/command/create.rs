@@ -102,13 +102,13 @@ impl CreateCommand {
         }
     }
 
-    pub fn run_create(&self, workspace: &mut Workspace, module_name: &str, plugin_type: PluginType, lang_tool: LangTool,
+    pub fn run_create(&self, workspace: &mut Workspace, plugin_name: &str, plugin_type: PluginType, lang_tool: LangTool,
                       output_dir: &PathBuf, deps: Vec<PackageIdentifier>, description: &str, nodos_version: Option<SemVer>) -> CommandResult {
-        println!("{}", format!("Creating a new Nodos module project of type '{:?}'", plugin_type).green());
+        println!("{}", format!("Creating a new Nodos plugin project of type '{:?}'", plugin_type).green());
 
         // Check module name contains at least one namespace
-        if module_name.split('.').count() < 2 {
-            return Err(InvalidArgument { message: "Module name must contain a company/organization prefix".to_string() });
+        if plugin_name.split('.').count() < 2 {
+            return Err(InvalidArgument { message: "Plugin name must contain a company/organization prefix".to_string() });
         }
 
         let mut selected_version: Option<SemVer> = None;
@@ -165,7 +165,7 @@ impl CreateCommand {
         } else {
             DATA_DIR.get_file(format!("templates/nodos-{}/Subsystem.{}", version_str, manifest_path_ext)).unwrap()
         };
-        let output_manifest_path = output_dir.join(format!("{}.{}", module_name, manifest_path_ext));
+        let output_manifest_path = output_dir.join(format!("{}.{}", plugin_name, manifest_path_ext));
 
         // Read file and replace placeholders
         // <NAME>
@@ -175,17 +175,17 @@ impl CreateCommand {
         // <BINARY_NAME>
         let manifest_content = manifest_template_file.contents_utf8().unwrap();
         let manifest_content = manifest_content
-            .replace("<NAME>", module_name)
+            .replace("<NAME>", plugin_name)
             .replace("<DESCRIPTION>", description)
-            .replace("<DISPLAY_NAME>", module_name)
+            .replace("<DISPLAY_NAME>", plugin_name)
             .replace("<VERSION>", "0.1.0")
             .replace("<DEPENDENCY_LIST_JSON>", serde_json::to_string(&deps).unwrap().as_str())
-            .replace("<BINARY_NAME>", module_name);
+            .replace("<BINARY_NAME>", plugin_name);
         fs::write(&output_manifest_path, manifest_content)?;
 
         // Recursively copy the tool directory
         copy_dir_recursive(tool_template_dir, output_dir, &mut |content| {
-            Self::replace_tool_placeholders(workspace, content, module_name, &deps, lang_tool.tool());
+            Self::replace_tool_placeholders(workspace, content, plugin_name, &deps, lang_tool.tool());
         })?;
 
         copy_dir_recursive(lang_template_dir, output_dir, &mut |content| {

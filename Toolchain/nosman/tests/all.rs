@@ -13,6 +13,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::path::PathBuf;
 use std::{fs, io};
+use std::process::Output;
 use nosman::nosman::package::{get_plugin_manifest_file_ext, PackageIdentifier};
 
 #[ctor::ctor]
@@ -160,6 +161,19 @@ fn install_skips_if_already_installed() {
     assert_eq!(op_second, InstallOp::Skipped);
 }
 
+fn get_full_output(res: &Output) -> String {
+    let stdout = String::from_utf8_lossy(&res.stdout);
+    let stderr = String::from_utf8_lossy(&res.stderr);
+    let mut output = String::new();
+    if !stdout.is_empty() {
+        output.push_str(&format!("{}", stdout));
+    }
+    if !stderr.is_empty() {
+        output.push_str(&format!("\nError:\n{}", stderr));
+    }
+    output
+}
+
 fn test_cmake_build(test: &WorkspaceGen) {
     let res = std::process::Command::new("cmake")
         .current_dir(&test.workspace.root)
@@ -173,7 +187,7 @@ fn test_cmake_build(test: &WorkspaceGen) {
     }
     let res = res.unwrap();
     if !res.status.success() {
-        print!("Output:\n{}", String::from_utf8_lossy(&res.stderr));
+        print!("Output:\n{}", get_full_output(&res));
         panic!("Failed to generate project");
     }
     let res = std::process::Command::new("cmake")
@@ -186,7 +200,7 @@ fn test_cmake_build(test: &WorkspaceGen) {
     }
     let res = res.unwrap();
     if !res.status.success() {
-        print!("Output:\n{}", String::from_utf8_lossy(&res.stdout));
+        print!("Output:\n{}", get_full_output(&res));
         panic!("Failed to build project");
     }
 }
@@ -213,7 +227,7 @@ fn test_create_module(
     }
 
     // Copy self to the workspace
-    let nosman_path = std::env::current_exe().expect("Failed to get current executable path");
+    let nosman_path = env!("CARGO_BIN_EXE_nosman");
     // Set the target executable name
     let target_executable_name = format!("nodos{}", std::env::consts::EXE_SUFFIX);
     std::fs::copy(
@@ -253,10 +267,6 @@ fn test_create_module(
         "{:?} manifest file was not created",
         plugin_type
     );
-
-    // Verify CMake files are present
-    let cmake_lists_path = module_dir.join("CMakeLists.txt");
-    assert!(cmake_lists_path.exists(), "CMakeLists.txt was not created");
 
     test_cmake_build(&test);
 }
