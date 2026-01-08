@@ -84,7 +84,7 @@ jobs:
         shell: bash
         run: |
             if [ "${{ matrix.runner[0] }}" == "Linux" ]; then
-            export GPG_TTY=$(tty)
+              export GPG_TTY=$(tty)
             fi
             git credential-manager github login --username ${{ env.GH_USERNAME }} --token ${{ secrets.CI_TOKEN }} --force
 
