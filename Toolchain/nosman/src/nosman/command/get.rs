@@ -138,7 +138,7 @@ impl GetCommand {
         let path = workspace.root.clone();
         if !workspace.ready() {
             println!("No workspace found, initializing one under {:?}", path);
-            InitCommand{}.run_init(workspace, false)?;
+            InitCommand{}.run_init(workspace, false, false)?;
         }
 
         let pb: ProgressBar = ProgressBar::new_spinner();

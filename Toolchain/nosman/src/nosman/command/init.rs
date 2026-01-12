@@ -10,14 +10,33 @@ pub struct InitCommand {
 }
 
 impl InitCommand {
-    pub(crate) fn run_init(&self, workspace: &mut Workspace, allow_nested: bool) -> CommandResult {
+    pub(crate) fn run_init(&self, workspace: &mut Workspace, allow_nested: bool, reinit: bool) -> CommandResult {
         let directory = &workspace.root;
-        if !allow_nested {
-            if let Some(ws) = find_root_from(&directory.to_path_buf()) {
-                return Err(InvalidArgument { message: format!("Directory {} is already under a workspace: {}", directory.display(), ws.display())});
-            }   
+        if let Some(ws) = find_root_from(&directory.to_path_buf()) {
+            if ws == *directory {
+                if !reinit {
+                    return Err(InvalidArgument {
+                        message: format!(
+                            "Workspace already exists at {}. Use --reinit to recreate it.",
+                            directory.display()
+                        ),
+                    });
+                }
+            } else if !allow_nested {
+                return Err(InvalidArgument {
+                    message: format!(
+                        "Directory {} is already under a workspace: {}",
+                        directory.display(),
+                        ws.display()
+                    ),
+                });
+            }
         }
-        println!("Creating a new workspace under {:?}", directory);
+        if reinit {
+            println!("Reinitializing workspace under {:?}", directory);
+        } else {
+            println!("Creating a new workspace under {:?}", directory);
+        }
         workspace.recreate()?;
         println!("{}", format!("Workspace initialized with {} packages", workspace.packages.len()).as_str().green());
         Ok(())
@@ -30,7 +49,14 @@ pub fn get_cli() -> clap::Command {
         .arg(Arg::new("allow_nested")
             .action(ArgAction::SetTrue)
             .long("allow-nested")
-            .help("Allow creating a workspace even if the folder is already inside another workspace. This also allows to recreate an existing workspace.")
+            .help("Allow creating a workspace even if the folder is already inside another workspace.")
+            .num_args(0)
+            .required(false)
+        )
+        .arg(Arg::new("reinit")
+            .action(ArgAction::SetTrue)
+            .long("reinit")
+            .help("Reinitialize this directory if a workspace already exists here.")
             .num_args(0)
             .required(false)
         )
@@ -43,7 +69,8 @@ impl Command for InitCommand {
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let allow_nested = args.get_flag("allow_nested");
-        self.run_init(workspace, allow_nested)
+        let reinit = args.get_flag("reinit");
+        self.run_init(workspace, allow_nested, reinit)
     }
 
     fn needs_workspace(&self) -> bool {

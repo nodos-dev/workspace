@@ -496,9 +496,7 @@ impl DevInitCommand {
                 let toolchain_root = workspace.root.join("Toolchain");
                 let toolchain_dir = toolchain_root.join("CMake");
                 if toolchain_dir.exists() {
-                    return Err(InvalidArgument {
-                        message: format!("Toolchain directory already exists at {}", toolchain_dir.display()),
-                    });
+                    fs::remove_dir_all(&toolchain_dir)?;
                 }
                 fs::create_dir_all(&toolchain_root)?;
                 copy_include_dir_recursive(&CMAKE_TOOLCHAIN_DIR, &toolchain_dir, None)?;
