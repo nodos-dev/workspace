@@ -1,5 +1,6 @@
 use log::{info, warn};
 use nosman::nosman::command::create::{CreateCommand, LangTool};
+use nosman::nosman::command::dev::DevInitCommand;
 use nosman::nosman::command::get::GetCommand;
 use nosman::nosman::command::info::InfoCommand;
 use nosman::nosman::command::install::{InstallCommand, InstallFlags, InstallOp};
@@ -959,4 +960,35 @@ fn info_error_no_arguments() {
     );
     
     assert!(result.is_err(), "Should fail when no arguments are provided");
+}
+
+#[test]
+fn dev_init_cmake_copies_toolchain() {
+    let test = WorkspaceGen::new_random();
+
+    DevInitCommand {}
+        .run_init(&test.workspace, "cmake")
+        .expect("dev init cmake failed");
+
+    let cmake_root = test.workspace.root.join("Toolchain").join("CMake");
+    assert!(cmake_root.join("CMakeLists.txt").exists());
+    assert!(cmake_root.join("Scripts").join("Projects.cmake").exists());
+}
+
+#[test]
+fn dev_init_cmake_fails_when_exists() {
+    let test = WorkspaceGen::new_random();
+
+    DevInitCommand {}
+        .run_init(&test.workspace, "cmake")
+        .expect("dev init cmake failed");
+
+    let err = DevInitCommand {}
+        .run_init(&test.workspace, "cmake")
+        .expect_err("expected dev init to fail when toolchain exists");
+
+    match err {
+        nosman::nosman::command::CommandError::InvalidArgument { .. } => {}
+        _ => panic!("expected InvalidArgument error"),
+    }
 }

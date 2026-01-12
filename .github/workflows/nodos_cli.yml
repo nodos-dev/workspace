@@ -132,12 +132,24 @@ jobs:
           if [[ "${{ matrix.runner[0] }}" == "Windows" ]]; then
             platform="windows"
             platform_exe_suffix=".exe"
+            arch=$(pwsh -Command "Write-Output \$env:PROCESSOR_ARCHITECTURE" | tr '[:upper:]' '[:lower:]')
+            if [[ "$arch" == "amd64" || "$arch" == "x86_64" ]]; then
+              arch="x86_64"
+            elif [[ "$arch" == "arm64" ]]; then
+              arch="aarch64"
+            fi
           else
             platform="linux"
             platform_exe_suffix=""
+            arch=$(uname -m)
+            if [[ "$arch" == "x86_64" ]]; then
+              arch="x86_64"
+            elif [[ "$arch" == "aarch64" ]]; then
+              arch="aarch64"
+            fi
           fi
 
-          renamed_file="nosman-$platform$platform_exe_suffix"
+          renamed_file="nosman-$platform-$arch$platform_exe_suffix"
           original_file="$file$platform_exe_suffix"
 
           cp -f "$original_file" "$renamed_file"

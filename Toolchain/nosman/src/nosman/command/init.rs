@@ -19,7 +19,7 @@ impl InitCommand {
         }
         println!("Creating a new workspace under {:?}", directory);
         workspace.recreate()?;
-        println!("{}", format!("Workspace initialized with {} modules", workspace.packages.len()).as_str().green());
+        println!("{}", format!("Workspace initialized with {} packages", workspace.packages.len()).as_str().green());
         Ok(())
     }
 }

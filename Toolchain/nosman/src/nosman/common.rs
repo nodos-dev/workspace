@@ -5,6 +5,7 @@ use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 use std::process::Output;
 use colored::Colorize;
+use include_dir::Dir;
 use indicatif::ProgressBar;
 use inquire::Confirm;
 use zip::ZipArchive;
@@ -84,6 +85,44 @@ pub fn check_file_contents_same(path1: &PathBuf, path2: &PathBuf) -> bool {
         }
     }
     true
+}
+
+pub fn copy_include_dir_recursive(
+    src: &Dir,
+    dest: &Path,
+    mut modify: Option<&mut dyn FnMut(&mut String)>,
+) -> Result<(), CommandError> {
+    let mut stack: Vec<&Dir> = vec![src];
+    while let Some(dir) = stack.pop() {
+        let target_dir = dest.join(dir.path().strip_prefix(src.path()).unwrap());
+        for entry in dir.entries() {
+            if let Some(d) = entry.as_dir() {
+                stack.push(d);
+                fs::create_dir_all(target_dir.join(entry.path().file_name().unwrap()))?;
+            } else if let Some(file) = entry.as_file() {
+                let target_path = target_dir.join(entry.path().file_name().unwrap());
+                if let Some(parent) = target_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                if let Some(modify) = modify.as_deref_mut() {
+                    let mut content = file
+                        .contents_utf8()
+                        .ok_or(CommandError::Runtime {
+                            message: format!(
+                                "Non-UTF8 file found in embedded dir: {}",
+                                entry.path().display()
+                            ),
+                        })?
+                        .to_string();
+                    modify(&mut content);
+                    fs::write(target_path, content)?;
+                } else {
+                    fs::write(target_path, file.contents())?;
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn ask(question: &str, default: bool, dont_ask: bool) -> bool {

@@ -1,8 +1,9 @@
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
+use crate::nosman::common::copy_include_dir_recursive;
 use crate::nosman::command::{get_lang_tool_arg, get_nodos_version_from_args, Command, CommandResult};
 use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{PluginType, SemVer};
@@ -50,24 +51,6 @@ fn get_template_dir_for<'a>(name: &str, plugin_type: &PluginType, version: &str)
         DATA_DIR.get_dir(format!("templates/nodos-{}/{}/subsystem", version, name))
     };
     template_dir
-}
-
-fn copy_dir_recursive(src: &Dir, dest: &Path, modify: &mut dyn FnMut(&mut String)) -> std::io::Result<()> {
-    let mut stack: Vec<&Dir> = vec![src];
-    while let Some(dir) = stack.pop() {
-        let target_dir = dest.join(dir.path().strip_prefix(src.path()).unwrap());
-        for entry in dir.entries() {
-            if let Some(d) = entry.as_dir() {
-                stack.push(d);
-                fs::create_dir_all(target_dir.join(entry.path().file_name().unwrap()))?;
-            } else {
-                let mut content: String = entry.as_file().unwrap().contents_utf8().unwrap().to_string();
-                modify(&mut content);
-                fs::write(target_dir.join(entry.path().file_name().unwrap()), content)?;
-            }
-        }
-    }
-    Ok(())
 }
 
 impl CreateCommand {
@@ -184,13 +167,13 @@ impl CreateCommand {
         fs::write(&output_manifest_path, manifest_content)?;
 
         // Recursively copy the tool directory
-        copy_dir_recursive(tool_template_dir, output_dir, &mut |content| {
+        copy_include_dir_recursive(tool_template_dir, output_dir, Some(&mut |content| {
             Self::replace_tool_placeholders(workspace, content, plugin_name, &deps, lang_tool.tool());
-        })?;
+        }))?;
 
-        copy_dir_recursive(lang_template_dir, output_dir, &mut |content| {
+        copy_include_dir_recursive(lang_template_dir, output_dir, Some(&mut |content| {
             Self::replace_lang_placeholders(content, lang_tool.lang());
-        })?;
+        }))?;
 
         println!("{:?} project created at {:?}", plugin_type, output_dir);
 

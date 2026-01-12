@@ -1,7 +1,7 @@
 pub mod create;
 mod deinit;
 mod depend;
-mod dev;
+pub mod dev;
 mod extension;
 pub mod get;
 pub mod info;
@@ -94,6 +94,7 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(dev::DevGenCommand {}),
         Box::new(dev::DevStatusCommand {}),
         Box::new(dev::DevBuildCommand {}),
+        Box::new(dev::DevInitCommand {}),
         Box::new(launch::LaunchCommand {}),
         Box::new(extension::Extension {}),
         Box::new(depend::DependCommand {}),

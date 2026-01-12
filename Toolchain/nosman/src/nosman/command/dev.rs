@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
+use include_dir::{include_dir, Dir};
 use indicatif::ProgressBar;
 use rayon::prelude::*;
 use CommandError::InvalidArgument;
+use crate::nosman::common::copy_include_dir_recursive;
 use crate::nosman::command::{get_lang_tool_arg, Command, CommandError, CommandResult};
 use crate::nosman::workspace::Workspace;
 
@@ -26,7 +29,7 @@ pub fn get_cli() -> clap::Command {
             .arg(git_dir_arg.clone())
         )
         .subcommand(clap::Command::new("gen")
-            .about("Generates project files for Nodos module development")
+            .about("Generates project files for Nodos plugin development")
             .arg(get_lang_tool_arg())
             .arg(Arg::new("project_folder")
                 .long("project-folder")
@@ -61,11 +64,23 @@ pub fn get_cli() -> clap::Command {
                 .help("Arguments to pass to the underlying tool when building project files")
             )
         )
+        .subcommand(clap::Command::new("init")
+            .about("Initialize development toolchain files under the workspace")
+            .arg(Arg::new("toolchain")
+                .long("toolchain")
+                .short('t')
+                .help("Toolchain to initialize under the workspace")
+                .value_parser(clap::builder::PossibleValuesParser::new(["cmake"]))
+                .required(true)
+            )
+        )
         .subcommand(clap::Command::new("status")
             .about("Shows the status of the git repositories under the workspace")
             .arg(git_dir_arg)
         )
 }
+
+static CMAKE_TOOLCHAIN_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../CMake");
 
 /// Recursively scans directories for git repositories
 fn find_git_repositories(dirs: Vec<PathBuf>) -> Result<Vec<PathBuf>, CommandError> {
@@ -471,3 +486,50 @@ impl Command for DevBuildCommand {
         false
     }
 }
+
+pub struct DevInitCommand {}
+
+impl DevInitCommand {
+    pub fn run_init(&self, workspace: &Workspace, toolchain: &str) -> CommandResult {
+        match toolchain {
+            "cmake" => {
+                let toolchain_root = workspace.root.join("Toolchain");
+                let toolchain_dir = toolchain_root.join("CMake");
+                if toolchain_dir.exists() {
+                    return Err(InvalidArgument {
+                        message: format!("Toolchain directory already exists at {}", toolchain_dir.display()),
+                    });
+                }
+                fs::create_dir_all(&toolchain_root)?;
+                copy_include_dir_recursive(&CMAKE_TOOLCHAIN_DIR, &toolchain_dir, None)?;
+                println!(
+                    "{}",
+                    format!("Initialized CMake toolchain under {}", toolchain_dir.display()).green()
+                );
+                Ok(())
+            }
+            _ => Err(InvalidArgument {
+                message: format!("Unsupported toolchain: {}", toolchain),
+            }),
+        }
+    }
+}
+
+impl Command for DevInitCommand {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+        if let Some(subcommand) = args.subcommand_matches("dev") {
+            return subcommand.subcommand_matches("init");
+        }
+        None
+    }
+
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+        let toolchain = args.get_one::<String>("toolchain").unwrap();
+        self.run_init(workspace, toolchain)
+    }
+
+    fn needs_workspace(&self) -> bool {
+        false
+    }
+}
+
