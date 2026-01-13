@@ -54,8 +54,6 @@ impl GlobsOrPlatformSpecificGlobs {
 pub struct PublishOptionsFileContent {
     #[serde(alias = "globs")]
     pub release_globs: GlobsOrPlatformSpecificGlobs,
-    #[serde(alias = "trigger_publish_globs")]
-    pub additional_publish_triggering_globs: Option<GlobsOrPlatformSpecificGlobs>,
     pub target_platforms: Option<Vec<String>>,
 }
 
@@ -77,13 +75,12 @@ impl PublishOptionsFileContent {
         (nospub, found)
     }
     pub fn empty() -> PublishOptionsFileContent {
-        PublishOptionsFileContent { release_globs: GlobsOrPlatformSpecificGlobs::Globs(vec![]), additional_publish_triggering_globs: None, target_platforms: None }
+        PublishOptionsFileContent { release_globs: GlobsOrPlatformSpecificGlobs::Globs(vec![]), target_platforms: None }
     }
 }
 
 pub struct PublishOptions {
     pub(crate) release_globs: Vec<String>,
-    pub(crate) additional_publish_triggering_globs: Option<Vec<String>>,
     pub(crate) target_platforms: Option<Vec<String>>,
 }
 
@@ -95,14 +92,11 @@ impl PublishOptions {
         }
         let mut options = PublishOptions::empty();
         options.release_globs = GlobsOrPlatformSpecificGlobs::get_resolved_globs(&nospub.release_globs, &get_host_platform());
-        if let Some(triggers) = &nospub.additional_publish_triggering_globs {
-            options.additional_publish_triggering_globs = Some(GlobsOrPlatformSpecificGlobs::get_resolved_globs(triggers, &get_host_platform()));
-        }
         options.target_platforms = nospub.target_platforms;
         (options, true)
     }
     pub fn empty() -> PublishOptions {
-        PublishOptions { release_globs: vec![], additional_publish_triggering_globs: None, target_platforms: None }
+        PublishOptions { release_globs: vec![], target_platforms: None }
     }
     pub fn all() -> PublishOptions {
         let mut options = PublishOptions::empty();

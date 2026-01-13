@@ -840,6 +840,14 @@ impl Index {
         }
         None
     }
+    pub fn get_package_releases(&self, name: &str) -> Vec<&PackageReleaseEntry> {
+        let res = self.packages.get(name);
+        if res.is_none() {
+            return Vec::new();
+        }
+        let (_, version_list) = res.unwrap();
+        version_list.iter().collect()
+    }
     pub fn get_package_cpy(
         &self,
         name: &str,

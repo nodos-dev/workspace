@@ -1,16 +1,14 @@
 use std::path::PathBuf;
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
-use glob_match::glob_match;
-use path_slash::PathBufExt;
 use crate::nosman::command::{get_version_check_arg, Command, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument};
 use crate::nosman::command::publish::{PublishCommand, PublishOptions};
 use crate::nosman::constants;
 
 use crate::nosman::command::unpublish::UnpublishCommand;
-use crate::nosman::index::VersionCheckStrategy;
-use crate::nosman::package::get_package_manifests;
+use crate::nosman::index::{SemVer, VersionCheckStrategy};
+use crate::nosman::package::{get_package_info_from_manifest, get_package_manifests};
 use crate::nosman::platform::{get_host_platform, Platform};
 use crate::nosman::workspace::Workspace;
 
@@ -18,11 +16,12 @@ pub struct PublishBatchCommand {
 }
 
 impl PublishBatchCommand {
-    fn run_publish_batch(&self, workspace: &Workspace, dry_run: bool, verbose: bool, remote_name: &String, repo_path: &PathBuf, compare_with: Option<&String>,
-                        version_suffix: &String, version_check_strategy: &VersionCheckStrategy, vendor: Option<&String>, publisher_name: Option<&String>,
-                        publisher_email: Option<&String>, release_tags: &Vec<String>, opt_target_platform: Option<&String>, release_notes: Option<&String>) -> CommandResult {
-        if !repo_path.exists() {
-            return Err(InvalidArgument { message: format!("Repo {} does not exist", repo_path.display()) });
+    fn run_publish_batch(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, remote_name: &String, directory: &PathBuf,
+                         version_suffix: &String, version_check_strategy: &VersionCheckStrategy, vendor: Option<&String>, publisher_name: Option<&String>,
+                         publisher_email: Option<&String>, release_tags: &Vec<String>, opt_target_platform: Option<&String>, release_notes: Option<&String>,
+                         publish_all: bool, packages: Vec<&String>) -> CommandResult {
+        if !directory.exists() {
+            return Err(InvalidArgument { message: format!("Repo {} does not exist", directory.display()) });
         }
 
 		let target_platform = if opt_target_platform.is_none() {
@@ -33,81 +32,65 @@ impl PublishBatchCommand {
             Platform::from_str(opt_target_platform.unwrap()).expect("Invalid target platform")
         };
 
-        let repo_path = dunce::canonicalize(repo_path).unwrap_or_else(|e| panic!("Failed to canonicalize repo path {:?}: {}", repo_path, e));
-
-        let mut changed_files_opt: Option<Vec<PathBuf>> = None;
-        if let Some(reference) = compare_with {
-            println!("Checking for changes between {} and HEAD", reference);
-            let mut changed_files = vec![];
-            let output = std::process::Command::new("git")
-                .arg("diff")
-                .arg("--name-only")
-                .arg(format!("{}..{}", reference, "HEAD"))
-                .current_dir(&repo_path)
-                .output()
-                .expect("Failed to execute git diff");
-            if !output.status.success() {
-                return Err(InvalidArgument { message: format!("Failed to execute git diff: {}", String::from_utf8_lossy(&output.stderr)) });
-            }
-            let output = String::from_utf8_lossy(&output.stdout);
-            for line in output.lines() {
-                println!("{}", format!("Changed file: {}", line).dimmed());
-                changed_files.push(PathBuf::from(line.to_string()));
-            }
-            changed_files_opt = Some(changed_files);
-        }
-        else {
-            println!("All modules under {} will be published", repo_path.display());
-        }
+        let directory = dunce::canonicalize(directory).unwrap_or_else(|e| panic!("Failed to canonicalize directory {:?}: {}", directory, e));
 
         // Find all modules in the repo
         let mut to_be_published: Vec<PathBuf> = vec![];
-        let package_manifests = get_package_manifests(&repo_path, false);
-        println!("Found {} packages in {}", package_manifests.len(), repo_path.display());
+        let package_manifests = get_package_manifests(&directory, false);
+        println!("Found {} packages in {}", package_manifests.len(), directory.display());
         for (_plugin_type, manifest_file_path) in package_manifests {
             let parent = manifest_file_path.parent().unwrap();
-            let relative_path = parent.strip_prefix(&repo_path).unwrap();
+            let relative_path = parent.strip_prefix(&directory).unwrap();
             let (publish_options, found) = PublishOptions::from_file(&parent.join(constants::PUBLISH_OPTIONS_FILE_NAME));
             if !found {
                 println!("{}", format!("Package at {} does not contain a {} file, skipping release", relative_path.display(), constants::PUBLISH_OPTIONS_FILE_NAME).dimmed());
                 continue;
             }
-			if let Some(targets) = publish_options.target_platforms {
+            if let Some(targets) = publish_options.target_platforms {
                 if !targets.contains(&target_platform.to_string()) {
                     println!("{}", format!("Target platform {} is not in the list of target platforms in {} for package at {}", target_platform.to_string(), constants::PUBLISH_OPTIONS_FILE_NAME, relative_path.display()));
 					continue;
 				}
             }
-            // If nospub.globs contain any of the changed files, add parent to to_be_published
-            if changed_files_opt.is_some() {
-                let changed_files = changed_files_opt.as_ref().unwrap();
-                let mut found = false;
-                let mut watch_globs = Vec::new();
-                watch_globs.extend(publish_options.release_globs.iter());
-                if let Some(triggers) = &publish_options.additional_publish_triggering_globs {
-                    watch_globs.extend(triggers.iter());
-                }
-                let nospub_file = constants::PUBLISH_OPTIONS_FILE_NAME.to_string();
-                watch_globs.push(&nospub_file);
-                for glob in &watch_globs {
-                    // Prepend the parent path to the glob
-                    let local = relative_path.join(glob);
-                    let glob_str = local.to_slash_lossy().to_string();
-                    for changed_file in changed_files {
-                        if glob_match(glob_str.as_str(), changed_file.to_str().unwrap()) {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if found {
-                        break;
-                    }
-                }
-                if !found {
+            let package_info = get_package_info_from_manifest(&manifest_file_path)
+                .map_err(|e| InvalidArgument { message: format!("Failed to get package info from manifest at {}: {}", relative_path.display(), e) })?;
+            if !packages.is_empty() {
+                if !packages.contains(&&package_info.id.name) {
+                    println!("{}", format!("Package {} is not in the list of packages to be published, skipping", package_info.id.name).dimmed());
                     continue;
                 }
             }
-            to_be_published.push(parent.to_path_buf());
+            let mut skip = false;
+            if !publish_all {
+
+                workspace.fetch_package_releases(&package_info.id.name);
+                let publish_version_str = package_info.id.version + version_suffix;
+                let publish_version = SemVer::parse_from_str(&publish_version_str)
+                    .ok_or(InvalidArgument { message: format!("Failed to parse version string: {}", publish_version_str) })?;
+                let publish_version_excl_build_no = SemVer::new(publish_version.major, publish_version.minor, publish_version.patch, None);
+                for existing_release in workspace.index_cache.get_package_releases(&package_info.id.name) {
+                    if let Some(existing_platform) = &existing_release.platform {
+                        let existing_release_platform = Platform::from_str(&existing_platform);
+                        if existing_release_platform.is_some() && existing_release_platform.unwrap() != target_platform {
+                            continue;
+                        }
+                        let existing_release_ver = SemVer::parse_from_str(&existing_release.version);
+                        if existing_release_ver.is_none() {
+                            continue;
+                        }
+                        let existing_release_ver = existing_release_ver.unwrap();
+                        let existing_release_ver_excl_build_no = SemVer::new(existing_release_ver.major, existing_release_ver.minor, existing_release_ver.patch, None);
+                        if existing_release_ver_excl_build_no == publish_version_excl_build_no {
+                            println!("Release {:?} already exists, skipping publish", existing_release);
+                            skip = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if !skip {
+                to_be_published.push(parent.to_path_buf());
+            }
         }
 
         for package_root in &to_be_published {
@@ -152,23 +135,17 @@ pub fn get_cli() -> clap::Command {
     clap::Command::new("publish-batch")
         .about("Publish all/changed packages under the git repository.")
         .after_help(format!("This command will publish all/changed packages under the git repository to the specified remote.\n\
-    It will use the {} files to compare file changes & adding files to the release. In the {} file, 'trigger_publish_globs' field will be used check file changes. \
-    The 'release_globs' field however, will both be used for including files to the release as well as checking file changes.", constants::PUBLISH_OPTIONS_FILE_NAME, constants::PUBLISH_OPTIONS_FILE_NAME))
+    It will use the {} files to add the files to the release.", constants::PUBLISH_OPTIONS_FILE_NAME))
         .arg(Arg::new("remote")
             .help("Name of the remote to publish to.")
             .default_value("default")
         )
-        .arg(Arg::new("repo_path")
-            .long("repo-path")
-            .short('r')
-            .help("Path to the root folder of the repository. If not provided, the current directory will be used.")
+        .arg(Arg::new("directory")
+            .long("directory")
+            .alias("repo-path")
+            .short('d')
+            .help("The directory of the plugins to be published. If not provided, the current directory will be used.")
             .default_value(".")
-        )
-        .arg(Arg::new("compare_with")
-            .long("compare-with")
-            .short('c')
-            .help("Compare current with the given branch, tag or ref.\n\
-        If not provided or empty, it will publish all packages found under the provided repo.")
         )
         .arg(Arg::new("version_suffix")
             .long("version-suffix")
@@ -222,6 +199,20 @@ pub fn get_cli() -> clap::Command {
             .required(false)
         )
         .arg(get_version_check_arg())
+        .arg(Arg::new("publish_all")
+            .action(ArgAction::SetTrue)
+            .long("publish-all")
+            .help("Triggers publish routine for all packages, even if their version have not changed. Command could fail if version check is not permissive enough.")
+            .num_args(0)
+            .required(false)
+        )
+        .arg(Arg::new("packages")
+            .long("packages")
+            .help("Publish only the specified packages. Can be specified multiple times.")
+            .required(false)
+            .action(ArgAction::Append)
+            .num_args(1..)
+        )
 }
 
 impl Command for PublishBatchCommand {
@@ -233,24 +224,20 @@ impl Command for PublishBatchCommand {
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
         let verbose = args.get_one::<bool>("verbose").unwrap();
         let remote_name = args.get_one::<String>("remote").unwrap();
-        let repo_path = PathBuf::from(args.get_one::<String>("repo_path").unwrap());
-        let mut opt_compare_with = args.get_one::<String>("compare_with");
+        let directory = PathBuf::from(args.get_one::<String>("directory").unwrap());
         let version_suffix = args.get_one::<String>("version_suffix").unwrap();
         let vendor = args.get_one::<String>("vendor");
         let publisher_name = args.get_one::<String>("publisher_name");
         let publisher_email = args.get_one::<String>("publisher_email");
-        if let Some(compare_with) = opt_compare_with {
-            if compare_with.is_empty() {
-                opt_compare_with = None;
-            }
-        }
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
         let target_platform = args.get_one::<String>("target_platform");
         let release_notes = args.get_one::<String>("release_notes");
         let version_check_strategy = VersionCheckStrategy::from_str(args.get_one::<String>("version_check").unwrap().as_str());
-        self.run_publish_batch(workspace, *dry_run, *verbose, &remote_name, &repo_path, opt_compare_with, &version_suffix, &version_check_strategy, 
-                               vendor, publisher_name, publisher_email, &release_tags, target_platform, release_notes)
+        let publish_all = args.get_one::<bool>("publish_all").unwrap();
+        let packages: Vec<&String> = args.get_many::<String>("packages").unwrap_or_default().collect();
+        self.run_publish_batch(workspace, *dry_run, *verbose, &remote_name, &directory, &version_suffix, &version_check_strategy,
+                               vendor, publisher_name, publisher_email, &release_tags, target_platform, release_notes, *publish_all, packages)
     }
 
     fn needs_workspace(&self) -> bool {

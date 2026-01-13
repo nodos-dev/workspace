@@ -301,3 +301,11 @@ pub fn get_plugin_manifest_file_ext(nodos_version: Option<&SemVer>, plugin_type:
     };
     ext
 }
+
+pub fn get_package_info_from_manifest(manifest_path: &PathBuf) -> Result<PackageInfo, String> {
+    let file = fs::File::open(manifest_path)
+        .map_err(|e| format!("Failed to open package manifest file {:?}: {}", manifest_path, e))?;
+    let manifest: serde_json::Value = serde_json::from_reader(file)
+        .map_err(|e| format!("Failed to parse package manifest file {:?}: {}", manifest_path, e))?;
+    Ok(serde_json::from_value(manifest["info"].clone()).unwrap_or_else(|e| panic!("Failed to parse package info from {:?}: {}", manifest_path, e)))
+}

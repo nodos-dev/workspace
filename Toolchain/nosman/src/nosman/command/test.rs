@@ -6,7 +6,7 @@ use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::workspace::Workspace;
 use crate::nosman::{package};
 use std::fs::File;
-use crate::nosman::package::PackageInfo;
+use crate::nosman::package::{get_package_info_from_manifest};
 use std::time::Instant;
 use std::time::Duration;
 
@@ -38,15 +38,9 @@ impl TestCommand {
                 continue;
             }
             // Read manifest to get package name from 'info' field (PackageInfo)
-            let package_name = match File::open(&manifest_path)
-                .ok()
-                .and_then(|f| serde_json::from_reader::<_, serde_json::Value>(f).ok())
-                .and_then(|json| json.get("info").cloned())
-                .and_then(|info_val| serde_json::from_value::<PackageInfo>(info_val).ok())
-            {
-                Some(info) => info.id.name,
-                None => String::new(),
-            };
+            let package_name = get_package_info_from_manifest(&manifest_path)
+                .map(|info| info.id.name)
+                .unwrap_or(String::new());
             let entries = match fs::read_dir(&tests_dir) {
                 Ok(e) => e,
                 Err(_) => continue,
