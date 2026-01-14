@@ -1,5 +1,5 @@
 use log::{info, warn};
-use nosman::nosman::command::create::{CreateCommand, LangTool};
+use nosman::nosman::command::create::{CreateCommand};
 use nosman::nosman::command::dev::DevInitCommand;
 use nosman::nosman::command::get::GetCommand;
 use nosman::nosman::command::info::InfoCommand;
@@ -15,6 +15,7 @@ use rand::{Rng, SeedableRng};
 use std::path::PathBuf;
 use std::{fs, io};
 use std::process::Output;
+use nosman::nosman::lang_tool::LangTool;
 use nosman::nosman::package::{get_plugin_manifest_file_ext, PackageIdentifier};
 
 #[ctor::ctor]

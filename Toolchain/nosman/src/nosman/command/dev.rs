@@ -12,6 +12,7 @@ use rayon::prelude::*;
 use CommandError::InvalidArgument;
 use crate::nosman::common::copy_include_dir_recursive;
 use crate::nosman::command::{get_lang_tool_arg, Command, CommandError, CommandResult};
+use crate::nosman::lang_tool::LangTool;
 use crate::nosman::workspace::Workspace;
 
 pub fn get_cli() -> clap::Command {
@@ -57,6 +58,20 @@ pub fn get_cli() -> clap::Command {
                 .short('p')
                 .help("Path to the project folder to build")
                 .default_value("Project"))
+            .arg(Arg::new("config")
+                .long("config")
+                .help("CMake-only build configuration (e.g. Debug/Release)"))
+            .arg(Arg::new("target")
+                .long("target")
+                .help("CMake-only build target"))
+            .arg(Arg::new("clean_first")
+                .long("clean-first")
+                .action(ArgAction::SetTrue)
+                .help("CMake-only clean before building (CMake --clean-first)"))
+            .arg(Arg::new("verbose")
+                .long("verbose")
+                .action(ArgAction::SetTrue)
+                .help("CMake-only verbose build output (CMake --verbose)"))
             .arg(Arg::new("job_count")
                 .long("jobs")
                 .short('j')
@@ -66,7 +81,7 @@ pub fn get_cli() -> clap::Command {
                 .trailing_var_arg(true)
                 .num_args(1..)
                 .allow_hyphen_values(true)
-                .help("Arguments to pass to the underlying tool when building project files")
+                .help("Arguments to pass to the underlying build tool (e.g. MSBuild/Ninja)")
             )
         )
         .subcommand(clap::Command::new("init")
@@ -265,9 +280,9 @@ impl Command for DevPullCommand {
 pub struct DevGenCommand {}
 
 impl DevGenCommand {
-    fn run_gen(&self, lang_tool: &String, project_folder: &String, plugin_dirs: Option<String>, extra_args: Vec<String>) -> CommandResult {
+    fn run_gen(&self, lang_tool: LangTool, project_folder: &String, plugin_dirs: Option<String>, extra_args: Vec<String>) -> CommandResult {
         // Only cpp/cmake is supported for now
-        if lang_tool != "cpp/cmake" {
+        if lang_tool != LangTool::CppCMake {
             return Err(InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool) });
         }
         let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", project_folder, "-DNOS_INVOKED_FROM_NOSMAN=ON"];
@@ -310,6 +325,8 @@ impl Command for DevGenCommand {
 
     fn run(&self, _workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let lang_tool = args.get_one::<String>("language/tool").unwrap();
+        let lang_tool = LangTool::from_str(lang_tool.as_str())
+            .ok_or(InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool) })?;
         let project_folder = args.get_one::<String>("project_folder").unwrap();
         let extra_args = args
             .get_many::<String>("extra_args")
@@ -429,9 +446,19 @@ impl Command for DevStatusCommand {
 pub struct DevBuildCommand {}
 
 impl DevBuildCommand {
-    fn run_build(&self, lang_tool: &String, project_folder: &String, jobs: &String, extra_args: Vec<String>) -> CommandResult {
+    fn run_build(
+        &self,
+        lang_tool: LangTool,
+        project_folder: &String,
+        jobs: &String,
+        cmake_config: Option<&String>,
+        cmake_target: Option<&String>,
+        clean_first: bool,
+        verbose: bool,
+        extra_args: Vec<String>
+    ) -> CommandResult {
         // Only cpp/cmake is supported for now
-        if lang_tool != "cpp/cmake" {
+        if lang_tool != LangTool::CppCMake {
             return Err(InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool) });
         }
         let job_count: usize = if jobs == "auto" {
@@ -440,31 +467,49 @@ impl DevBuildCommand {
             jobs.parse::<usize>().map_err(|_| InvalidArgument { message: format!("Invalid job count: {}", jobs) })?
         };
         let job_count_str = job_count.to_string();
-        let mut build_args = vec!["--build".to_string(), project_folder.clone()];
-        // If windows, and we use msbuild, cmake.exe --build --parallel <n_msbuild> -- /p:CL_MPcount=<n_cl>
-        if cfg!(windows) {
-            build_args.push("--parallel".to_string());
-            build_args.push((job_count / 2).to_string());
-            build_args.push("--".to_string());
-            // TODO: Check if the compiler is Visual Studio
-            build_args.push(format!("/p:CL_MPCount={}", job_count_str));
-        } else {
-            build_args.push("--parallel".to_string());
-            build_args.push(job_count_str);
+        match lang_tool {
+            LangTool::CppCMake => {
+                let mut build_args = vec!["--build".to_string(), project_folder.clone()];
+                if let Some(config) = cmake_config {
+                    build_args.push("--config".to_string());
+                    build_args.push(config.clone());
+                }
+                if let Some(target) = cmake_target {
+                    build_args.push("--target".to_string());
+                    build_args.push(target.clone());
+                }
+                if clean_first {
+                    build_args.push("--clean-first".to_string());
+                }
+                if verbose {
+                    build_args.push("--verbose".to_string());
+                }
+                // If windows, and we use msbuild, cmake.exe --build --parallel <n_msbuild> -- /p:CL_MPcount=<n_cl>
+                if cfg!(windows) {
+                    build_args.push("--parallel".to_string());
+                    build_args.push((job_count / 2).to_string());
+                    build_args.push("--".to_string());
+                    // TODO: Check if the compiler is Visual Studio
+                    build_args.push(format!("/p:CL_MPCount={}", job_count_str));
+                } else {
+                    build_args.push("--parallel".to_string());
+                    build_args.push(job_count_str);
+                }
+                for arg in extra_args.iter() {
+                    build_args.push(arg.clone());
+                }
+                let mut cmd = std::process::Command::new("cmake");
+                let cmd_args_str = build_args.iter().map(|s| s.as_ref()).collect::<Vec<&std::ffi::OsStr>>().join(std::ffi::OsStr::new(" "));
+                println!("{}: {:?}", "Running cmake build with".green(), cmd_args_str);
+                let status = cmd
+                    .args(&build_args)
+                    .status();
+                if !status.is_ok() || !status.unwrap().success() {
+                    return Err(CommandError::Runtime { message: format!("Error during running '{:?}'. See output.", build_args)});
+                }
+                Ok(())
+            }
         }
-        for arg in extra_args.iter() {
-            build_args.push(arg.clone());
-        }
-        let mut cmd = std::process::Command::new("cmake");
-        let cmd_args_str = build_args.iter().map(|s| s.as_ref()).collect::<Vec<&std::ffi::OsStr>>().join(std::ffi::OsStr::new(" "));
-        println!("{}: {:?}", "Running cmake build with".green(), cmd_args_str);
-        let status = cmd
-            .args(&build_args)
-            .status();
-        if !status.is_ok() || !status.unwrap().success() {
-            return Err(CommandError::Runtime { message: format!("Error during running '{:?}'. See output.", build_args)});
-        }
-        Ok(())
     }
 }
 
@@ -478,13 +523,28 @@ impl Command for DevBuildCommand {
 
     fn run(&self, _workspace: &mut Workspace, _command_name: Option<&str>, args: &clap::ArgMatches) -> CommandResult {
         let lang_tool = args.get_one::<String>("language/tool").unwrap();
+        let lang_tool = LangTool::from_str(lang_tool.as_str())
+            .ok_or(InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool) })?;
         let project_folder = args.get_one::<String>("project_folder").unwrap();
         let jobs = args.get_one::<String>("job_count").unwrap();
+        let cmake_config = args.get_one::<String>("config");
+        let cmake_target = args.get_one::<String>("target");
+        let clean_first = args.get_flag("clean_first");
+        let verbose = args.get_flag("verbose");
         let extra_args = args
             .get_many::<String>("extra_args")
             .map(|vals| vals.cloned().collect())
             .unwrap_or_default();
-        self.run_build(lang_tool, project_folder, jobs, extra_args)
+        self.run_build(
+            lang_tool,
+            project_folder,
+            jobs,
+            cmake_config,
+            cmake_target,
+            clean_first,
+            verbose,
+            extra_args
+        )
     }
 
     fn needs_workspace(&self) -> bool {

@@ -10,37 +10,12 @@ use crate::nosman::index::{PluginType, SemVer};
 use include_dir::{include_dir, Dir};
 use crate::nosman::command::sdk_info::get_engine_sdk_infos;
 use crate::nosman::common::{DEFAULT_NODOS_VERSION_INDEX, SUPPORTED_NODOS_VERSIONS};
+use crate::nosman::lang_tool::LangTool;
 use crate::nosman::module::get_dependency_arguments;
 use crate::nosman::package::{get_plugin_manifest_file_ext, PackageIdentifier};
 use crate::nosman::workspace::{ScanPackagesFlags, Workspace};
 
 pub struct CreateCommand {}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum LangTool {
-    CppCMake,
-}
-
-impl std::fmt::Display for LangTool {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LangTool::CppCMake => write!(f, "cpp/cmake"),
-        }
-    }
-}
-
-impl LangTool {
-    fn lang(&self) -> &'static str {
-        match self {
-            LangTool::CppCMake => "cpp",
-        }
-    }
-    fn tool(&self) -> &'static str {
-        match self {
-            LangTool::CppCMake => "cmake",
-        }
-    }
-}
 
 static DATA_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/data");
 
@@ -252,10 +227,9 @@ impl Command for CreateCommand {
             "subsystem" => PluginType::SubsystemLegacy,
             _ => panic!("Invalid module type") // Unreachable
         };
-        let lang_tool = match args.get_one::<String>("language/tool").unwrap().as_str() {
-            "cpp/cmake" => LangTool::CppCMake,
-            _ => panic!("Invalid language/tool") // Unreachable
-        };
+        let lang_tool_str = args.get_one::<String>("language/tool").unwrap();
+        let lang_tool = LangTool::from_str(lang_tool_str.as_str())
+            .ok_or(InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool_str) })?;
         let module_name = args.get_one::<String>("name").unwrap();
         let mut output_dir = PathBuf::from(args.get_one::<String>("output_dir").unwrap());
         let prefix = args.get_one::<String>("prefix");

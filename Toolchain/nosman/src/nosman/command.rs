@@ -29,6 +29,7 @@ use clap::{Arg, ArgMatches};
 use thiserror::Error;
 use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::SemVer;
+use crate::nosman::lang_tool::LangTool;
 
 #[derive(Error, Debug)]
 pub enum CommandError {
@@ -107,7 +108,7 @@ pub fn get_lang_tool_arg() -> Arg {
         .long("language-tool")
         .short('l')
         .help("Language and tool to use")
-        .value_parser(clap::builder::PossibleValuesParser::new(["cpp/cmake"]))
+        .value_parser(clap::builder::PossibleValuesParser::new(LangTool::POSSIBLE_VALUES))
         .default_value("cpp/cmake")
 }
 

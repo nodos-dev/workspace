@@ -11,3 +11,4 @@ pub mod extensions;
 pub mod cli;
 pub mod package;
 mod plugin;
+pub mod lang_tool;
