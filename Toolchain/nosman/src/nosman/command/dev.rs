@@ -36,13 +36,16 @@ pub fn get_cli() -> clap::Command {
                 .short('p')
                 .help("Path to the project folder to generate files in")
                 .default_value("Project"))
-            .arg(Arg::new("module_dirs")
-                .help("Module paths to generate if only one of them is wanted")
+            .arg(Arg::new("plugin_dirs")
+                .long("plugin-dirs")
+                .alias("module_dirs")
+                .help("Plugin directories to generate if only one of them is wanted")
                 .num_args(0..=1) // 0 or 1 argument allowed
-                .value_name("module_dirs")
                 .allow_hyphen_values(true))
             .arg(Arg::new("extra_args")
-                .last(true)
+                .trailing_var_arg(true)
+                .num_args(1..)
+                .allow_hyphen_values(true)
                 .help("Arguments to pass to the underlying tool when generating project files")
             )
         )
@@ -60,7 +63,9 @@ pub fn get_cli() -> clap::Command {
                 .help("Number of parallel jobs to run")
                 .default_value("auto"))
             .arg(Arg::new("extra_args")
-                .last(true)
+                .trailing_var_arg(true)
+                .num_args(1..)
+                .allow_hyphen_values(true)
                 .help("Arguments to pass to the underlying tool when building project files")
             )
         )
@@ -260,7 +265,7 @@ impl Command for DevPullCommand {
 pub struct DevGenCommand {}
 
 impl DevGenCommand {
-    fn run_gen(&self, lang_tool: &String, project_folder: &String, module_dirs: Option<String>, extra_args: Vec<String>) -> CommandResult {
+    fn run_gen(&self, lang_tool: &String, project_folder: &String, plugin_dirs: Option<String>, extra_args: Vec<String>) -> CommandResult {
         // Only cpp/cmake is supported for now
         if lang_tool != "cpp/cmake" {
             return Err(InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool) });
@@ -268,7 +273,7 @@ impl DevGenCommand {
         let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", project_folder, "-DNOS_INVOKED_FROM_NOSMAN=ON"];
 
         let mut formatted_args = Vec::new(); // holds the actual Strings
-        if let Some(val) = module_dirs{
+        if let Some(val) = plugin_dirs {
             if val.is_empty() {
                 cmake_args.push("-U MODULE_DIRS");
             } else {
@@ -306,23 +311,23 @@ impl Command for DevGenCommand {
     fn run(&self, _workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let lang_tool = args.get_one::<String>("language/tool").unwrap();
         let project_folder = args.get_one::<String>("project_folder").unwrap();
-        let mut extra_args = Vec::new();
-        if let Some(args) = args.get_one::<String>("extra_args") {
-            extra_args = args.split_whitespace().map(|s| s.to_string()).collect();
-        }
-        let path: Option<String>;
-        match args.get_one::<String>("module_dirs"){
+        let extra_args = args
+            .get_many::<String>("extra_args")
+            .map(|vals| vals.cloned().collect())
+            .unwrap_or_default();
+        let plugin_dirs: Option<String>;
+        match args.get_one::<String>("plugin_dirs"){
             None => {
-                path = None;
+                plugin_dirs = None;
             }
             Some(p) if p == "*" => {
-                path = Some(String::from(""));
+                plugin_dirs = Some(String::from(""));
             }
             Some(p) => {
-                path = Some(p.clone());
+                plugin_dirs = Some(p.clone());
             }
         }
-        self.run_gen(lang_tool, project_folder, path, extra_args)
+        self.run_gen(lang_tool, project_folder, plugin_dirs, extra_args)
     }
 
     fn needs_workspace(&self) -> bool {
@@ -475,10 +480,10 @@ impl Command for DevBuildCommand {
         let lang_tool = args.get_one::<String>("language/tool").unwrap();
         let project_folder = args.get_one::<String>("project_folder").unwrap();
         let jobs = args.get_one::<String>("job_count").unwrap();
-        let mut extra_args = Vec::new();
-        if let Some(args) = args.get_one::<String>("extra_args") {
-            extra_args = args.split_whitespace().map(|s| s.to_string()).collect();
-        }
+        let extra_args = args
+            .get_many::<String>("extra_args")
+            .map(|vals| vals.cloned().collect())
+            .unwrap_or_default();
         self.run_build(lang_tool, project_folder, jobs, extra_args)
     }
 
