@@ -102,10 +102,13 @@ jobs:
             git clone --depth 1 "https://github.com/${{ github.repository }}.git" --recurse-submodules --shallow-submodules "./nodos-cli-${{ github.ref_name }}"
           fi
           cd "./nodos-cli-${{ github.ref_name }}"
-          git fetch origin --prune --force
-          git reset --hard "${{ github.sha }}"
-          git clean -fdx
+          git fetch origin
+          git fetch --tags
+          git clean -ffd
+          git checkout ${{ github.sha }}
+          git reset --hard
           git submodule update --init --recursive --remote --depth 1
+          git status
 
       - name: Build Nodos CLI
         shell: pwsh
