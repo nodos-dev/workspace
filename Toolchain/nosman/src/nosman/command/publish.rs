@@ -22,7 +22,7 @@ use crate::nosman::command::{get_version_check_arg, Command, CommandError, Comma
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::{common, constants};
 use crate::nosman::index::{PackageReleaseEntry, PackageType, SemVer, VersionCheckStrategy};
-use crate::nosman::module::{load_module};
+use crate::nosman::module::{get_resolved_binary_path, load_module};
 use crate::nosman::package::PackageIdentifier;
 use crate::nosman::path::get_package_manifest_file;
 use crate::nosman::platform::{get_host_platform, Platform};
@@ -113,6 +113,52 @@ impl PublishCommand {
         // Should be lowercase alphanumeric, with only . and _ symbols are permitted
         name.chars().all(|c| c == '.' || c == '_' || c.is_numeric() || c.is_ascii_lowercase())
     }
+
+    fn get_plugin_api_version_from_binary(verbose: bool, package_type: &PackageType, manifest: &serde_json::Value, manifest_dir: &PathBuf, workspace: &Workspace) -> Result<Option<SemVer>, CommandError> {
+        let binary_path = get_resolved_binary_path(package_type, manifest, manifest_dir);
+        if binary_path.is_err() {
+            return Ok(None);
+        }
+        let binary_path = binary_path.unwrap();
+        if !binary_path.exists() {
+            return Ok(None);
+        }
+        let lib = match load_module(verbose, package_type, manifest, manifest_dir.clone(), workspace) {
+            Ok(lib) => lib,
+            Err(error) => return Err(error),
+        };
+        if verbose {
+            println!("Package binary {} loaded successfully. Checking Nodos {:?} API version...", binary_path.display(), package_type);
+        }
+        let get_api_version_func_name = "nosGetPluginAPIVersion";
+        let mut api_version_opt: Option<SemVer>;
+        unsafe {
+                let get_api_version_func = lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>(get_api_version_func_name.as_bytes())
+                    .or_else(|_| {
+                        lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>("nosGetSubsystemAPIVersion".as_bytes())
+                    }).unwrap_or_else(|e| panic!("Failed to get symbol {}: {}", get_api_version_func_name, e));
+                let mut major = 0;
+                let mut minor = 0;
+                let mut patch = 0;
+                get_api_version_func(&mut major, &mut minor, &mut patch);
+                api_version_opt = Some(SemVer { major: (major as u32), minor: Some(minor as u32), patch: Some(patch as u32), build_number: None });
+                println!("{}", format!("Binary {:?} uses Nodos {:?} API version: {}.{}.{}", binary_path, package_type, major, minor, patch).as_str().yellow());
+
+                {
+                    let get_min_required_minor_func_name = "nosGetMinimumRequiredPluginAPIMinorVersion";
+                    if let Ok(get_min_required_minor_func) = lib.get::<Symbol<unsafe extern "C" fn(*mut i32)>>(get_min_required_minor_func_name.as_bytes()) {
+                        let mut min_required_minor: i32 = 0;
+                        get_min_required_minor_func(&mut min_required_minor);
+                        if min_required_minor > 0 {
+                            api_version_opt.as_mut().unwrap().minor = Some(min_required_minor as u32);
+                            println!("{}", format!("Binary {:?} requires minimum Nodos {:?} API  minor version {}", binary_path, package_type, min_required_minor).as_str().yellow());
+                        }
+                    }
+                }
+            }
+        Ok(api_version_opt)
+    }
+
     pub fn publish(&self, workspace: &Workspace, dry_run: bool, verbose: bool, path: &PathBuf,
                    mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
                    version_check_strategy: &VersionCheckStrategy, mut package_type: Option<PackageType>,
@@ -187,42 +233,8 @@ impl PublishCommand {
                 }
                 category = manifest["info"]["category"].as_str().map(|s| s.to_string());
                 package_tags = manifest["info"]["tags"].as_array().map(|a| a.iter().map(|v| v.as_str().unwrap().to_string()).collect());
-                let binary_path = manifest["binary_path"].as_str();
-                if binary_path.is_some() && package_type.is_plugin() {
-                    let lib = match load_module(verbose, &package_type, manifest, manifest_file.parent().unwrap().to_path_buf(), workspace) {
-                        Ok(lib) => lib,
-                        Err(error) => return Err(error),
-                    };
-                    if verbose {
-                        println!("Package {} loaded successfully. Checking Nodos {:?} API version...", name.as_ref().unwrap(), &package_type);
-                    }
-                    let get_api_version_func_name = "nosGetPluginAPIVersion";
-                    unsafe
-                        {
-                            let get_api_version_func = lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>(get_api_version_func_name.as_bytes())
-                                .or_else(|_| {
-                                    lib.get::<Symbol<unsafe extern "C" fn(*mut i32, *mut i32, *mut i32)>>("nosGetSubsystemAPIVersion".as_bytes())
-                                }).unwrap_or_else(|e| panic!("Failed to get symbol {}: {}", get_api_version_func_name, e));
-                            let mut major = 0;
-                            let mut minor = 0;
-                            let mut patch = 0;
-                            get_api_version_func(&mut major, &mut minor, &mut patch);
-                            api_version_opt = Some(SemVer { major: (major as u32), minor: Some(minor as u32), patch: Some(patch as u32), build_number: None });
-                            println!("{}", format!("{} uses Nodos {:?} API version: {}.{}.{}", name.as_ref().unwrap(), &package_type, major, minor, patch).as_str().yellow());
-
-                            {
-                                let get_min_required_minor_func_name = "nosGetMinimumRequiredPluginAPIMinorVersion";
-                                if let Ok(get_min_required_minor_func) = lib.get::<Symbol<unsafe extern "C" fn(*mut i32)>>(get_min_required_minor_func_name.as_bytes()) {
-                                    let mut min_required_minor: i32 = 0;
-                                    get_min_required_minor_func(&mut min_required_minor);
-                                    if min_required_minor > 0 {
-                                        api_version_opt.as_mut().unwrap().minor = Some(min_required_minor as u32);
-                                        println!("{}", format!("{} requires minimum Nodos {:?} API  minor version {}", name.as_ref().unwrap(), &package_type, min_required_minor).as_str().yellow());
-                                    }
-                                }
-                            }
-                        }
-
+                if package_type.is_plugin() {
+                    api_version_opt = Self::get_plugin_api_version_from_binary(verbose, package_type, &manifest, &abs_path, workspace)?;
                 }
             }
         }
