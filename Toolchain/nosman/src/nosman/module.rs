@@ -123,10 +123,23 @@ pub fn load_module_from_manifest(package: &LocalPackageEntry, workspace: &Worksp
     let path = package.get_abs_manifest_path(workspace);
     let manifest_file_contents = common::read_file_contents(&path, "package manifest")?;
     let manifest: serde_json::Value = serde_json::from_str(&manifest_file_contents).unwrap_or_else(|e| panic!("Failed to parse package manifest file {}: {}", path.display(), e));
-    load_module(false, &package.package_type, manifest, package.get_abs_manifest_path(workspace).parent().unwrap().to_path_buf(), workspace)
+    load_module(false, &package.package_type, &manifest, package.get_abs_manifest_path(workspace).parent().unwrap().to_path_buf(), workspace)
 }
 
-pub fn load_module(verbose: bool, package_type: &PackageType, manifest: serde_json::Value, manifest_file_parent: PathBuf, workspace: &Workspace) -> Result<Library, CommandError> {
+fn generate_binary_name_from_package_name(package_name: &str) -> Option<String> {
+    let mut parts = package_name.split('.').filter(|part| !part.is_empty());
+    let first = parts.next()?;
+    let mut generated = String::from(first);
+    for part in parts {
+        let mut chars = part.chars();
+        let first_char = chars.next()?;
+        generated.push(first_char.to_ascii_uppercase());
+        generated.extend(chars);
+    }
+    Some(generated)
+}
+
+pub fn get_manifest_binary_path(package_type: &PackageType, manifest: &serde_json::Value) -> Result<String, CommandError> {
     let key = match package_type {
         PackageType::Plugin => { "binary_path" }
         PackageType::Subsystem => { "binary_path" }
@@ -135,18 +148,34 @@ pub fn load_module(verbose: bool, package_type: &PackageType, manifest: serde_js
             return Err(InvalidArgument { message: format!("Unsupported package type: {:?}", package_type) });
         }
     };
-    let binary_path = manifest[key].as_str();
-    if binary_path.is_none() {
-        return Err (InvalidArgument {message: "Package manifest does not specify a binary path".to_string() })
+    if let Some(path) = manifest[key].as_str() {
+        return Ok(path.to_string());
     }
-    let module_dir = manifest_file_parent;
-    let binary_path = module_dir.join(binary_path.unwrap());
+    if *package_type == PackageType::Plugin {
+        let package_name = manifest["info"]["id"]["name"].as_str()
+            .ok_or(InvalidArgument { message: "Package manifest does not specify a binary path or package name".to_string() })?;
+        let generated_name = generate_binary_name_from_package_name(package_name)
+            .ok_or(InvalidArgument { message: format!("Failed to generate binary path from package name {}", package_name) })?;
+        return Ok(format!("Binaries/{}", generated_name));
+    }
+    Err(InvalidArgument {message: "Package manifest does not specify a binary path".to_string() })
+}
+
+pub fn get_resolved_binary_path(package_type: &PackageType, manifest: &serde_json::Value, module_dir: &PathBuf) -> Result<PathBuf, CommandError> {
+    let binary_path = get_manifest_binary_path(package_type, manifest)?;
+    let binary_path = module_dir.join(binary_path);
     let host_platform = get_host_platform();
-    let binary_path = binary_path.with_extension(
+    Ok(binary_path.with_extension(
         if host_platform.os == "windows" { "dll" }
         else if host_platform.os == "macos" { "dylib" }
         else { "so" }
-    ).into_os_string();
+    ))
+}
+
+pub fn load_module(verbose: bool, package_type: &PackageType, manifest: &serde_json::Value, manifest_file_parent: PathBuf, workspace: &Workspace) -> Result<Library, CommandError> {
+    let binary_path = get_resolved_binary_path(package_type, manifest, &manifest_file_parent)?;
+    let module_dir = manifest_file_parent;
+    let binary_path = binary_path.into_os_string();
     let mut additional_search_paths: Vec<PathBuf> = Vec::new();
     for path_str in manifest["additional_search_paths"].as_array().unwrap_or(&vec![]).iter() {
         let path = module_dir.join(path_str.as_str().unwrap());
