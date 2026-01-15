@@ -2,7 +2,7 @@
 
 Nodos is a highly extensible, node-graph based computing platform.
 
-This repo is the workspace for Nodos development: engine SDKs (optional for 1.4+), plugins/subsystems, and the toolchain used to generate projects.
+This repo is the workspace for Nodos development: engine SDKs, plugins/subsystems, and the toolchain used to generate projects.
 
 ## Toolchain
 - `Toolchain/CMake`: workspace CMake entrypoint and helpers.

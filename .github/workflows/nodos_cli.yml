@@ -107,7 +107,7 @@ jobs:
           git clean -ffd
           git checkout ${{ github.sha }}
           git reset --hard
-          git submodule update --init --recursive --remote --depth 1
+          git submodule update --init --recursive --depth 1
           git status
 
       - name: Build Nodos CLI
