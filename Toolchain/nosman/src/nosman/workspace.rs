@@ -467,17 +467,6 @@ impl Workspace {
             }
         }
     }
-    pub fn fetch_latest_versions(&mut self) -> Vec<(&String, &PackageReleaseEntry)> {
-        println!("Fetching latest versions...");
-        self.fetch_releases(None);
-        let mut res = Vec::new();
-        for name in self.index_cache.packages.keys() {
-            if let Some(entry) = self.index_cache.get_latest_release(name) {
-                res.push((name, entry.1));
-            }
-        }
-        res
-    }
     pub fn get_node_definitions(&self, node_class_name: &String, nodos_version: &Option<SemVer>) -> Vec<NodeDefinition> {
         let mut res = Vec::new();
         for versions in self.packages.values() {

@@ -2,6 +2,7 @@ use chrono::DateTime;
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use inquire::{MultiSelect};
+use std::collections::HashMap;
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::index::SemVer;
 use crate::nosman::workspace::{Workspace};
@@ -90,14 +91,43 @@ impl ListCommand {
             }
             if remote {
                 workspace.with_output_mode_scoped(crate::nosman::workspace::OutputMode::Silent, |ws| {
-                    let latest = ws.fetch_latest_versions();
                     println!("{}", "Remote packages".green());
-                    let mut latest_owned: Vec<(String, String)> = latest.iter()
-                        .map(|(name, entry)| ((*name).clone(), entry.version.clone()))
-                        .collect();
-                    latest_owned.sort_by(|a, b| a.0.cmp(&b.0));
-                    for (name, version) in latest_owned {
-                        println!("  {} (latest: {})", name.green(), version.yellow());
+                    ws.fetch_releases(None);
+                    let mut package_names: Vec<String> = ws.index_cache.packages.keys().cloned().collect();
+                    package_names.sort();
+                    for name in package_names {
+                        let (_, releases) = ws.index_cache.packages.get(&name).unwrap();
+                        let mut latest_by_platform: HashMap<String, &crate::nosman::index::PackageReleaseEntry> = HashMap::new();
+                        for release in releases {
+                            let platform_key = release.platform.clone().unwrap_or_else(|| "any".to_string());
+                            let should_update = match latest_by_platform.get(&platform_key) {
+                                Some(existing) => {
+                                    let existing_semver = SemVer::parse_from_str(&existing.version);
+                                    let release_semver = SemVer::parse_from_str(&release.version);
+                                    match (existing_semver, release_semver) {
+                                        (Some(existing_semver), Some(release_semver)) => release_semver > existing_semver,
+                                        (None, Some(_)) => true,
+                                        (Some(_), None) => false,
+                                        (None, None) => release.version > existing.version,
+                                    }
+                                }
+                                None => true,
+                            };
+                            if should_update {
+                                latest_by_platform.insert(platform_key, release);
+                            }
+                        }
+                        let mut platform_versions: Vec<(String, String)> = latest_by_platform
+                            .iter()
+                            .map(|(platform, entry)| (platform.clone(), entry.version.clone()))
+                            .collect();
+                        platform_versions.sort_by(|a, b| a.0.cmp(&b.0));
+                        let versions_str = platform_versions
+                            .iter()
+                            .map(|(platform, version)| format!("{}: {}", platform.yellow(), version.yellow()))
+                            .collect::<Vec<String>>()
+                            .join(", ");
+                        println!("  {} ({})", name.green(), versions_str);
                     }
                 });
             }
