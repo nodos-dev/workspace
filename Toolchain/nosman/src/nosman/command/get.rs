@@ -358,7 +358,7 @@ pub fn get_cli() -> clap::Command {
         .arg(Arg::new("name")
             .help("Name of the Nodos release to bring. Can be 'nodos' or some bundled version.")
             .long("name")
-            .default_value("nodos")
+            .default_value("nodos.bundle.standard")
         )
         .arg(Arg::new("version")
             .help("Version of the Nodos release to bring. If not provided, the latest version will be installed.")
