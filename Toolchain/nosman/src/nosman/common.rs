@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 use std::process::Output;
+use std::sync::{Mutex, OnceLock};
 use colored::Colorize;
 use include_dir::Dir;
 use indicatif::ProgressBar;
@@ -14,6 +15,15 @@ use crate::nosman::command::CommandError;
 use crate::nosman::command::sdk_info::get_engine_sdk_infos;
 use crate::nosman::index::SemVer;
 use crate::nosman::workspace::Workspace;
+
+pub type PromptHandler = dyn Fn(&str, bool, bool) -> bool + Send + Sync + 'static;
+static PROMPT_HANDLER: OnceLock<Mutex<Option<Box<PromptHandler>>>> = OnceLock::new();
+
+pub fn set_prompt_handler(handler: Option<Box<PromptHandler>>) {
+    let slot = PROMPT_HANDLER.get_or_init(|| Mutex::new(None));
+    let mut guard = slot.lock().unwrap();
+    *guard = handler;
+}
 
 pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandError> {
     let mut tmpfile = tempfile::tempfile().expect("Failed to create tempfile");
@@ -128,6 +138,11 @@ pub fn copy_include_dir_recursive(
 pub fn ask(question: &str, default: bool, dont_ask: bool) -> bool {
     if dont_ask {
         return default;
+    }
+    if let Some(slot) = PROMPT_HANDLER.get() {
+        if let Some(handler) = slot.lock().unwrap().as_ref() {
+            return handler(question, default, dont_ask);
+        }
     }
     loop {
         let res = Confirm::new(question)

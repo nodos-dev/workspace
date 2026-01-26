@@ -18,3 +18,6 @@ pub static POSSIBLE_SHOW_AS: [&str; 3] = ["INPUT_PIN", "OUTPUT_PIN", "PROPERTY"]
 pub static POSSIBLE_VERSION_CHECK_STRATEGY: [&str; 3] = ["none", "strict", "loose"];
 
 pub static GENERIC_PACKAGE_MANIFEST_SCHEMA_VERSION: u32 = 1;
+
+pub static GET_CMD_DEFAULT_NAME: &str = "nodos.bundle.standard";
+pub static GET_CMD_DEFAULT_VERSION: &str = "1.3";

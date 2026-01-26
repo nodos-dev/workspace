@@ -14,7 +14,7 @@ use crate::nosman::command::CommandError::{InvalidArgument, IO};
 use crate::nosman::command::init::InitCommand;
 use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::common::{download_and_extract};
-use crate::nosman::{common};
+use crate::nosman::{common, constants};
 use crate::nosman::workspace::{Workspace};
 
 pub struct GetCommand {
@@ -133,7 +133,7 @@ impl GetCommand {
         }
         Ok(())
     }
-    pub fn run_get(&self, workspace: &mut Workspace, nodos_name: &String, version: Option<&String>, fetch_index: bool, dont_ask: bool, clean_modules: bool) -> CommandResult {
+    pub fn run_get(&self, workspace: &mut Workspace, nodos_name: &String, version: &String, fetch_index: bool, dont_ask: bool, clean_modules: bool) -> CommandResult {
         // If not under a workspace, init
         let path = workspace.root.clone();
         if !workspace.ready() {
@@ -154,19 +154,10 @@ impl GetCommand {
             return self.run_get(workspace, nodos_name, version, false, dont_ask, clean_modules)
         }
 
-        let res;
-        if let Some(version) = version {
-            let version_prefix = SemVer::parse_from_str(version).unwrap_or_else(|| panic!("Invalid semantic version: {}", version));
-            res = workspace.index_cache.get_latest_compatible_release(nodos_name, &version_prefix);
-        } else {
-            res = workspace.index_cache.get_latest_release(nodos_name);
-        }
+        let version_prefix = SemVer::parse_from_str(version).unwrap_or_else(|| panic!("Invalid semantic version: {}", version));
+        let res = workspace.index_cache.get_latest_compatible_release(nodos_name, &version_prefix);
         if res.is_none() {
-            return if version.is_none() {
-                Err(InvalidArgument { message: format!("No release found for {}", nodos_name) })
-            } else {
-                Err(InvalidArgument { message: format!("No release found for {} version {}", nodos_name, version.unwrap()) })
-            }
+            return Err(InvalidArgument { message: format!("No release found for {} version {}", nodos_name, version) });
         }
         let (package_type, release) = res.unwrap();
         if *package_type != PackageType::Nodos {
@@ -315,6 +306,27 @@ impl GetCommand {
             }
         }
         Self::sort_paths(&mut leftovers);
+        let mut delete_count = 0usize;
+        for file in &leftovers {
+            if !file.exists() {
+                continue;
+            }
+            let relative_path = file.strip_prefix(&dst_path).unwrap();
+            if !clean_modules && relative_path.starts_with("Module/") {
+                continue;
+            }
+            delete_count += 1;
+        }
+        if !dont_ask && delete_count > 0 {
+            let prompt = format!(
+                "This update will delete {} existing item{}. Continue?",
+                delete_count,
+                if delete_count == 1 { "" } else { "s" }
+            );
+            if !common::ask(&prompt, false, dont_ask) {
+                return Err(CommandError::Runtime { message: "Aborted by user".to_string() });
+            }
+        }
         for file in leftovers {
             pb.set_message(format!("Removing: {}", file.display()));
             if !file.exists() {
@@ -358,12 +370,13 @@ pub fn get_cli() -> clap::Command {
         .arg(Arg::new("name")
             .help("Name of the Nodos release to bring. Can be 'nodos' or some bundled version.")
             .long("name")
-            .default_value("nodos.bundle.standard")
+            .default_value(constants::GET_CMD_DEFAULT_NAME)
         )
         .arg(Arg::new("version")
-            .help("Version of the Nodos release to bring. If not provided, the latest version will be installed.")
+            .help("Version of the Nodos release to bring. If not provided, the preferred version will be installed.")
             .long("version")
             .short('v')
+            .default_value(constants::GET_CMD_DEFAULT_VERSION)
             .required(false)
         )
         .arg(Arg::new("yes_to_all")
@@ -389,7 +402,7 @@ impl Command for GetCommand {
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let nodos_name = args.get_one::<String>("name").unwrap();
-        let version = args.get_one::<String>("version");
+        let version = args.get_one::<String>("version").unwrap();
         let dont_ask = args.get_one::<bool>("yes_to_all").unwrap();
         let clean_modules = args.get_one::<bool>("clean_modules").unwrap();
         self.run_get(workspace, nodos_name, version, true, *dont_ask, *clean_modules)
