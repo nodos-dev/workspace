@@ -67,7 +67,10 @@ function(_nos_generate_plugin_target plugin_manifest_file_path plugin_name manif
 
 	_nos_get_custom_type_paths_from_json(${plugin_manifest_file_path} TYPE_FOLDERS)
 	if(TYPE_FOLDERS)
-		nos_generate_flatbuffers("${TYPE_FOLDERS}" "${CMAKE_CURRENT_SOURCE_DIR}/Include/${target_name}" "cpp" "${NOS_SDK_DIR}/Types;${found_dep_dirs}" ${target_name}_generated)
+		set(generated_include_root "${CMAKE_CURRENT_BINARY_DIR}/__generated__/${target_name}/Include")
+		set(generated_include_dir "${generated_include_root}/${target_name}")
+		nos_generate_flatbuffers("${TYPE_FOLDERS}" "${generated_include_dir}" "cpp" "${NOS_SDK_DIR}/Types;${found_dep_dirs}" ${target_name}_generated)
+		list(APPEND plugin_include_folders "${generated_include_root}")
 		list(APPEND plugin_dep_targets ${target_name}_generated)
 	endif()
 

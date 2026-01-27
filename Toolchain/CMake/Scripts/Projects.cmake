@@ -2,6 +2,14 @@
 set(NOS_SOURCE_FILE_TYPES ".cpp" ".cc" ".cxx" ".c" ".inl" ".h" ".hxx" ".hpp" ".py" ".rc")
 set(NOS_HEADER_FILE_TYPES ".h" ".hxx" ".hpp" ".natvis")
 
+function(_nos_make_package_target_name name version out_target_name)
+	string(REPLACE "." "_" target_name ${name})
+	string(REPLACE "." "_" version_str ${version})
+	string(APPEND target_name "-v${version_str}")
+	string(PREPEND target_name "__nos_gen__")
+	set(${out_target_name} ${target_name} PARENT_SCOPE)
+endfunction()
+
 function(nos_generate_flatbuffers fbs_paths dst_folder out_language include_folders out_target_name)
 	if(NOT DEFINED FLATC_EXECUTABLE)
 		nos_fatal_error("Flatbuffers compiler not found. Please set FLATC_EXECUTABLE variable.")
@@ -102,12 +110,20 @@ function(nos_generate_flatbuffers fbs_paths dst_folder out_language include_fold
 		nos_message(STATUS "Build Task (${out_target_name}): ${fbs_file} -> ${generated_file}")
 		list(APPEND out_list ${generated_file})
 		
-		add_custom_command(OUTPUT ${generated_file}
-			COMMAND ${flatc_command}
-				--object-suffix "" # Workaround for passing empty string to command in CMake
-			DEPENDS ${fbs_file}
-			COMMENT "Generating flatbuffers: ${fbs_file} (with ${FLATC_EXECUTABLE})"
-			VERBATIM)
+		get_property(_nos_flatbuffers_outputs GLOBAL PROPERTY NOS_FLATBUFFERS_OUTPUTS)
+		if(NOT _nos_flatbuffers_outputs)
+			set(_nos_flatbuffers_outputs "")
+		endif()
+		list(FIND _nos_flatbuffers_outputs "${generated_file}" _nos_output_idx)
+		if(_nos_output_idx EQUAL -1)
+			add_custom_command(OUTPUT ${generated_file}
+				COMMAND ${flatc_command}
+					--object-suffix "" # Workaround for passing empty string to command in CMake
+				DEPENDS ${fbs_file}
+				COMMENT "Generating flatbuffers: ${fbs_file} (with ${FLATC_EXECUTABLE})"
+				VERBATIM)
+			set_property(GLOBAL APPEND PROPERTY NOS_FLATBUFFERS_OUTPUTS "${generated_file}")
+		endif()
 	endforeach()
 	add_custom_target(${out_target_name} DEPENDS ${out_list})
 	set_target_properties(${out_target_name} PROPERTIES FOLDER "Build Tasks")
@@ -125,6 +141,175 @@ function(nos_get_files_recursive folder file_suffixes out_files_var)
 
 	# Set the output variable
 	set(${out_files_var} ${local_files} PARENT_SCOPE)
+endfunction()
+
+function(_nos_get_custom_type_paths_from_manifest json_file base_dir out_list)
+	if(NOT EXISTS "${json_file}")
+		message(FATAL_ERROR "JSON file not found: ${json_file}")
+	endif()
+
+	file(READ "${json_file}" json_content)
+
+	string(JSON has_custom_types ERROR_VARIABLE err
+		GET "${json_content}" custom_types
+	)
+
+	if(err)
+		if (EXISTS "${base_dir}/Types")
+			set(${out_list} "${base_dir}/Types" PARENT_SCOPE)
+		else()
+			set(${out_list} "" PARENT_SCOPE)
+		endif()
+		return()
+	endif()
+
+	string(JSON len LENGTH "${json_content}" custom_types)
+	if ("${len}" STREQUAL "0")
+		set(${out_list} "" PARENT_SCOPE)
+		return()
+	endif()
+
+	set(result "")
+	math(EXPR last "${len} - 1")
+	foreach(i RANGE 0 ${last})
+		string(JSON value GET "${json_content}" custom_types ${i})
+		list(APPEND result "${base_dir}/${value}")
+	endforeach()
+
+	set(${out_list} "${result}" PARENT_SCOPE)
+endfunction()
+
+function(_nos_get_dependency_package_paths_from_json json out_list)
+	string(JSON dep_count ERROR_VARIABLE err LENGTH "${json}" info dependencies)
+	if(err OR dep_count EQUAL 0)
+		set(${out_list} "" PARENT_SCOPE)
+		return()
+	endif()
+
+	set(result "")
+	math(EXPR last "${dep_count} - 1")
+	foreach(i RANGE 0 ${last})
+		string(JSON dep_name GET "${json}" info dependencies ${i} name)
+		string(JSON dep_version GET "${json}" info dependencies ${i} version)
+		nos_find_package_path(${dep_name} ${dep_version} dep_path)
+		list(APPEND result "${dep_path}")
+	endforeach()
+
+	set(${out_list} "${result}" PARENT_SCOPE)
+endfunction()
+
+function(nos_download_package name version out_manifest_path out_package_path out_json)
+	if(NOT DEFINED NOSMAN_WORKSPACE_DIR)
+		nos_fatal_error("NOSMAN_WORKSPACE_DIR is not defined. Set it to the path of the workspace where modules will be installed.")
+	endif()
+	if(NOT NOSMAN_EXECUTABLE)
+		nos_fatal_error("Unable to find nosman. Set NOSMAN_EXECUTABLE to use nos_download_package.")
+	endif()
+
+	nos_message(STATUS "Searching/installing Nodos package ${name} ${version} in workspace")
+
+	# Install module if not exists, silently
+	execute_process(
+		COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" install ${name} ${version}
+		RESULT_VARIABLE nosman_result
+		OUTPUT_QUIET
+	)
+
+	if(NOT nosman_result EQUAL 0)
+		nos_message(STATUS "Failed to install ${name} ${version} in workspace. Trying to rescan modules.")
+		execute_process(
+			COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" rescan --fetch-index
+			RESULT_VARIABLE nosman_result
+			OUTPUT_QUIET
+		)
+		
+		if (NOT nosman_result EQUAL 0)
+			nos_fatal_error("Failed to rescan modules in workspace. Please check your NOSMAN_WORKSPACE_DIR and NOSMAN_EXECUTABLE variables.")
+		endif()
+
+		nos_message(STATUS "Rescanning modules in workspace succeeded. Trying to install ${name} ${version} again.")
+		execute_process(
+			COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" install ${name} ${version}
+			RESULT_VARIABLE nosman_result
+			OUTPUT_QUIET
+		)
+		if (NOT nosman_result EQUAL 0)
+			nos_fatal_error("Failed to install ${name} ${version} in workspace.")
+		endif()
+	endif()
+
+	execute_process(
+		COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" info ${name} ${version} --relaxed
+		RESULT_VARIABLE nosman_result
+		OUTPUT_VARIABLE nosman_output
+	)
+
+	if(nosman_result EQUAL 0)
+		string(STRIP ${nosman_output} nosman_output)
+		string(JSON manifest_path GET "${nosman_output}" "manifest_path")
+		get_filename_component(package_path ${manifest_path} DIRECTORY)
+		cmake_path(SET package_path "${package_path}")
+		set(${out_manifest_path} ${manifest_path} PARENT_SCOPE)
+		set(${out_package_path} ${package_path} PARENT_SCOPE)
+		set(${out_json} ${nosman_output} PARENT_SCOPE)
+	else()
+		nos_fatal_error("Failed to find Nodos package ${name}-${version} in workspace")
+	endif()
+endfunction()
+
+function(nos_configure_package name version target_name plugin_path manifest_path nosman_output)
+	if(TARGET ${target_name})
+		nos_message(STATUS "Package ${name}-${version} already found in project. Using existing target.")
+		return()
+	endif()
+
+	nos_message(STATUS "Creating target ${target_name} for package ${name}-${version}")
+	add_library(${target_name} INTERFACE)
+
+	# Generate custom type headers into the build tree for installed packages
+	_nos_get_custom_type_paths_from_manifest("${manifest_path}" "${plugin_path}" type_folders)
+	if(type_folders)
+		nos_normalize_plugin_name(${name} normalized_name)
+		set(generated_include_root "${CMAKE_CURRENT_BINARY_DIR}/__generated__/${target_name}/Include")
+		nos_message(STATUS "Generating custom types for package ${name}-${version} into ${generated_include_root}/${normalized_name}")
+		set(generated_include_dir "${generated_include_root}/${normalized_name}")
+		_nos_get_dependency_package_paths_from_json("${nosman_output}" dep_paths)
+		if (DEFINED NOS_SDK_DIR)
+			set(flatc_include_dirs "${NOS_SDK_DIR}/Types;${plugin_path};${dep_paths}")
+		else()
+			set(flatc_include_dirs "${plugin_path};${dep_paths}")
+		endif()
+		# TODO: flatc_include_dirs should be prefixed by nosmalizedPluginName/ and put in __flatbuffers_includes_/plugin_name_v1_2_3/ or something like that.
+		nos_generate_flatbuffers("${type_folders}" "${generated_include_dir}" "cpp" "${flatc_include_dirs}" ${target_name}_generated)
+		add_dependencies(${target_name} ${target_name}_generated)
+		target_include_directories(${target_name} INTERFACE "${generated_include_root};${generated_include_dir}")
+	endif()
+
+	# Add fbs files to target
+	nos_get_files_recursive(${plugin_path} ".fbs" fbs_files)
+	list(LENGTH fbs_files fbs_count)
+	nos_message(STATUS "Found ${fbs_count} schema files in package ${name}-${version}")
+	foreach(fbs_file ${fbs_files})
+		nos_message(STATUS "${name}-${version} schema file: ${fbs_file}")
+	endforeach()
+	target_sources(${target_name} PRIVATE ${fbs_files})
+	source_group("Types" FILES ${fbs_files})
+	
+	# Optional: Get "public_include_folder" from JSON output. If not found skip it
+	cmake_path(SET ${target_name}_INCLUDE_DIR "${plugin_path}/Include")
+	string(JSON nos_plugin_include_folder ERROR_VARIABLE err GET "${nosman_output}" "public_include_folder")
+	if (err STREQUAL "NOTFOUND")
+		nos_message(STATUS "Found ${name} ${version} include folder: ${nos_plugin_include_folder}")
+		cmake_path(SET ${target_name}_INCLUDE_DIR "${nos_plugin_include_folder}")
+		nos_message(STATUS "Found public header files in package ${name}-${version}. Adding to target.")
+		nos_get_files_recursive(${${target_name}_INCLUDE_DIR} ".h;.hpp;.hxx;.hh" include_files)
+		target_sources(${target_name} PRIVATE ${include_files})
+		nos_get_files_recursive(${plugin_path} ".natvis" natvis_files)
+		target_sources(${target_name} PRIVATE ${natvis_files})
+	endif()
+	target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
+	set_target_properties(${target_name} PROPERTIES FOLDER "nosman")
+	target_link_directories(${target_name} INTERFACE ${plugin_path}/Libraries)
 endfunction()
 
 function(nos_get_package_info name version query out_var)
@@ -158,104 +343,10 @@ function(nos_find_package_path name version out_var)
 endfunction()
 
 function(nos_get_package name version out_target_name)
-	if(NOT DEFINED NOSMAN_WORKSPACE_DIR)
-		nos_fatal_error("NOSMAN_WORKSPACE_DIR is not defined. Set it to the path of the workspace where modules will be installed.")
-	endif()
-
-	string(REPLACE "." "_" target_name ${name})
-	string(REPLACE "." "_" version_str ${version})
-	string(APPEND target_name "-v${version_str}")
-	string(PREPEND target_name "__nos_gen__")
-
+	_nos_make_package_target_name(${name} ${version} target_name)
 	set(${out_target_name} ${target_name} PARENT_SCOPE)
-
-	if(TARGET ${target_name})
-		nos_message(STATUS "Package ${name}-${version} already found in project. Using existing target.")
-		return()
-	endif()
-
-	nos_message(STATUS "Searching/installing Nodos package ${name} ${version} in workspace")
-
-	# TODO: Download if not exists.
-	if(NOSMAN_EXECUTABLE)
-		# Install module if not exists, silently
-		execute_process(
-			COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" install ${name} ${version}
-			RESULT_VARIABLE nosman_result
-			OUTPUT_QUIET
-		)
-
-		if(NOT nosman_result EQUAL 0)
-			nos_message(STATUS "Failed to install ${name} ${version} in workspace. Trying to rescan modules.")
-			execute_process(
-				COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" rescan --fetch-index
-				RESULT_VARIABLE nosman_result
-				OUTPUT_QUIET
-			)
-			
-			if (NOT nosman_result EQUAL 0)
-				nos_fatal_error("Failed to rescan modules in workspace. Please check your NOSMAN_WORKSPACE_DIR and NOSMAN_EXECUTABLE variables.")
-			endif()
-
-		nos_message(STATUS "Rescanning modules in workspace succeeded. Trying to install ${name} ${version} again.")
-			execute_process(
-				COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" install ${name} ${version}
-				RESULT_VARIABLE nosman_result
-				OUTPUT_QUIET
-			)
-			if (NOT nosman_result EQUAL 0)
-				nos_fatal_error("Failed to install ${name} ${version} in workspace.")
-			endif()
-		endif()
-
-		execute_process(
-			COMMAND ${NOSMAN_EXECUTABLE} --workspace "${NOSMAN_WORKSPACE_DIR}" info ${name} ${version} --relaxed
-			RESULT_VARIABLE nosman_result
-			OUTPUT_VARIABLE nosman_output
-		)
-
-		if(nosman_result EQUAL 0)
-			string(STRIP ${nosman_output} nosman_output)
-
-			nos_message(STATUS "Creating target ${target_name} for package ${name}-${version}")
-			add_library(${target_name} INTERFACE)
-
-			# Get module path
-			string(JSON plugin_path GET "${nosman_output}" "manifest_path")
-			get_filename_component(plugin_path ${plugin_path} DIRECTORY)
-			cmake_path(SET plugin_path "${plugin_path}")
-
-			# Add fbs files to target
-			nos_get_files_recursive(${plugin_path} ".fbs" fbs_files)
-			list(LENGTH fbs_files fbs_count)
-			nos_message(STATUS "Found ${fbs_count} schema files in package ${name}-${version}")
-			foreach(fbs_file ${fbs_files})
-				nos_message(STATUS "${name}-${version} schema file: ${fbs_file}")
-			endforeach()
-			target_sources(${target_name} PRIVATE ${fbs_files})
-			source_group("Types" FILES ${fbs_files})
-			
-			# Optional: Get "public_include_folder" from JSON output. If not found skip it
-			cmake_path(SET ${target_name}_INCLUDE_DIR "${plugin_path}/Include")
-			string(JSON nos_plugin_include_folder ERROR_VARIABLE err GET "${nosman_output}" "public_include_folder")
-			if (err STREQUAL "NOTFOUND")
-				nos_message(STATUS "Found ${name} ${version} include folder: ${nos_plugin_include_folder}")
-				cmake_path(SET ${target_name}_INCLUDE_DIR "${nos_plugin_include_folder}")
-				nos_message(STATUS "Found public header files in package ${name}-${version}. Adding to target.")
-				nos_get_files_recursive(${${target_name}_INCLUDE_DIR} ".h;.hpp;.hxx;.hh" include_files)
-				target_sources(${target_name} PRIVATE ${include_files})
-				nos_get_files_recursive(${plugin_path} ".natvis" natvis_files)
-				target_sources(${target_name} PRIVATE ${natvis_files})
-			endif()
-			target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
-			set_target_properties(${target_name} PROPERTIES FOLDER "nosman")
-			target_link_directories(${target_name} INTERFACE ${plugin_path}/Libraries)
-		else()
-			nos_fatal_error("Failed to find ${name} ${version} include folder")
-		endif()
-	else()
-		nos_fatal_error("Unable to find nosman. Set NOSMAN_EXECUTABLE to use nos_get_package.")
-	endif()
+	nos_download_package(${name} ${version} manifest_path package_path nosman_output)
+	nos_configure_package(${name} ${version} ${target_name} ${package_path} ${manifest_path} "${nosman_output}")
 endfunction()
 
 function(nos_get_plugin_info name version query out_var)
