@@ -154,8 +154,13 @@ impl GetCommand {
             return self.run_get(workspace, nodos_name, version, false, dont_ask, clean_modules)
         }
 
-        let version_prefix = SemVer::parse_from_str(version).unwrap_or_else(|| panic!("Invalid semantic version: {}", version));
-        let res = workspace.index_cache.get_latest_compatible_release(nodos_name, &version_prefix);
+        let res = if version == "latest" {
+            workspace.index_cache.get_latest_release(nodos_name)
+        } else {
+            let version_prefix = SemVer::parse_from_str(version)
+                .unwrap_or_else(|| panic!("Invalid semantic version: {}", version));
+            workspace.index_cache.get_latest_compatible_release(nodos_name, &version_prefix)
+        };
         if res.is_none() {
             return Err(InvalidArgument { message: format!("No release found for {} version {}", nodos_name, version) });
         }
