@@ -104,9 +104,8 @@ function(_nos_configure_plugin plugin_manifest_file common_dependencies common_d
 	nos_get_package_info_by_path(${plugin_manifest_file} plugin_name plugin_version manifest_json)
 	nos_colored_message(COLOR CYAN "Configuring ${plugin_name} (${plugin_version})")
 
-	set(old_cmake_source_dir ${CMAKE_CURRENT_SOURCE_DIR})
-	# Set current source dir to the plugin's directory for includes
-	set(CMAKE_CURRENT_SOURCE_DIR "${dir}")
+	get_filename_component(dir "${plugin_manifest_file}" DIRECTORY)
+	set(NOS_PLUGIN_ROOT "${dir}")
 	
 	_nos_generate_plugin_target("${plugin_manifest_file}" "${plugin_name}" "${manifest_json}" "${common_dependencies}" "${common_definitions}" plugin_target)
 	if (NOT TARGET ${plugin_target})
@@ -125,8 +124,7 @@ function(_nos_configure_plugin plugin_manifest_file common_dependencies common_d
 	if (COMMAND "nos_plugin_on_post_target_generated")
 		cmake_language(CALL "nos_plugin_on_post_target_generated" "${plugin_target}" "${plugin_name}")
 	endif()
-
-	set(CMAKE_CURRENT_SOURCE_DIR "${old_cmake_source_dir}")
+	unset(NOS_PLUGIN_ROOT)
 endfunction()
 
 
@@ -138,7 +136,7 @@ function(_nos_process_plugin_directories_recursive dir common_dependencies commo
 		return()
 	endif()
 
-	file(GLOB PLUGINS "${dir}/*.nosplugin")
+	file(GLOB PLUGINS CONFIGURE_DEPENDS "${dir}/*.nosplugin")
 
 	if (EXISTS "${dir}/NosPluginCommon.cmake")
 		nos_message("Found common dependency file: ${dir}/NosPluginCommon.cmake")
@@ -170,14 +168,14 @@ function(_nos_process_plugin_directories_recursive dir common_dependencies commo
 		_nos_configure_plugin(${plugin_manifest_filepath} "${common_dependencies}" "${common_definitions}")
 	endif()
 
-	file(GLOB SUBDIRS RELATIVE ${dir} ${dir}/*)
+	file(GLOB SUBDIRS CONFIGURE_DEPENDS RELATIVE ${dir} ${dir}/*)
 
 	foreach(subdir ${SUBDIRS})
 		include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/DefaultNosPluginCommon.cmake)
 		
 		# try to find a *.nosplugin, if not, skip
 		# TODO: Ideally, this should done only at the start and only the directories containing plugins should be processed
-		file(GLOB_RECURSE FOUND_PLUGINS RELATIVE "${dir}" "${dir}/${subdir}/*.nosplugin")
+		file(GLOB_RECURSE FOUND_PLUGINS CONFIGURE_DEPENDS RELATIVE "${dir}" "${dir}/${subdir}/*.nosplugin")
 		if (NOT FOUND_PLUGINS)
 			continue()
 		endif()
