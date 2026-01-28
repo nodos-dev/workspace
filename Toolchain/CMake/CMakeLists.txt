@@ -205,56 +205,6 @@ else()
 	set(USE_AUTO_TARGET_GENERATION TRUE)
 endif()
 
-# If Toolchain/nosman/src exists, setup cargo build command that depends on .rs files to build and copy the executable to the root
-if ((NOT NOS_INVOKED_FROM_NOSMAN) AND (EXISTS "${NODOS_WORKSPACE_DIR}/Toolchain/nosman/src"))
-	set(NOSMAN_BUILD_DIR "${NODOS_WORKSPACE_DIR}/Toolchain/nosman/target")
-
-	# Check if we should build nosman
-	set(SHOULD_BUILD_NOSMAN FALSE)
-	
-	if (NOS_FORCE_NOSMAN_BUILD)
-		nos_message(STATUS "NOS_FORCE_NOSMAN_BUILD is ON. Building nosman...")
-		set(SHOULD_BUILD_NOSMAN TRUE)
-	else()
-		# Read the current version from Cargo.toml
-		file(READ "${NODOS_WORKSPACE_DIR}/Toolchain/nosman/Cargo.toml" NOSMAN_CARGO_TOML)
-		string(REGEX MATCH "version = \"([0-9]+\\.[0-9]+\\.[0-9]+)\"" _ "${NOSMAN_CARGO_TOML}")
-		set(NOSMAN_CURRENT_VERSION "${CMAKE_MATCH_1}")
-		
-		# Compare with cached version
-		if (NOT DEFINED NOSMAN_CACHED_VERSION OR NOT NOSMAN_CURRENT_VERSION STREQUAL NOSMAN_CACHED_VERSION)
-			nos_message(STATUS "nosman version changed (${NOSMAN_CACHED_VERSION} -> ${NOSMAN_CURRENT_VERSION}). Building nosman...")
-			set(SHOULD_BUILD_NOSMAN TRUE)
-		else()
-			nos_message(STATUS "nosman version unchanged (${NOSMAN_CURRENT_VERSION}). Skipping build.")
-		endif()
-	endif()
-
-	if (SHOULD_BUILD_NOSMAN)
-		execute_process(
-			COMMAND cargo build --release
-			WORKING_DIRECTORY "${NODOS_WORKSPACE_DIR}/Toolchain/nosman"
-			RESULT_VARIABLE NOSMAN_RESULT
-			COMMAND_ECHO STDOUT
-		)
-		if (NOSMAN_RESULT EQUAL 0)
-			# Copy the executable to the root
-			file(COPY "${NOSMAN_BUILD_DIR}/release/nosman${CMAKE_EXECUTABLE_SUFFIX}" DESTINATION "${NODOS_WORKSPACE_DIR}")
-			file(RENAME "${NODOS_WORKSPACE_DIR}/nosman${CMAKE_EXECUTABLE_SUFFIX}" "${NODOS_WORKSPACE_DIR}/nodos${CMAKE_EXECUTABLE_SUFFIX}")
-			
-			# Cache the version
-			if (NOSMAN_CURRENT_VERSION)
-				set(NOSMAN_CACHED_VERSION "${NOSMAN_CURRENT_VERSION}" CACHE INTERNAL "Cached nosman version")
-			endif()
-		else()
-			nos_fatal_error("Failed to build nosman")
-			return()
-		endif()
-	endif()
-endif()
-
-unset(NOS_INVOKED_FROM_NOSMAN CACHE)
-
 # Find nosman
 if (NOT DEFINED NOSMAN_EXECUTABLE)
 	if (EXISTS "${NODOS_WORKSPACE_DIR}/nodos${CMAKE_EXECUTABLE_SUFFIX}")

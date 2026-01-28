@@ -285,7 +285,7 @@ impl DevGenCommand {
         if lang_tool != LangTool::CppCMake {
             return Err(InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool) });
         }
-        let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", project_folder, "-DNOS_INVOKED_FROM_NOSMAN=ON"];
+        let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", project_folder];
 
         let mut formatted_args = Vec::new(); // holds the actual Strings
         if let Some(val) = plugin_dirs {

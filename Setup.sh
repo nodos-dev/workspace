@@ -11,11 +11,11 @@ if ! cd "$PROJECT_DIR"; then
     exit 1
 fi
 
-echo "Building"
+echo "Building nosman"
 cargo build --release
 if [ $? -ne 0 ]; then
     echo ""
-    echo "[ERROR] Build failed. Please check your Rust code."
+    echo "[ERROR] Build failed"
     exit 1
 fi
 
@@ -28,6 +28,7 @@ if [ -f "./$OUTPUT_NAME" ]; then
 fi
 
 # Move the new binary
+echo "Copying $PROJECT_DIR/target/release/$BIN_NAME to ./$OUTPUT_NAME"
 mv "$PROJECT_DIR/target/release/$BIN_NAME" "./$OUTPUT_NAME"
 
 # Ensure the new binary is executable
