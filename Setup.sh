@@ -22,14 +22,17 @@ fi
 # Move back to the original root directory and move the file
 cd - > /dev/null
 
+
+
+# Move the new binary
+echo "Copying $PROJECT_DIR/target/release/$BIN_NAME to ./$OUTPUT_NAME"
+
 # Remove the old file first to prevent "same file" warnings/errors
 if [ -f "./$OUTPUT_NAME" ]; then
     rm -f "./$OUTPUT_NAME"
 fi
 
-# Move the new binary
-echo "Copying $PROJECT_DIR/target/release/$BIN_NAME to ./$OUTPUT_NAME"
-mv "$PROJECT_DIR/target/release/$BIN_NAME" "./$OUTPUT_NAME"
+cp "$PROJECT_DIR/target/release/$BIN_NAME" "./$OUTPUT_NAME"
 
 # Ensure the new binary is executable
 chmod +x "./$OUTPUT_NAME"

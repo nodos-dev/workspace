@@ -26,7 +26,13 @@ if %ERRORLEVEL% neq 0 (
 
 popd
 echo Copying "%PROJECT_DIR%\target\release\%BIN_NAME%" to ".\%OUTPUT_NAME%"
-move /y "%PROJECT_DIR%\target\release\%BIN_NAME%" ".\%OUTPUT_NAME%"
+
+:: Remove the old file first to prevent "same file" warnings/errors
+if exist ".\%OUTPUT_NAME%" (
+    del /f /q ".\%OUTPUT_NAME%"
+)
+
+copy /y "%PROJECT_DIR%\target\release\%BIN_NAME%" ".\%OUTPUT_NAME%"
 
 echo.
 echo Success
