@@ -1,1 +1,0 @@
-cmake -S ./Toolchain/CMake/ -B ./Project -DCMAKE_BUILD_TYPE=RelWithDebInfo %*
