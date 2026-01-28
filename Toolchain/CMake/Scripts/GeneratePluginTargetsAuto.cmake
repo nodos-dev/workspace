@@ -5,6 +5,8 @@ function(_nos_get_custom_type_paths_from_json JSON_FILE OUT_LIST)
 		message(FATAL_ERROR "JSON file not found: ${JSON_FILE}")
 	endif()
 
+	get_filename_component(plugin_root "${JSON_FILE}" DIRECTORY)
+
 	# Read file
 	file(READ "${JSON_FILE}" json_content)
 
@@ -15,8 +17,8 @@ function(_nos_get_custom_type_paths_from_json JSON_FILE OUT_LIST)
 
 	if(err)
 		# Field does not exist → return empty list
-		if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Types)
-			set(${OUT_LIST} "${CMAKE_CURRENT_SOURCE_DIR}/Types" PARENT_SCOPE)
+		if (EXISTS "${plugin_root}/Types")
+			set(${OUT_LIST} "${plugin_root}/Types" PARENT_SCOPE)
 		else()
 			set(${OUT_LIST} "" PARENT_SCOPE)
 		endif()
@@ -26,7 +28,11 @@ function(_nos_get_custom_type_paths_from_json JSON_FILE OUT_LIST)
 	# Get array length
 	string(JSON len LENGTH "${json_content}" custom_types)
 	if ("${len}" STREQUAL "0")
-		set(${OUT_LIST} "" PARENT_SCOPE)
+		if (EXISTS "${plugin_root}/Types")
+			set(${OUT_LIST} "${plugin_root}/Types" PARENT_SCOPE)
+		else()
+			set(${OUT_LIST} "" PARENT_SCOPE)
+		endif()
 		return()
 	endif()
 
@@ -35,14 +41,18 @@ function(_nos_get_custom_type_paths_from_json JSON_FILE OUT_LIST)
 
 	foreach(i RANGE 0 ${last})
 		string(JSON value GET "${json_content}" custom_types ${i})
-		list(APPEND result "${CMAKE_CURRENT_SOURCE_DIR}/${value}")
+		if (IS_ABSOLUTE "${value}")
+			list(APPEND result "${value}")
+		else()
+			list(APPEND result "${plugin_root}/${value}")
+		endif()
 	endforeach()
 
 	set(${OUT_LIST} "${result}" PARENT_SCOPE)
 endfunction()
 
 function(_nos_generate_plugin_target plugin_manifest_file_path plugin_name manifest_json common_deps common_defs out_target_name)
-	
+	get_filename_component(plugin_root "${plugin_manifest_file_path}" DIRECTORY)
 	nos_normalize_plugin_name(${plugin_name} target_name)
 
 	string(JSON plugin_sdk_version ERROR_VARIABLE err GET "${manifest_json}" sdk_version)
@@ -62,12 +72,12 @@ function(_nos_generate_plugin_target plugin_manifest_file_path plugin_name manif
 	endif()
 
 	nos_find_immediate_plugin_dependencies(${manifest_json} found_dependency_targets found_dep_dirs found_include_dirs)
-	list(APPEND plugin_include_folders ${CMAKE_CURRENT_SOURCE_DIR} "${CMAKE_CURRENT_SOURCE_DIR}/Include" "${found_include_dirs}")
+	list(APPEND plugin_include_folders ${plugin_root} "${plugin_root}/Include" "${found_include_dirs}")
 	list(APPEND plugin_dep_targets ${NOS_PLUGIN_SDK_TARGET})
 
 	_nos_get_custom_type_paths_from_json(${plugin_manifest_file_path} TYPE_FOLDERS)
 	if(TYPE_FOLDERS)
-		nos_generate_flatbuffers("${TYPE_FOLDERS}" "${CMAKE_CURRENT_SOURCE_DIR}/Include/${target_name}" "cpp" "${NOS_SDK_DIR}/Types;${found_dep_dirs}" ${target_name}_generated)
+		nos_generate_flatbuffers("${TYPE_FOLDERS}" "${plugin_root}/Include/${target_name}" "cpp" "${NOS_SDK_DIR}/Types;${found_dep_dirs}" ${target_name}_generated)
 		list(APPEND plugin_dep_targets ${target_name}_generated)
 	endif()
 

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
-use crate::nosman::common::{get_progress_bar, NODOS_1_4};
+use crate::nosman::common::{collect_files_recursive, get_progress_bar, NODOS_1_4};
 use crate::nosman::{constants, extensions};
 use crate::nosman::command::CommandError::Runtime;
 use crate::nosman::command::CommandResult;
@@ -98,13 +98,36 @@ impl LocalPackageEntry {
         package.info = serde_json::from_value(manifest["info"].clone()).unwrap_or_else(|e| panic!("Failed to parse package info from {:?}: {}", path, e));
 
         // Check custom_types field
-        if let Some(custom_types) = manifest["custom_types"].as_array() {
-            for custom_type_file in custom_types {
-                let type_file = abs_path.parent().unwrap().join(custom_type_file.as_str().unwrap());
-                if !type_file.exists() {
-                    return Err(format!("Package {} ({}) references a non-existent data schema file: {}", package.info.id.name, path.display(), type_file.display()).as_str().red().to_string());
+        match manifest.get("custom_types") {
+            Some(value) => {
+                if let Some(custom_types) = value.as_array() {
+                    for custom_type_file in custom_types {
+                        let rel_path = custom_type_file
+                            .as_str()
+                            .ok_or_else(|| "custom_types entries must be strings".to_string())?;
+                        let type_file = abs_path.parent().unwrap().join(rel_path);
+                        if !type_file.exists() {
+                            return Err(format!("Package {} ({}) references a non-existent data schema file: {}", package.info.id.name, path.display(), type_file.display()).as_str().red().to_string());
+                        }
+                        package.type_schema_files.push(get_rel_path_based_on(&type_file.canonicalize().unwrap(), &workspace.root));
+                    }
                 }
-                package.type_schema_files.push(get_rel_path_based_on(&type_file.canonicalize().unwrap(), &workspace.root));
+            }
+            None => {
+                if let Some(parent) = abs_path.parent() {
+                    let types_dir = parent.join("Types");
+                    if types_dir.is_dir() {
+                        let fbs_files = collect_files_recursive(&types_dir, |path| {
+                            path.extension()
+                                .and_then(|ext| ext.to_str())
+                                .map(|ext| ext.eq_ignore_ascii_case("fbs"))
+                                .unwrap_or(false)
+                        });
+                        for type_file in fbs_files {
+                            package.type_schema_files.push(get_rel_path_based_on(&type_file.canonicalize().unwrap(), &workspace.root));
+                        }
+                    }
+                }
             }
         }
 

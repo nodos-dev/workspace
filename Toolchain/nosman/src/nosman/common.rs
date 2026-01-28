@@ -202,6 +202,31 @@ pub fn read_file_contents(file: &PathBuf, tag: &str) -> Result<String, CommandEr
         })
 }
 
+pub fn collect_files_recursive<F>(dir: &Path, predicate: F) -> Vec<PathBuf>
+where
+    F: Fn(&Path) -> bool,
+{
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        let entries = match fs::read_dir(&current) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if predicate(&path) {
+                out.push(path);
+            }
+        }
+    }
+    out
+}
+
 pub static NODOS_1_4: SemVer = SemVer { major: 1, minor: Some(4), patch: None, build_number: None };
 pub static NODOS_1_3: SemVer = SemVer { major: 1, minor: Some(3), patch: None, build_number: None };
 
