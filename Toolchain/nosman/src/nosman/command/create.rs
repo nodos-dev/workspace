@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use crate::nosman::common::copy_include_dir_recursive;
@@ -9,7 +9,7 @@ use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{PluginType, SemVer};
 use include_dir::{include_dir, Dir};
 use crate::nosman::command::sdk_info::get_engine_sdk_infos;
-use crate::nosman::common::{DEFAULT_NODOS_VERSION_INDEX, SUPPORTED_NODOS_VERSIONS};
+use crate::nosman::common::{DEFAULT_NODOS_VERSION_INDEX, NODOS_1_4, SUPPORTED_NODOS_VERSIONS};
 use crate::nosman::lang_tool::LangTool;
 use crate::nosman::module::get_dependency_arguments;
 use crate::nosman::package::{get_plugin_manifest_file_ext, PackageIdentifier};
@@ -19,7 +19,7 @@ pub struct CreateCommand {}
 
 static DATA_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/data");
 
-fn get_template_dir_for<'a>(name: &str, plugin_type: &PluginType, version: &str) -> Option<&'a Dir<'a>> {
+fn get_legacy_template_dir_for<'a>(name: &str, plugin_type: &PluginType, version: &str) -> Option<&'a Dir<'a>> {
     let template_dir = if *plugin_type == PluginType::Default {
         DATA_DIR.get_dir(format!("templates/nodos-{}/{}/plugin", version, name))
     } else {
@@ -28,10 +28,127 @@ fn get_template_dir_for<'a>(name: &str, plugin_type: &PluginType, version: &str)
     template_dir
 }
 
+fn find_sdk_template_root(workspace: &Workspace, version: &SemVer) -> Result<PathBuf, crate::nosman::command::CommandError> {
+    if !workspace.ready() {
+        return Err(InvalidArgument { message: "Workspace is not ready; cannot locate SDK plugin templates".to_string() });
+    }
+
+    let engines = get_engine_sdk_infos(workspace)?;
+    let mut best_match: Option<(SemVer, PathBuf)> = None;
+    for engine in engines {
+        let engine_semver = match SemVer::parse_from_str(engine.version.as_str()) {
+            Some(v) => v,
+            None => continue,
+        };
+        if !engine_semver.satisfies_requested_version(version) {
+            continue;
+        }
+        let sdk_path = PathBuf::from(engine.path);
+        if let Some((best_ver, _)) = best_match.as_ref() {
+            if engine_semver > *best_ver {
+                best_match = Some((engine_semver, sdk_path));
+            }
+        } else {
+            best_match = Some((engine_semver, sdk_path));
+        }
+    }
+
+    let sdk_path = match best_match {
+        Some((_, path)) => path,
+        None => {
+            return Err(InvalidArgument { message: format!("No Nodos SDK found for version {}", version.to_string()) });
+        }
+    };
+
+    Ok(sdk_path.join("Plugin").join("Template").join("Plugin"))
+}
+
+fn copy_dir_recursive(
+    src: &Path,
+    dest: &Path,
+    mut modify: Option<&mut dyn FnMut(&Path, &mut String)>,
+    skip: Option<&dyn Fn(&Path) -> bool>,
+) -> CommandResult {
+    let mut stack = vec![src.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let rel = dir.strip_prefix(src).unwrap_or(&dir);
+        let target_dir = dest.join(rel);
+        fs::create_dir_all(&target_dir)?;
+        for entry in fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.is_file() {
+                if let Some(skip) = skip {
+                    if skip(&path) {
+                        continue;
+                    }
+                }
+                let rel_path = path.strip_prefix(src).unwrap_or(&path);
+                let target_path = dest.join(rel_path);
+                if let Some(parent) = target_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                if let Some(modify) = modify.as_deref_mut() {
+                    let mut content = fs::read_to_string(&path)
+                        .map_err(|e| crate::nosman::command::CommandError::IO {
+                            file: path.to_string_lossy().to_string(),
+                            message: format!("Failed to read template file: {}", e),
+                        })?;
+                    modify(&path, &mut content);
+                    fs::write(&target_path, content)?;
+                } else {
+                    fs::copy(&path, &target_path)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn get_sdk_base_template_dir(template_root: &Path) -> PathBuf {
+    template_root.join("Base")
+}
+
+fn get_sdk_toolchain_template_dir(template_root: &Path, tool: &str) -> PathBuf {
+    template_root.join("Toolchain").join(tool)
+}
+
+fn get_sdk_language_template_dir(template_root: &Path, lang: &str) -> PathBuf {
+    template_root.join("Language").join(lang)
+}
+
 impl CreateCommand {
-    fn replace_lang_placeholders(_content: &mut String, lang: &str) {
+    fn plugin_name_to_cpp_namespace(plugin_name: &str) -> String {
+        plugin_name
+            .split('.')
+            .map(|part| {
+                let mut sanitized = String::new();
+                for (idx, ch) in part.chars().enumerate() {
+                    if ch.is_ascii_alphanumeric() || ch == '_' {
+                        if idx == 0 && ch.is_ascii_digit() {
+                            sanitized.push('_');
+                        }
+                        sanitized.push(ch);
+                    } else {
+                        sanitized.push('_');
+                    }
+                }
+                if sanitized.is_empty() {
+                    "_".to_string()
+                } else {
+                    sanitized
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("::")
+    }
+
+    fn replace_lang_placeholders(content: &mut String, lang: &str, module_name: &str) {
         if lang == "cpp" {
-            // If any placeholders are added in the future
+            let namespace = Self::plugin_name_to_cpp_namespace(module_name);
+            *content = content.replace("<NOS_NAMESPACE>", namespace.as_str());
         }
     }
 
@@ -97,31 +214,51 @@ impl CreateCommand {
             }
         }
 
-        // Default to 1.4
-        let version_str = if let Some(v) = selected_version.as_ref() {
-            v.to_string()
-        } else {
-            SUPPORTED_NODOS_VERSIONS[DEFAULT_NODOS_VERSION_INDEX].to_string()
-        };
+        let resolved_version = selected_version
+            .clone()
+            .unwrap_or_else(|| SUPPORTED_NODOS_VERSIONS[DEFAULT_NODOS_VERSION_INDEX].clone());
+
+        if plugin_type == PluginType::SubsystemLegacy && resolved_version >= NODOS_1_4 {
+            return Err(InvalidArgument { message: "Subsystems are not supported for Nodos 1.4 or later".to_string() });
+        }
+
+        let version_str = resolved_version.to_string();
+        let is_sdk_template = resolved_version >= NODOS_1_4;
 
         fs::create_dir_all(&output_dir)?;
 
-        let tool_template_dir = get_template_dir_for(lang_tool.tool(), &plugin_type, &version_str);
-        let lang_template_dir = get_template_dir_for(lang_tool.lang(), &plugin_type, &version_str);
+        let legacy_tool_template_dir = if is_sdk_template {
+            None
+        } else {
+            get_legacy_template_dir_for(lang_tool.tool(), &plugin_type, &version_str)
+        };
+        let legacy_lang_template_dir = if is_sdk_template {
+            None
+        } else {
+            get_legacy_template_dir_for(lang_tool.lang(), &plugin_type, &version_str)
+        };
 
-        if tool_template_dir.is_none() || lang_template_dir.is_none() {
+        if !is_sdk_template && (legacy_tool_template_dir.is_none() || legacy_lang_template_dir.is_none()) {
             return Err(InvalidArgument { message: format!("No template found for plugin type {:?} and version {}", plugin_type, version_str) });
         }
-        let tool_template_dir = tool_template_dir.unwrap();
-        let lang_template_dir = lang_template_dir.unwrap();
 
-        let manifest_path_ext = get_plugin_manifest_file_ext(selected_version.as_ref(), &plugin_type);
+        let manifest_path_ext = get_plugin_manifest_file_ext(Some(&resolved_version), &plugin_type);
 
         // Copy .noscfg if plugin or .nossys
-        let manifest_template_file = if plugin_type == PluginType::Default {
+        let manifest_template_content = if is_sdk_template {
+            let template_root = find_sdk_template_root(workspace, &resolved_version)?;
+            let manifest_path = get_sdk_base_template_dir(&template_root)
+                .join(format!("Plugin.{}.template", manifest_path_ext));
+            fs::read_to_string(&manifest_path).map_err(|e| crate::nosman::command::CommandError::IO {
+                file: manifest_path.to_string_lossy().to_string(),
+                message: format!("Failed to read template manifest: {}", e),
+            })?
+        } else if plugin_type == PluginType::Default {
             DATA_DIR.get_file(format!("templates/nodos-{}/Plugin.{}", version_str, manifest_path_ext)).unwrap()
+                .contents_utf8().unwrap().to_string()
         } else {
             DATA_DIR.get_file(format!("templates/nodos-{}/Subsystem.{}", version_str, manifest_path_ext)).unwrap()
+                .contents_utf8().unwrap().to_string()
         };
         let output_manifest_path = output_dir.join(format!("{}.{}", plugin_name, manifest_path_ext));
 
@@ -131,8 +268,7 @@ impl CreateCommand {
         // <VERSION>
         // <DEPENDENCY_LIST_JSON>
         // <BINARY_NAME>
-        let manifest_content = manifest_template_file.contents_utf8().unwrap();
-        let manifest_content = manifest_content
+        let manifest_content = manifest_template_content
             .replace("<NAME>", plugin_name)
             .replace("<DESCRIPTION>", description)
             .replace("<DISPLAY_NAME>", plugin_name)
@@ -141,14 +277,45 @@ impl CreateCommand {
             .replace("<BINARY_NAME>", plugin_name);
         fs::write(&output_manifest_path, manifest_content)?;
 
-        // Recursively copy the tool directory
-        copy_include_dir_recursive(tool_template_dir, output_dir, Some(&mut |content| {
-            Self::replace_tool_placeholders(workspace, content, plugin_name, &deps, lang_tool.tool());
-        }))?;
+        if is_sdk_template {
+            let template_root = find_sdk_template_root(workspace, &resolved_version)?;
+            let base_template_dir = get_sdk_base_template_dir(&template_root);
+            let tool_template_dir = get_sdk_toolchain_template_dir(&template_root, lang_tool.tool());
+            let lang_template_dir = get_sdk_language_template_dir(&template_root, lang_tool.lang());
 
-        copy_include_dir_recursive(lang_template_dir, output_dir, Some(&mut |content| {
-            Self::replace_lang_placeholders(content, lang_tool.lang());
-        }))?;
+            if !base_template_dir.exists() || !lang_template_dir.exists() {
+                return Err(InvalidArgument { message: format!("No SDK template found for version {}", version_str) });
+            }
+
+            let manifest_filename = format!("Plugin.{}.template", manifest_path_ext);
+            copy_dir_recursive(
+                &base_template_dir,
+                output_dir,
+                None,
+                Some(&|path| path.file_name().and_then(|n| n.to_str()) == Some(manifest_filename.as_str())),
+            )?;
+
+            if tool_template_dir.exists() {
+                copy_dir_recursive(&tool_template_dir, output_dir, Some(&mut |_, content| {
+                    Self::replace_tool_placeholders(workspace, content, plugin_name, &deps, lang_tool.tool());
+                }), None)?;
+            }
+
+            copy_dir_recursive(&lang_template_dir, output_dir, Some(&mut |_, content| {
+                Self::replace_lang_placeholders(content, lang_tool.lang(), plugin_name);
+            }), None)?;
+        } else {
+            let legacy_tool_template_dir = legacy_tool_template_dir.unwrap();
+            let legacy_lang_template_dir = legacy_lang_template_dir.unwrap();
+            // Recursively copy the tool directory
+            copy_include_dir_recursive(&legacy_tool_template_dir, output_dir, Some(&mut |content| {
+                Self::replace_tool_placeholders(workspace, content, plugin_name, &deps, lang_tool.tool());
+            }))?;
+
+            copy_include_dir_recursive(&legacy_lang_template_dir, output_dir, Some(&mut |content| {
+                Self::replace_lang_placeholders(content, lang_tool.lang(), plugin_name);
+            }))?;
+        }
 
         println!("{:?} project created at {:?}", plugin_type, output_dir);
 

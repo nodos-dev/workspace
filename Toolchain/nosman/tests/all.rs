@@ -306,12 +306,20 @@ fn create_plugin_1_4() {
 
 #[test]
 fn create_subsystem_1_4() {
-    test_create_module(
-        "test.sys.example",
+    let mut test = WorkspaceGen::new_random();
+    let module_name = "test.sys.example";
+    let module_dir = test.workspace.root.join("Module").join(module_name);
+    let result = CreateCommand {}.run_create(
+        &mut test.workspace,
+        module_name,
         PluginType::SubsystemLegacy,
+        LangTool::CppCMake,
+        &module_dir,
+        Vec::new(),
         "Test subsystem description",
-        "1.4",
+        Some(SemVer::new(1, Some(4), None, None)),
     );
+    assert!(result.is_err(), "Expected subsystem creation to fail for Nodos 1.4");
 }
 
 // Helper to read node definition JSON
