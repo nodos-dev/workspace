@@ -177,10 +177,8 @@ impl CreateCommand {
         }
     }
 
-    pub fn run_create(&self, workspace: &mut Workspace, plugin_name: &str, plugin_type: PluginType, lang_tool: LangTool,
+    pub fn run_create(&self, workspace: &mut Workspace, plugin_name: &str, plugin_type: Option<PluginType>, lang_tool: LangTool,
                       output_dir: &PathBuf, deps: Vec<PackageIdentifier>, description: &str, nodos_version: Option<SemVer>) -> CommandResult {
-        println!("{}", format!("Creating a new Nodos plugin project of type '{:?}'", plugin_type).green());
-
         // Check module name contains at least one namespace
         if plugin_name.split('.').count() < 2 {
             return Err(InvalidArgument { message: "Plugin name must contain a company/organization prefix".to_string() });
@@ -217,6 +215,21 @@ impl CreateCommand {
         let resolved_version = selected_version
             .clone()
             .unwrap_or_else(|| SUPPORTED_NODOS_VERSIONS[DEFAULT_NODOS_VERSION_INDEX].clone());
+
+        let plugin_type = if let Some(plugin_type) = plugin_type {
+            plugin_type
+        } else if resolved_version >= NODOS_1_4 {
+            PluginType::Default
+        } else {
+            return Err(InvalidArgument { message: "Plugin type is required for Nodos versions before 1.4. Use 'plugin' or 'subsystem'.".to_string() });
+        };
+
+        if resolved_version >= NODOS_1_4 {
+            println!("{}", format!("Creating a new Nodos plugin project").green());
+        }
+        else {
+            println!("{}", format!("Creating a new Nodos {:?} project", plugin_type).green());
+        }
 
         if plugin_type == PluginType::SubsystemLegacy && resolved_version >= NODOS_1_4 {
             return Err(InvalidArgument { message: "Subsystems are not supported for Nodos 1.4 or later".to_string() });
@@ -331,12 +344,13 @@ impl CreateCommand {
 pub fn get_cli() -> clap::Command {
     clap::Command::new("create")
         .about("Create a Nodos plugin")
-        .arg(Arg::new("type")
-            .value_parser(clap::builder::PossibleValuesParser::new(["plugin", "subsystem"]))
-            .required(true)
-        )
         .arg(Arg::new("name")
             .required(true)
+        )
+        .arg(Arg::new("type")
+            .value_parser(clap::builder::PossibleValuesParser::new(["plugin", "subsystem"]))
+            .required(false)
+            .help("Plugin type (required for Nodos versions before 1.4)")
         )
         .arg(get_lang_tool_arg())
         .arg(Arg::new("output_dir")
@@ -389,10 +403,11 @@ impl Command for CreateCommand {
     }
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
-        let plugin_type = match args.get_one::<String>("type").unwrap().as_str() {
-            "plugin" => PluginType::Default,
-            "subsystem" => PluginType::SubsystemLegacy,
-            _ => panic!("Invalid module type") // Unreachable
+        let plugin_type = match args.get_one::<String>("type").map(|s| s.as_str()) {
+            Some("plugin") => Some(PluginType::Default),
+            Some("subsystem") => Some(PluginType::SubsystemLegacy),
+            Some(_) => panic!("Invalid module type"), // Unreachable
+            None => None,
         };
         let lang_tool_str = args.get_one::<String>("language/tool").unwrap();
         let lang_tool = LangTool::from_str(lang_tool_str.as_str())

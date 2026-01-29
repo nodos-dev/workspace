@@ -19,7 +19,7 @@
                     "kind": "bin"
                 }
             },
-            "args": ["--workspace", "C:/Nodos", "get"],
+            "args": ["--workspace", "C:/dev/nodos-ws-exp", "create", "plugin", "nos.slmslm", "-o", "C:/dev/nodos-ws-exp/Module"],
             "cwd": "${workspaceFolder}"
         },
         {
