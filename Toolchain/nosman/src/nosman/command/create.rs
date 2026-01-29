@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
-use crate::nosman::common::copy_include_dir_recursive;
+use crate::nosman::common::{copy_dir_recursive, copy_include_dir_recursive};
 use crate::nosman::command::{get_lang_tool_arg, get_nodos_version_from_args, Command, CommandResult};
 use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{PluginType, SemVer};
@@ -61,50 +61,6 @@ fn find_sdk_template_root(workspace: &Workspace, version: &SemVer) -> Result<Pat
     };
 
     Ok(sdk_path.join("Plugin").join("Template").join("Plugin"))
-}
-
-fn copy_dir_recursive(
-    src: &Path,
-    dest: &Path,
-    mut modify: Option<&mut dyn FnMut(&Path, &mut String)>,
-    skip: Option<&dyn Fn(&Path) -> bool>,
-) -> CommandResult {
-    let mut stack = vec![src.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let rel = dir.strip_prefix(src).unwrap_or(&dir);
-        let target_dir = dest.join(rel);
-        fs::create_dir_all(&target_dir)?;
-        for entry in fs::read_dir(&dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.is_file() {
-                if let Some(skip) = skip {
-                    if skip(&path) {
-                        continue;
-                    }
-                }
-                let rel_path = path.strip_prefix(src).unwrap_or(&path);
-                let target_path = dest.join(rel_path);
-                if let Some(parent) = target_path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                if let Some(modify) = modify.as_deref_mut() {
-                    let mut content = fs::read_to_string(&path)
-                        .map_err(|e| crate::nosman::command::CommandError::IO {
-                            file: path.to_string_lossy().to_string(),
-                            message: format!("Failed to read template file: {}", e),
-                        })?;
-                    modify(&path, &mut content);
-                    fs::write(&target_path, content)?;
-                } else {
-                    fs::copy(&path, &target_path)?;
-                }
-            }
-        }
-    }
-    Ok(())
 }
 
 fn get_sdk_base_template_dir(template_root: &Path) -> PathBuf {
