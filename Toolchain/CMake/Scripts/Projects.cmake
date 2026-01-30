@@ -322,7 +322,7 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 	_nos_get_files_and_group(${config_folder} "${config_file_types}" "Config" config_files)
 	_nos_get_files_and_group(${plugin_root} ".fbs" "Types" type_schema_files)
 	_nos_get_files_and_group(${plugin_root} ".nosnode" "Node Definitions" node_definition_files)
-	_nos_get_files_and_group(${plugin_root} ".nosdef" "Node Definitions" node_definition_files)
+	_nos_get_files_and_group(${plugin_root} ".nosdef" "Node Definitions" node_definition_files_legacy)
 	_nos_get_files_and_group(${plugin_root} ".natvis" "Natvis" natvis_files)
 
 	list(LENGTH ADDITIONAL_FILE_TYPES len_file_types_list)
@@ -355,7 +355,8 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 			list(APPEND PLUGIN_MANIFEST_FILE ${ALTERNATIVE_PLUGIN_MANIFEST_FILES})
 		endif()
 	endforeach()
-	set(INCLUDED_IN_PROJECT ${source_files} ${header_files} ${config_files} ${node_definition_files} ${natvis_files} ${type_schema_files} ${shader_files} ${additional_files} ${PLUGIN_MANIFEST_FILE} ${ALTERNATIVE_PLUGIN_MANIFEST_FILES})
+	set(INCLUDED_IN_PROJECT ${source_files} ${header_files} ${config_files} ${node_definition_files} ${node_definition_files_legacy} 
+		${natvis_files} ${type_schema_files} ${shader_files} ${additional_files} ${PLUGIN_MANIFEST_FILE} ${ALTERNATIVE_PLUGIN_MANIFEST_FILES})
 	add_library(${NAME} ${NOS_PLUGIN_TYPE} ${INCLUDED_IN_PROJECT})
 	set_target_properties(${NAME} PROPERTIES
 		PREFIX ""
