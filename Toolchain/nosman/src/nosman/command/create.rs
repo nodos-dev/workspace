@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
@@ -99,6 +100,151 @@ impl CreateCommand {
             })
             .collect::<Vec<_>>()
             .join("::")
+    }
+
+    fn split_plugin_name_parts(plugin_name: &str) -> Vec<String> {
+        let mut parts = Vec::new();
+        let mut current = String::new();
+        for ch in plugin_name.chars() {
+            if ch.is_ascii_alphanumeric() {
+                current.push(ch);
+            } else if !current.is_empty() {
+                parts.push(current.clone());
+                current.clear();
+            }
+        }
+        if !current.is_empty() {
+            parts.push(current);
+        }
+        parts
+    }
+
+    fn plugin_name_to_camel_case(plugin_name: &str) -> String {
+        let parts = Self::split_plugin_name_parts(plugin_name);
+        if parts.is_empty() {
+            return String::new();
+        }
+        let mut out = String::new();
+        for (idx, part) in parts.into_iter().enumerate() {
+            let lower = part.to_ascii_lowercase();
+            let mut chars = lower.chars();
+            if let Some(first) = chars.next() {
+                if idx == 0 {
+                    out.push(first);
+                } else {
+                    out.push(first.to_ascii_uppercase());
+                }
+                out.push_str(chars.as_str());
+            }
+        }
+        out
+    }
+
+    fn plugin_name_to_screaming_snake_case(plugin_name: &str) -> String {
+        let parts = Self::split_plugin_name_parts(plugin_name);
+        parts
+            .into_iter()
+            .map(|part| part.to_ascii_uppercase())
+            .collect::<Vec<_>>()
+            .join("_")
+    }
+
+    fn replace_plugin_placeholders(content: &mut String, plugin_name: &str) {
+        let camel_case = Self::plugin_name_to_camel_case(plugin_name);
+        let screaming_snake = Self::plugin_name_to_screaming_snake_case(plugin_name);
+        *content = content
+            .replace("<NAME>", plugin_name)
+            .replace("<PLUGIN_NAME_CAMEL_CASE>", &camel_case)
+            .replace("<PLUGIN_NAME_SCREAMING_SNAKE_CASE>", &screaming_snake);
+    }
+
+    fn replace_placeholders_in_dir(
+        dir: &Path,
+        workspace: &Workspace,
+        plugin_name: &str,
+        deps: &Vec<PackageIdentifier>,
+        lang_tool: &LangTool,
+    ) -> CommandResult {
+        let mut stack = vec![dir.to_path_buf()];
+        while let Some(current) = stack.pop() {
+            let entries = match fs::read_dir(&current) {
+                Ok(entries) => entries,
+                Err(err) => {
+                    return Err(crate::nosman::command::CommandError::IO {
+                        file: current.to_string_lossy().to_string(),
+                        message: format!("Failed to read directory: {}", err),
+                    });
+                }
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                let mut content = match fs::read_to_string(&path) {
+                    Ok(content) => content,
+                    Err(err) if err.kind() == io::ErrorKind::InvalidData => continue,
+                    Err(err) => {
+                        return Err(crate::nosman::command::CommandError::IO {
+                            file: path.to_string_lossy().to_string(),
+                            message: format!("Failed to read template file: {}", err),
+                        });
+                    }
+                };
+                let original = content.clone();
+                Self::replace_plugin_placeholders(&mut content, plugin_name);
+                Self::replace_tool_placeholders(workspace, &mut content, plugin_name, deps, lang_tool.tool());
+                Self::replace_lang_placeholders(&mut content, lang_tool.lang(), plugin_name);
+                if content != original {
+                    fs::write(&path, content).map_err(|err| crate::nosman::command::CommandError::IO {
+                        file: path.to_string_lossy().to_string(),
+                        message: format!("Failed to write template file: {}", err),
+                    })?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn rename_cpp_include_files(output_dir: &Path, plugin_name: &str) -> CommandResult {
+        let camel_case = Self::plugin_name_to_camel_case(plugin_name);
+        if camel_case.is_empty() {
+            return Ok(());
+        }
+        let include_dir_base = output_dir.join("Include");
+        let include_dir = include_dir_base.join("Plugin");
+        if include_dir.exists() {
+            let include_dir_dst = include_dir_base.join(&camel_case);
+            if include_dir != include_dir_dst && !include_dir_dst.exists() {
+                fs::rename(&include_dir, &include_dir_dst).map_err(|err| crate::nosman::command::CommandError::IO {
+                    file: include_dir.to_string_lossy().to_string(),
+                    message: format!("Failed to rename include directory: {}", err),
+                })?;
+            }
+            let src = include_dir_dst.join("Plugin.h");
+            if src.exists() {
+                let dst = include_dir_dst.join(format!("{}.h", camel_case));
+                if src != dst && !dst.exists() {
+                    fs::rename(&src, &dst).map_err(|err| crate::nosman::command::CommandError::IO {
+                        file: src.to_string_lossy().to_string(),
+                        message: format!("Failed to rename header file: {}", err),
+                    })?;
+                }
+            }
+        } else {
+            let src = include_dir_base.join("Plugin.h");
+            if src.exists() {
+                let dst = include_dir_base.join(format!("{}.h", camel_case));
+                if src != dst && !dst.exists() {
+                    fs::rename(&src, &dst).map_err(|err| crate::nosman::command::CommandError::IO {
+                        file: src.to_string_lossy().to_string(),
+                        message: format!("Failed to rename header file: {}", err),
+                    })?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn replace_lang_placeholders(content: &mut String, lang: &str, module_name: &str) {
@@ -265,14 +411,15 @@ impl CreateCommand {
             )?;
 
             if tool_template_dir.exists() {
-                copy_dir_recursive(&tool_template_dir, output_dir, Some(&mut |_, content| {
-                    Self::replace_tool_placeholders(workspace, content, plugin_name, &deps, lang_tool.tool());
-                }), None)?;
+                copy_dir_recursive(&tool_template_dir, output_dir, None, None)?;
             }
 
-            copy_dir_recursive(&lang_template_dir, output_dir, Some(&mut |_, content| {
-                Self::replace_lang_placeholders(content, lang_tool.lang(), plugin_name);
-            }), None)?;
+            copy_dir_recursive(&lang_template_dir, output_dir, None, None)?;
+                
+            if lang_tool.lang() == "cpp" {
+                Self::rename_cpp_include_files(output_dir, plugin_name)?;
+            }
+            Self::replace_placeholders_in_dir(output_dir, workspace, plugin_name, &deps, &lang_tool)?;
         } else {
             let legacy_tool_template_dir = legacy_tool_template_dir.unwrap();
             let legacy_lang_template_dir = legacy_lang_template_dir.unwrap();
