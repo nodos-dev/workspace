@@ -37,6 +37,14 @@ pub fn get_cli() -> clap::Command {
                 .short('p')
                 .help("Path to the project folder to generate files in")
                 .default_value("Project"))
+            .arg(Arg::new("rm_cache")
+                .long("rm-cache")
+                .action(ArgAction::SetTrue)
+                .help("[CMake-only] remove CMakeCache.txt in the output directory before generating"))
+            .arg(Arg::new("clean")
+                .long("clean")
+                .action(ArgAction::SetTrue)
+                .help("[CMake-only] delete the CMake output directory before generating"))
             .arg(Arg::new("plugin_dirs")
                 .long("plugin-dirs")
                 .alias("module_dirs")
@@ -60,18 +68,18 @@ pub fn get_cli() -> clap::Command {
                 .default_value("Project"))
             .arg(Arg::new("config")
                 .long("config")
-                .help("CMake-only build configuration (e.g. Debug/Release)"))
+                .help("[CMake-only] build configuration (e.g. Debug/Release)"))
             .arg(Arg::new("target")
                 .long("target")
-                .help("CMake-only build target"))
+                .help("[CMake-only] build target"))
             .arg(Arg::new("clean_first")
                 .long("clean-first")
                 .action(ArgAction::SetTrue)
-                .help("CMake-only clean before building (CMake --clean-first)"))
+                .help("[CMake-only] clean before building (CMake --clean-first)"))
             .arg(Arg::new("verbose")
                 .long("verbose")
                 .action(ArgAction::SetTrue)
-                .help("CMake-only verbose build output (CMake --verbose)"))
+                .help("[CMake-only] verbose build output (CMake --verbose)"))
             .arg(Arg::new("job_count")
                 .long("jobs")
                 .short('j')
@@ -280,12 +288,33 @@ impl Command for DevPullCommand {
 pub struct DevGenCommand {}
 
 impl DevGenCommand {
-    fn run_gen(&self, lang_tool: LangTool, project_folder: &String, plugin_dirs: Option<String>, extra_args: Vec<String>) -> CommandResult {
-        // Only cpp/cmake is supported for now
-        if lang_tool != LangTool::CppCMake {
-            return Err(InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool) });
-        }
-        let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", project_folder];
+    fn run_gen(
+        &self,
+        lang_tool: LangTool,
+        project_folder: &String,
+        plugin_dirs: Option<String>,
+        extra_args: Vec<String>,
+        rm_cache: bool,
+        clean: bool
+    ) -> CommandResult {
+        #[allow(unreachable_patterns)]
+        match lang_tool {
+            LangTool::CppCMake => {
+                let project_path = PathBuf::from(project_folder);
+                if clean && project_path.exists() {
+                    fs::remove_dir_all(&project_path).map_err(|e| CommandError::Runtime {
+                        message: format!("Failed to remove CMake output directory {}: {}", project_path.display(), e)
+                    })?;
+                }
+                if rm_cache {
+                    let cache_path = project_path.join("CMakeCache.txt");
+                    if cache_path.exists() {
+                        fs::remove_file(&cache_path).map_err(|e| CommandError::Runtime {
+                            message: format!("Failed to remove CMake cache file {}: {}", cache_path.display(), e)
+                        })?;
+                    }
+                }
+                let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", project_folder];
 
         let mut formatted_args = Vec::new(); // holds the actual Strings
         if let Some(val) = plugin_dirs {
@@ -302,16 +331,19 @@ impl DevGenCommand {
         for arg in extra_args.iter() {
             cmake_args.push(arg);
         }
-        let mut cmd = std::process::Command::new("cmake");
-        let cmd_args_str = cmake_args.iter().map(|s| s.as_ref()).collect::<Vec<&OsStr>>().join(OsStr::new(" "));
-        println!("{}: {:?}", "Running cmake with".green(), cmd_args_str);
-        let status = cmd
-            .args(&cmake_args)
-            .status();
-        if !status.is_ok() {
-            return Err(CommandError::Runtime { message: format!("Error during running '{:?}'. See output.", cmake_args)});
+                let mut cmd = std::process::Command::new("cmake");
+                let cmd_args_str = cmake_args.iter().map(|s| s.as_ref()).collect::<Vec<&OsStr>>().join(OsStr::new(" "));
+                println!("{}: {:?}", "Running cmake with".green(), cmd_args_str);
+                let status = cmd
+                    .args(&cmake_args)
+                    .status();
+                if !status.is_ok() {
+                    return Err(CommandError::Runtime { message: format!("Error during running '{:?}'. See output.", cmake_args)});
+                }
+                Ok(())
+            }
+            _ => Err(InvalidArgument { message: format!("Unsupported language/tool: {}", lang_tool) }),
         }
-        Ok(())
     }
 }
 
@@ -332,6 +364,8 @@ impl Command for DevGenCommand {
             .get_many::<String>("extra_args")
             .map(|vals| vals.cloned().collect())
             .unwrap_or_default();
+        let rm_cache = args.get_flag("rm_cache");
+        let clean = args.get_flag("clean");
         let plugin_dirs: Option<String>;
         match args.get_one::<String>("plugin_dirs"){
             None => {
@@ -344,7 +378,7 @@ impl Command for DevGenCommand {
                 plugin_dirs = Some(p.clone());
             }
         }
-        self.run_gen(lang_tool, project_folder, plugin_dirs, extra_args)
+        self.run_gen(lang_tool, project_folder, plugin_dirs, extra_args, rm_cache, clean)
     }
 
     fn needs_workspace(&self) -> bool {
