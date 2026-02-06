@@ -135,6 +135,49 @@ pub fn copy_include_dir_recursive(
     Ok(())
 }
 
+pub fn copy_dir_recursive(
+    src: &Path,
+    dest: &Path,
+    mut modify: Option<&mut dyn FnMut(&Path, &mut String)>,
+    skip: Option<&dyn Fn(&Path) -> bool>,
+) -> Result<(), CommandError> {
+    let mut stack = vec![src.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let rel = dir.strip_prefix(src).unwrap_or(&dir);
+        let target_dir = dest.join(rel);
+        fs::create_dir_all(&target_dir)?;
+        for entry in fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.is_file() {
+                if let Some(skip) = skip {
+                    if skip(&path) {
+                        continue;
+                    }
+                }
+                let rel_path = path.strip_prefix(src).unwrap_or(&path);
+                let target_path = dest.join(rel_path);
+                if let Some(parent) = target_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                if let Some(modify) = modify.as_deref_mut() {
+                    let mut content = fs::read_to_string(&path).map_err(|e| CommandError::IO {
+                        file: path.to_string_lossy().to_string(),
+                        message: format!("Failed to read template file: {}", e),
+                    })?;
+                    modify(&path, &mut content);
+                    fs::write(&target_path, content)?;
+                } else {
+                    fs::copy(&path, &target_path)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn ask(question: &str, default: bool, dont_ask: bool) -> bool {
     if dont_ask {
         return default;
