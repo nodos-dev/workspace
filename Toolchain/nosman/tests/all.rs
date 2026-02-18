@@ -215,28 +215,6 @@ fn test_create_plugin(
     description: &str,
     nodos_version: &str,
 ) {
-        let res = GetCommand {}.run_get(
-        test_workspace,
-        &"nodos".to_string(),
-        &nodos_version.to_string(),
-        true,
-        true,
-        false,
-    );
-    if let Err(e) = res {
-        panic!("Failed to install nodos: {}", e);
-    }
-
-    // Copy self to the workspace
-    let nosman_path = env!("CARGO_BIN_EXE_nosman");
-    // Set the target executable name
-    let target_executable_name = format!("nodos{}", std::env::consts::EXE_SUFFIX);
-    std::fs::copy(
-        nosman_path,
-        &test_workspace.root.join(target_executable_name),
-    )
-    .expect("Failed to copy nosman to workspace");
-
     // Install nodos and verify cmake generation and build works correctly.
     let res = GetCommand {}.run_get(
         test_workspace,
@@ -360,7 +338,7 @@ fn test_node_add_remove(version: SemVer) {
     let mut test =WorkspaceGen::new_random();
     let module_name = format!("test{}.plugin", version.major);
     if version < NODOS_1_4 {
-        // For Nodos 1.3 and earlier,  calling CreateCommand is enough for module creation and we don't need the engine.
+        // For Nodos 1.3 and earlier, calling CreateCommand is enough for plugin creation and we don't need the engine.
         let module_dir = test.workspace.root.join("Module").join(&module_name);
         // Create plugin
         CreateCommand {}
@@ -376,7 +354,7 @@ fn test_node_add_remove(version: SemVer) {
             )
             .expect("Failed to create plugin");
     } else {    
-        // For Nodos 1.4 and later, we need to have nodos installed in the workspace for module creation to work, so we call test_create_module which handles both installation and creation.
+        // For Nodos 1.4 and later, we need to have nodos installed in the workspace for plugin creation to work, so we call test_create_plugin which handles both installation and creation.
         test_create_plugin(
             &mut test.workspace,
             &module_name,
@@ -468,7 +446,7 @@ fn test_pin_add_remove(version: SemVer) {
     let mut test = WorkspaceGen::new_random();
     let module_name = format!("test{}.plugin", version.major);
     if version < NODOS_1_4 {
-        // For Nodos 1.3 and earlier,  calling CreateCommand is enough for module creation and we don't need the engine.
+        // For Nodos 1.3 and earlier, calling CreateCommand is enough for plugin creation and we don't need the engine.
         let module_dir = test.workspace.root.join("Module").join(&module_name);
         // Create plugin
         CreateCommand {}
@@ -484,7 +462,7 @@ fn test_pin_add_remove(version: SemVer) {
             )
             .expect("Failed to create plugin");
     } else {    
-        // For Nodos 1.4 and later, we need to have nodos installed in the workspace for module creation to work, so we call test_create_plugin which handles both installation and creation.
+        // For Nodos 1.4 and later, we need to have nodos installed in the workspace for plugin creation to work, so we call test_create_plugin which handles both installation and creation.
         test_create_plugin(
             &mut test.workspace,
             &module_name,
