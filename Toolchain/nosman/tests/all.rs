@@ -177,9 +177,9 @@ fn get_full_output(res: &Output) -> String {
     output
 }
 
-fn test_cmake_build(test: &WorkspaceGen) {
+fn test_cmake_build(test_workspace: &Workspace) {
     let res = std::process::Command::new("cmake")
-        .current_dir(&test.workspace.root)
+        .current_dir(&test_workspace.root)
         .arg("-S")
         .arg("Toolchain/CMake")
         .arg("-B")
@@ -194,7 +194,7 @@ fn test_cmake_build(test: &WorkspaceGen) {
         panic!("Failed to generate project");
     }
     let res = std::process::Command::new("cmake")
-        .current_dir(&test.workspace.root)
+        .current_dir(&test_workspace.root)
         .arg("--build")
         .arg("Project")
         .output();
@@ -209,16 +209,15 @@ fn test_cmake_build(test: &WorkspaceGen) {
 }
 
 fn test_create_plugin(
+    test_workspace: &mut Workspace,
     plugin_name: &str,
     plugin_type: PluginType,
     description: &str,
     nodos_version: &str,
 ) {
-    let mut test = WorkspaceGen::new_random();
-
     // Install nodos and verify cmake generation and build works correctly.
     let res = GetCommand {}.run_get(
-        &mut test.workspace,
+        test_workspace,
         &"nodos".to_string(),
         &nodos_version.to_string(),
         true,
@@ -235,16 +234,16 @@ fn test_create_plugin(
     let target_executable_name = format!("nodos{}", std::env::consts::EXE_SUFFIX);
     std::fs::copy(
         nosman_path,
-        &test.workspace.root.join(target_executable_name),
+        &test_workspace.root.join(target_executable_name),
     )
     .expect("Failed to copy nosman to workspace");
 
     // Create the module
-    let module_dir = test.workspace.root.join("Module").join(plugin_name);
+    let module_dir = test_workspace.root.join("Module").join(plugin_name);
     let nodos_version = SemVer::parse_from_str(nodos_version);
     CreateCommand {}
         .run_create(
-            &mut test.workspace,
+            test_workspace,
             plugin_name,
             Some(plugin_type.clone()),
             LangTool::CppCMake,
@@ -271,12 +270,14 @@ fn test_create_plugin(
         plugin_type
     );
 
-    test_cmake_build(&test);
+    test_cmake_build(&test_workspace);
 }
 
 #[test]
 fn create_plugin_1_3() {
+    let mut test = WorkspaceGen::new_random();
     test_create_plugin(
+        &mut test.workspace,
         "test.example",
         PluginType::Default,
         "Test plugin description",
@@ -286,7 +287,9 @@ fn create_plugin_1_3() {
 
 #[test]
 fn create_subsystem_1_3() {
+    let mut test = WorkspaceGen::new_random();
     test_create_plugin(
+        &mut test.workspace,
         "test.sys.example",
         PluginType::SubsystemLegacy,
         "Test subsystem description",
@@ -296,7 +299,9 @@ fn create_subsystem_1_3() {
 
 #[test]
 fn create_plugin_1_4() {
+    let mut test = WorkspaceGen::new_random();
     test_create_plugin(
+        &mut test.workspace,
         "test.example",
         PluginType::Default,
         "Test plugin description",
@@ -332,20 +337,33 @@ fn read_node_def_json(node_def_path: &PathBuf) -> serde_json::Value {
 fn test_node_add_remove(version: SemVer) {
     let mut test = WorkspaceGen::new_random();
     let module_name = format!("test{}.plugin", version.major);
-    let module_dir = test.workspace.root.join("Module").join(&module_name);
-    // Create plugin
-    CreateCommand {}
-        .run_create(
+    if version < NODOS_1_4 {
+        // For Nodos 1.3 and earlier, calling CreateCommand is enough for plugin creation and we don't need the engine.
+        let module_dir = test.workspace.root.join("Module").join(&module_name);
+        // Create plugin
+        CreateCommand {}
+            .run_create(
+                &mut test.workspace,
+                &module_name,
+                Some(PluginType::Default),
+                LangTool::CppCMake,
+                &module_dir,
+                Vec::new(),
+                "Node test plugin",
+                Some(version.clone()),
+            )
+            .expect("Failed to create plugin");
+    } else {    
+        // For Nodos 1.4 and later, we need to have nodos installed in the workspace for plugin creation to work, so we call test_create_plugin which handles both installation and creation.
+        test_create_plugin(
             &mut test.workspace,
             &module_name,
-            Some(PluginType::Default),
-            LangTool::CppCMake,
-            &module_dir,
-            Vec::new(),
+            PluginType::Default,
             "Node test plugin",
-            Some(version.clone()),
+            &version.to_string(),
         )
-        .expect("Failed to create plugin");
+    };
+
     // Add node
     let node_class = "MyNode";
     NodeCommand {}
@@ -427,20 +445,32 @@ fn node_add_remove_1_4() {
 fn test_pin_add_remove(version: SemVer) {
     let mut test = WorkspaceGen::new_random();
     let module_name = format!("test{}.plugin", version.major);
-    let module_dir = test.workspace.root.join("Module").join(&module_name);
-    // Create plugin
-    CreateCommand {}
-        .run_create(
+    if version < NODOS_1_4 {
+        // For Nodos 1.3 and earlier, calling CreateCommand is enough for plugin creation and we don't need the engine.
+        let module_dir = test.workspace.root.join("Module").join(&module_name);
+        // Create plugin
+        CreateCommand {}
+            .run_create(
+                &mut test.workspace,
+                &module_name,
+                Some(PluginType::Default),
+                LangTool::CppCMake,
+                &module_dir,
+                Vec::new(),
+                "Pin test plugin",
+                Some(version.clone()),
+            )
+            .expect("Failed to create plugin");
+    } else {    
+        // For Nodos 1.4 and later, we need to have nodos installed in the workspace for plugin creation to work, so we call test_create_plugin which handles both installation and creation.
+        test_create_plugin(
             &mut test.workspace,
             &module_name,
-            Some(PluginType::Default),
-            LangTool::CppCMake,
-            &module_dir,
-            Vec::new(),
+            PluginType::Default,
             "Pin test plugin",
-            Some(version.clone()),
+            &version.to_string(),
         )
-        .expect("Failed to create plugin");
+    };
     // Add node
     let node_class = "SomeNode";
     NodeCommand {}
