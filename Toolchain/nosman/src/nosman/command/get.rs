@@ -323,14 +323,17 @@ impl GetCommand {
             delete_count += 1;
         }
         if !dont_ask && delete_count > 0 {
-            let prompt = format!(
-                "This update will delete {} existing item{}. Continue?",
-                delete_count,
-                if delete_count == 1 { "" } else { "s" }
-            );
-            if !common::ask(&prompt, false, dont_ask) {
-                return Err(CommandError::Runtime { message: "Aborted by user".to_string() });
-            }
+            pb.suspend(||{
+                let prompt = format!(
+                    "This update will delete {} existing item{}. Continue?",
+                    delete_count,
+                    if delete_count == 1 { "" } else { "s" }
+                );
+                if !common::ask(&prompt, false, dont_ask) {
+                    return Err(CommandError::Runtime { message: "Aborted by user".to_string() });
+                }
+                Ok(())
+            })?;
         }
         for file in leftovers {
             pb.set_message(format!("Removing: {}", file.display()));
