@@ -335,7 +335,7 @@ fn read_node_def_json(node_def_path: &PathBuf) -> serde_json::Value {
 }
 
 fn test_node_add_remove(version: SemVer) {
-    let mut test =WorkspaceGen::new_random();
+    let mut test = WorkspaceGen::new_random();
     let module_name = format!("test{}.plugin", version.major);
     if version < NODOS_1_4 {
         // For Nodos 1.3 and earlier, calling CreateCommand is enough for plugin creation and we don't need the engine.
