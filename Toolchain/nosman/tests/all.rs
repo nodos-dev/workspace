@@ -208,8 +208,8 @@ fn test_cmake_build(test: &WorkspaceGen) {
     }
 }
 
-fn test_create_module(
-    module_name: &str,
+fn test_create_plugin(
+    plugin_name: &str,
     plugin_type: PluginType,
     description: &str,
     nodos_version: &str,
@@ -240,13 +240,13 @@ fn test_create_module(
     .expect("Failed to copy nosman to workspace");
 
     // Create the module
-    let module_dir = test.workspace.root.join("Module").join(module_name);
+    let module_dir = test.workspace.root.join("Module").join(plugin_name);
     let nodos_version = SemVer::parse_from_str(nodos_version);
     CreateCommand {}
         .run_create(
             &mut test.workspace,
-            module_name,
-            plugin_type.clone(),
+            plugin_name,
+            Some(plugin_type.clone()),
             LangTool::CppCMake,
             &module_dir,
             Vec::new(), // No dependencies
@@ -264,7 +264,7 @@ fn test_create_module(
 
     // Check manifest file exists with correct extension
     let extension = get_plugin_manifest_file_ext(Option::from(&nodos_version), &plugin_type);
-    let manifest_path = module_dir.join(format!("{}.{}", module_name, extension));
+    let manifest_path = module_dir.join(format!("{}.{}", plugin_name, extension));
     assert!(
         manifest_path.exists(),
         "{:?} manifest file was not created",
@@ -276,7 +276,7 @@ fn test_create_module(
 
 #[test]
 fn create_plugin_1_3() {
-    test_create_module(
+    test_create_plugin(
         "test.example",
         PluginType::Default,
         "Test plugin description",
@@ -286,7 +286,7 @@ fn create_plugin_1_3() {
 
 #[test]
 fn create_subsystem_1_3() {
-    test_create_module(
+    test_create_plugin(
         "test.sys.example",
         PluginType::SubsystemLegacy,
         "Test subsystem description",
@@ -296,7 +296,7 @@ fn create_subsystem_1_3() {
 
 #[test]
 fn create_plugin_1_4() {
-    test_create_module(
+    test_create_plugin(
         "test.example",
         PluginType::Default,
         "Test plugin description",
@@ -312,7 +312,7 @@ fn create_subsystem_1_4() {
     let result = CreateCommand {}.run_create(
         &mut test.workspace,
         module_name,
-        PluginType::SubsystemLegacy,
+        Some(PluginType::SubsystemLegacy),
         LangTool::CppCMake,
         &module_dir,
         Vec::new(),
@@ -338,7 +338,7 @@ fn test_node_add_remove(version: SemVer) {
         .run_create(
             &mut test.workspace,
             &module_name,
-            PluginType::Default,
+            Some(PluginType::Default),
             LangTool::CppCMake,
             &module_dir,
             Vec::new(),
@@ -433,7 +433,7 @@ fn test_pin_add_remove(version: SemVer) {
         .run_create(
             &mut test.workspace,
             &module_name,
-            PluginType::Default,
+            Some(PluginType::Default),
             LangTool::CppCMake,
             &module_dir,
             Vec::new(),
