@@ -27,6 +27,7 @@ use crate::nosman::package::PackageIdentifier;
 use crate::nosman::path::get_package_manifest_file;
 use crate::nosman::platform::{get_host_platform, Platform};
 use crate::nosman::workspace::Workspace;
+use crate::nosman::plugin::{PluginEntry};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
@@ -188,6 +189,7 @@ impl PublishCommand {
         let mut dependencies: Option<Vec<PackageIdentifier>> = None;
         let mut category: Option<String> = None;
         let mut package_tags: Option<Vec<String>> = None;
+        let mut node_class_names: Vec<String> = vec![];
 
         // If path is a directory, search for a manifest file
         let mut manifest_file = None;
@@ -234,7 +236,25 @@ impl PublishCommand {
                 category = manifest["info"]["category"].as_str().map(|s| s.to_string());
                 package_tags = manifest["info"]["tags"].as_array().map(|a| a.iter().map(|v| v.as_str().unwrap().to_string()).collect());
                 if package_type.is_plugin() {
-                    api_version_opt = Self::get_plugin_api_version_from_binary(verbose, package_type, &manifest, &abs_path, workspace)?;
+                    let sdk_version = manifest["sdk_version"].as_str().map(|s| s.to_string());
+
+                    // 1.4+ plugins spesify sdk_version in manifest, and we can get node class names from manifest without loading the binary.
+                    if sdk_version.is_some(){
+                        api_version_opt = sdk_version.as_ref().and_then(|s| SemVer::parse_from_str(s.as_str()));
+
+                        let nodos_ver = Some(SemVer::new(1, Some(4), Some(0), None));
+                        let mut local_package = workspace.get_package(name.as_ref().unwrap(), version.as_ref().unwrap());
+                        if let Ok(plugin) = PluginEntry::new(local_package.as_mut().unwrap().clone()) {
+                            plugin.get_node_definitions(&nodos_ver).iter().for_each(|node_def| {
+                                node_class_names.push(node_def.class_name.clone());
+                            });
+                        }
+                    }
+                    // 1.3 and below plugins do not specify sdk_version, and we have to load the binary to get the API version.
+                    // Node class names are not published.
+                    else {
+                        api_version_opt = Self::get_plugin_api_version_from_binary(verbose, package_type, &manifest, &abs_path, workspace)?;
+                    }
                 }
             }
         }
@@ -388,6 +408,7 @@ impl PublishCommand {
             module_tags: package_tags,
             release_tags: if release_tags.is_empty() { None } else { Some(release_tags.clone()) },
             platform: Some(target_platform.to_string()),
+            node_names: Some(node_class_names)
         };
         if verbose {
             println!("Release entry: {:?}", release);

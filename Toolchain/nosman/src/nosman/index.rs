@@ -255,6 +255,8 @@ pub struct PackageReleaseEntry {
     pub release_tags: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub platform: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_names: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

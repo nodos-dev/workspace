@@ -38,19 +38,19 @@ impl PluginEntry {
         Ok(PluginEntry { package })
     }
 
-    pub fn get_node_definition(&self, class_name: &str, nodos_version: &Option<SemVer>) -> Option<NodeDefinition> {
+    pub fn get_node_definitions(&self, nodos_version: &Option<SemVer>) -> Vec<NodeDefinition> {
         // Read module manifest file as JSON, and read node definition files
         let manifest_json = self.package.read_manifest();
         let node_defs_rel_paths_opt = manifest_json["node_definitions"].as_array();
         let mut node_defs_rel_paths = vec![];
-        if node_defs_rel_paths_opt.is_none() {
-            if let Some(nodos_version) = nodos_version {
-                if *nodos_version >= NODOS_1_4 {
-                    // Find .nosnode files under Nodes/ folder
-                    let nodes_dir = self.package.get_package_root().join("Nodes");
-                    if !nodes_dir.exists() {
-                        return None;
-                    }
+        let mut node_definitions = vec![];
+
+        // If nodos version is 1.4+, add .nosnode files in Nodes folder.
+        if let Some(nodos_version) = nodos_version {
+            if *nodos_version >= NODOS_1_4 {
+                // Find .nosnode files under Nodes/ folder
+                let nodes_dir = self.package.get_package_root().join("Nodes");
+                if nodes_dir.exists() {
                     for entry in fs::read_dir(&nodes_dir).unwrap_or_else(|e| panic!("Failed to read Nodes directory {:?}: {}", nodes_dir, e)) {
                         let entry = entry.unwrap();
                         let path = entry.path();
@@ -62,12 +62,16 @@ impl PluginEntry {
                     }
                 }
             }
-        } else {
-            node_defs_rel_paths = node_defs_rel_paths_opt.unwrap()
-                .iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect();
         }
+
+        if node_defs_rel_paths_opt.is_some() {
+            node_defs_rel_paths.extend(
+                node_defs_rel_paths_opt.unwrap()
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            );
+        }
+
         for node_defs_rel_path in node_defs_rel_paths {
             let node_defs_path = self.package.get_package_root().join(node_defs_rel_path.as_str());
             let node_defs_file_content = fs::read_to_string(&node_defs_path);
@@ -87,18 +91,21 @@ impl PluginEntry {
                 if !curr_class_name.starts_with(self.package.info.id.name.as_str()) {
                     curr_class_name = format!("{}.{}", self.package.info.id.name, curr_class_name);
                 }
-                if curr_class_name == *class_name {
-                    return Some (NodeDefinition {
-                        class_name: curr_class_name.to_string(),
-                        defined_in: node_defs_path.clone(),
-                        index,
-                        json: node_defs.clone(),
-                        owner: self.package.clone(),
-                    });
-                }
+                node_definitions.push(NodeDefinition {
+                    class_name: curr_class_name.clone(),
+                    defined_in: node_defs_path.clone(),
+                    index,
+                    json: node_json.clone(),
+                    owner: self.package.clone(),
+                });
             }
         }
-        None
+        node_definitions
+    }
+
+    pub fn get_node_definition(&self, class_name: &str, nodos_version: &Option<SemVer>) -> Option<NodeDefinition>{
+        let node_defs = self.get_node_definitions(nodos_version);
+        return node_defs.into_iter().find(|def| def.class_name == class_name);
     }
 
     pub fn remove_node_definition(&self, node_class_name: &String, nodos_version: Option<SemVer>) -> Result<(), String> {
