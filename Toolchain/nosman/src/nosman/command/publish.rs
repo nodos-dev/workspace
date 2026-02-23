@@ -243,11 +243,12 @@ impl PublishCommand {
                         api_version_opt = sdk_version.as_ref().and_then(|s| SemVer::parse_from_str(s.as_str()));
 
                         let nodos_ver = Some(SemVer::new(1, Some(4), Some(0), None));
-                        let mut local_package = workspace.get_package(name.as_ref().unwrap(), version.as_ref().unwrap());
-                        if let Ok(plugin) = PluginEntry::new(local_package.as_mut().unwrap().clone()) {
-                            plugin.get_node_definitions(&nodos_ver).iter().for_each(|node_def| {
-                                node_class_names.push(node_def.class_name.clone());
-                            });
+                        if let Some(local_package) = workspace.get_package(name.as_ref().unwrap(), version.as_ref().unwrap()).cloned() {  
+                            if let Ok(plugin) = PluginEntry::new(local_package) {  
+                                plugin.get_node_definitions(&nodos_ver).iter().for_each(|node_def| {  
+                                    node_class_names.push(node_def.class_name.clone());  
+                                });  
+                            }  
                         }
                     }
                     // 1.3 and below plugins do not specify sdk_version, and we have to load the binary to get the API version.
@@ -408,8 +409,7 @@ impl PublishCommand {
             module_tags: package_tags,
             release_tags: if release_tags.is_empty() { None } else { Some(release_tags.clone()) },
             platform: Some(target_platform.to_string()),
-            node_names: Some(node_class_names)
-        };
+            node_names: if node_class_names.is_empty() { None } else { Some(node_class_names) }          };
         if verbose {
             println!("Release entry: {:?}", release);
         }
