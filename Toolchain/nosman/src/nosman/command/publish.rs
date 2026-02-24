@@ -18,7 +18,7 @@ use tempfile::{tempdir};
 use zip::write::{SimpleFileOptions};
 use chrono::{Utc};
 use globwalk::{GlobWalkerBuilder};
-use crate::nosman::command::{get_version_check_arg, Command, CommandError, CommandResult};
+use crate::nosman::command::{Command, CommandError, CommandResult, get_version_check_arg};
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::{common, constants};
 use crate::nosman::index::{PackageReleaseEntry, PackageType, SemVer, VersionCheckStrategy};
@@ -242,10 +242,9 @@ impl PublishCommand {
                     if sdk_version.is_some(){
                         api_version_opt = sdk_version.as_ref().and_then(|s| SemVer::parse_from_str(s.as_str()));
 
-                        let nodos_ver = Some(SemVer::new(1, Some(4), Some(0), None));
                         if let Some(local_package) = workspace.get_package(name.as_ref().unwrap(), version.as_ref().unwrap()).cloned() {  
                             if let Ok(plugin) = PluginEntry::new(local_package) {  
-                                plugin.get_node_definitions(&nodos_ver).iter().for_each(|node_def| {  
+                                plugin.get_node_definitions(true).iter().for_each(|node_def| {  
                                     node_class_names.push(node_def.class_name.clone());  
                                 });  
                             }  
@@ -269,6 +268,7 @@ impl PublishCommand {
         }
 
         println!("Target platform: {:?}", target_platform);
+        println!("Node class names: {:?}", node_class_names);
 
         let name = name.unwrap();
         let version = version.unwrap() + version_suffix;
@@ -409,7 +409,8 @@ impl PublishCommand {
             module_tags: package_tags,
             release_tags: if release_tags.is_empty() { None } else { Some(release_tags.clone()) },
             platform: Some(target_platform.to_string()),
-            node_names: if node_class_names.is_empty() { None } else { Some(node_class_names) }          };
+            node_names: if node_class_names.is_empty() { None } else { Some(node_class_names) }
+        };
         if verbose {
             println!("Release entry: {:?}", release);
         }
