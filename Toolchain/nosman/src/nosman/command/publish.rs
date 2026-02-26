@@ -268,7 +268,6 @@ impl PublishCommand {
         }
 
         println!("Target platform: {:?}", target_platform);
-        println!("Node class names: {:?}", node_class_names);
 
         let name = name.unwrap();
         let version = version.unwrap() + version_suffix;
