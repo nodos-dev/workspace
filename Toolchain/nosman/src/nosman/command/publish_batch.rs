@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
-use crate::nosman::command::{get_version_check_arg, Command, CommandResult};
+use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument};
 use crate::nosman::command::publish::{PublishCommand, PublishOptions};
 use crate::nosman::constants;
 
 use crate::nosman::command::unpublish::UnpublishCommand;
-use crate::nosman::index::{SemVer, VersionCheckStrategy};
+use crate::nosman::index::SemVer;
 use crate::nosman::package::{get_package_info_from_manifest, get_package_manifests};
 use crate::nosman::platform::{get_host_platform, Platform};
 use crate::nosman::workspace::Workspace;
@@ -16,9 +16,8 @@ pub struct PublishBatchCommand {
 }
 
 impl PublishBatchCommand {
-    fn run_publish_batch(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, remote_name: &String, directory: &PathBuf,
-                         version_suffix: &String, version_check_strategy: &VersionCheckStrategy, vendor: Option<&String>, publisher_name: Option<&String>,
-                         publisher_email: Option<&String>, release_tags: &Vec<String>, opt_target_platform: Option<&String>, release_notes: Option<&String>,
+    fn run_publish_batch(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, directory: &PathBuf,
+                         version_suffix: &String, release_tags: &Vec<String>, opt_target_platform: Option<&String>,
                          publish_all: bool, packages: Vec<&String>) -> CommandResult {
         if !directory.exists() {
             return Err(InvalidArgument { message: format!("Repo {} does not exist", directory.display()) });
@@ -106,10 +105,7 @@ impl PublishBatchCommand {
         for package_root in to_be_published {
             let res = PublishCommand {}.publish(workspace, dry_run, verbose,
                                                 &package_root, None, None,
-                                                version_suffix, &version_check_strategy, None,
-                                                remote_name, vendor, publisher_name,
-                                                publisher_email, release_tags, Some(&target_platform.to_string()),
-                                                release_notes);
+                                                version_suffix, None, release_tags, Some(&target_platform.to_string()));
             if let Ok(id) = res {
                 published.push(id);
             }
@@ -122,7 +118,7 @@ impl PublishBatchCommand {
         if rollback {
             println!("{}", "Rolling back published packages".red());
             for id in published {
-                UnpublishCommand {}.run_unpublish(&workspace, dry_run, verbose, remote_name, &id.name, Option::from(&id.version))?
+                UnpublishCommand {}.run_unpublish(dry_run, &id.name, Option::from(&id.version))?
             }
             return Err(InvalidArgument { message: "Failed to publish all packages".to_string() });
         }
@@ -134,12 +130,8 @@ impl PublishBatchCommand {
 pub fn get_cli() -> clap::Command {
     clap::Command::new("publish-batch")
         .about("Publish all/changed packages under the git repository.")
-        .after_help(format!("This command will publish all/changed packages under the git repository to the specified remote.\n\
+        .after_help(format!("This command will publish all/changed packages under the git repository to the configured package server.\n\
     It will use the {} files to add the files to the release.", constants::PUBLISH_OPTIONS_FILE_NAME))
-        .arg(Arg::new("remote")
-            .help("Name of the remote to publish to.")
-            .default_value("default")
-        )
         .arg(Arg::new("directory")
             .long("directory")
             .alias("repo-path")
@@ -151,21 +143,6 @@ pub fn get_cli() -> clap::Command {
             .long("version-suffix")
             .help("Suffix to append to the version of the packages to be published.")
             .default_value("")
-        )
-        .arg(Arg::new("vendor")
-            .help("Who is publishing the package?\n\
-        Required if the module to be published was not added to the index before.")
-            .long("vendor")
-        )
-        .arg(Arg::new("publisher_name")
-            .help("Git name of the publishing agent. If not provided, the name of the current git user for the remote will be used.")
-            .long("publisher-name")
-            .required(false)
-        )
-        .arg(Arg::new("publisher_email")
-            .help("Git email of the publishing agent. If not provided, the email of the current git user for the remote will be used.")
-            .long("publisher-email")
-            .required(false)
         )
         .arg(Arg::new("dry_run")
             .action(ArgAction::SetTrue)
@@ -193,12 +170,6 @@ pub fn get_cli() -> clap::Command {
             .help("Target architecture and operating system of the module to be published. If not provided, the current platform will be used.")
             .required(false)
         )
-        .arg(Arg::new("release_notes")
-            .long("release-notes")
-            .help("Release notes for the release.")
-            .required(false)
-        )
-        .arg(get_version_check_arg())
         .arg(Arg::new("publish_all")
             .action(ArgAction::SetTrue)
             .long("publish-all")
@@ -223,21 +194,24 @@ impl Command for PublishBatchCommand {
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
         let verbose = args.get_one::<bool>("verbose").unwrap();
-        let remote_name = args.get_one::<String>("remote").unwrap();
         let directory = PathBuf::from(args.get_one::<String>("directory").unwrap());
         let version_suffix = args.get_one::<String>("version_suffix").unwrap();
-        let vendor = args.get_one::<String>("vendor");
-        let publisher_name = args.get_one::<String>("publisher_name");
-        let publisher_email = args.get_one::<String>("publisher_email");
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
         let target_platform = args.get_one::<String>("target_platform");
-        let release_notes = args.get_one::<String>("release_notes");
-        let version_check_strategy = VersionCheckStrategy::from_str(args.get_one::<String>("version_check").unwrap().as_str());
         let publish_all = args.get_one::<bool>("publish_all").unwrap();
         let packages: Vec<&String> = args.get_many::<String>("packages").unwrap_or_default().collect();
-        self.run_publish_batch(workspace, *dry_run, *verbose, &remote_name, &directory, &version_suffix, &version_check_strategy,
-                               vendor, publisher_name, publisher_email, &release_tags, target_platform, release_notes, *publish_all, packages)
+        self.run_publish_batch(
+            workspace,
+            *dry_run,
+            *verbose,
+            &directory,
+            &version_suffix,
+            &release_tags,
+            target_platform,
+            *publish_all,
+            packages,
+        )
     }
 
     fn needs_workspace(&self) -> bool {

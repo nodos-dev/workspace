@@ -1,6 +1,6 @@
 use rayon::iter::ParallelIterator;
 use std::collections::{HashMap, HashSet};
-use std::{fs, io};
+use std::fs;
 use std::cmp::PartialEq;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
 use crate::nosman::constants;
 use crate::nosman::command::CommandError::InvalidArgument;
-use crate::nosman::index::{Index, PackageIndexEntry, PackageReleaseEntry, PackageReleases, PackageType, Remote, SemVer};
+use crate::nosman::index::{Index, PackageReleaseEntry, PackageType, SemVer};
 use crate::nosman::plugin::{NodeDefinition, PluginEntry};
 use crate::nosman::package::{get_package_manifests, LocalPackageEntry};
 use crate::nosman::path::get_rel_path_based_on;
@@ -56,7 +56,6 @@ struct WorkspaceRuntimeParams {
 pub struct Workspace {
     #[serde(skip_serializing, skip_deserializing)]
     pub root: PathBuf,
-    pub remotes: Vec<Remote>,
     #[serde(alias = "installed_modules")]
     pub packages: HashMap<String, HashMap<String, LocalPackageEntry>>,
     #[serde(skip_serializing, skip_deserializing)]
@@ -72,7 +71,6 @@ bitflags! {
     impl RescanFlags: u8 {
         const ScanPackages = 0b1;
         const FetchPackageIndex = 0b10;
-        const AddDefaultPackageIndexIfNoRemoteExists = 0b100;
     }
 }
 
@@ -96,41 +94,47 @@ fn fetch_releases_mt(workspace: &Workspace, package_names: Option<HashSet<String
     let releases = Mutex::new(HashMap::new());
     let pb = get_progress_bar(workspace.is_silent());
     pb.enable_steady_tick(Duration::from_millis(100));
-    pb.set_message("Fetching package index...");
-    workspace.remotes.par_iter().for_each(|remote| {
-        pb.set_message(format!("Fetching remote {}", remote.name));
-        let res = remote.fetch(&workspace);
+    pb.set_message("Fetching package server index...");
+    let package_list = match crate::nosman::package_server::fetch_packages(constants::NODOS_STORE_API_URL) {
+        Ok(package_list) => package_list,
+        Err(e) => {
+            pb.println(format!("Failed to fetch package list: {}", e));
+            return releases.into_inner().unwrap();
+        }
+    };
+    pb.println(format!("Fetched {} packages from package server", package_list.len()));
+    package_list.par_iter().for_each(|package| {
+        if let Some(ref package_names) = package_names {
+            if !package_names.contains(&package.name) {
+                return;
+            }
+        }
+        let package_type = PackageType::from_str(&package.package_type);
+        let res = crate::nosman::package_server::fetch_package_releases(
+            constants::NODOS_STORE_API_URL,
+            &package.name,
+        );
         if let Err(e) = res {
-            pb.println(format!("Failed to fetch remote: {}", e));
+            pb.println(format!("Failed to fetch package releases for {}: {}", package.name, e));
             return;
         }
-        let package_list: Vec<PackageIndexEntry> = res.unwrap();
-        pb.println(format!("Fetched {} packages from remote {}", package_list.len(), remote.name));
-        package_list.par_iter().for_each(|package| {
-            if let Some(ref package_names) = package_names {
-                if !package_names.contains(&package.name) {
-                    return;
-                }
-            }
-            let res = reqwest::blocking::get(&package.releases_url);
-            if let Err(e) = res {
-                pb.println(format!("Failed to fetch package releases for {}: {}", package.name, e));
-                return;
-            }
-            let res = res.unwrap().json();
-            if let Err(e) = res {
-                pb.println(format!("Failed to parse package releases for {}: {}", package.name, e));
-                return;
-            }
-            let versions: PackageReleases = res.unwrap();
-            pb.set_message(format!("Remote {}: Found {} releases for package {}", remote.name, versions.releases.len(), versions.name));
-            // For each version in list
-            for release in versions.releases {
-                let mut map = releases.lock().unwrap();
-                let entry = map.entry(versions.name.clone()).or_insert((package.package_type.clone(), Vec::new()));
-                entry.1.push(release);
-            }
-        });
+        let releases_for_package = crate::nosman::package_server::to_package_releases(
+            constants::NODOS_STORE_API_URL,
+            &package_type,
+            res.unwrap(),
+        );
+        pb.set_message(format!(
+            "Found {} releases for package {}",
+            releases_for_package.len(),
+            package.name
+        ));
+        for release in releases_for_package {
+            let mut map = releases.lock().unwrap();
+            let entry = map
+                .entry(package.name.clone())
+                .or_insert((package_type.clone(), Vec::new()));
+            entry.1.push(release);
+        }
     });
     releases.into_inner().unwrap()
 }
@@ -139,7 +143,6 @@ impl Workspace {
     fn new_empty(path: PathBuf) -> Workspace {
         Workspace {
             root: path,
-            remotes: Vec::new(),
             packages: HashMap::new(),
             index_cache: Index { packages: HashMap::new() },
             runtime: WorkspaceRuntimeParams { status: WorkspaceStatus::DoesNotExist, output_mode_stack: vec![OutputMode::Default] },
@@ -175,15 +178,6 @@ impl Workspace {
     }
     pub fn ready(&self) -> bool {
         self.runtime.status == WorkspaceStatus::Ready
-    }
-    pub fn get_remote_repo_dir(&self, remote: &Remote) -> PathBuf {
-        get_nosman_dir_for(&self.root).join("remote").join(remote.name.clone())
-    }
-    pub fn add_remote(&mut self, remote: Remote) {
-        self.remotes.push(remote);
-    }
-    pub fn find_remote(&self, name: &str) -> Option<&Remote> {
-        self.remotes.iter().find(|r| r.name == name)
     }
     pub fn save(&self) -> Result<(), std::io::Error>{
         if !get_nosman_dir_for(&self.root).exists() {
@@ -433,7 +427,7 @@ impl Workspace {
     pub fn rescan(&mut self, flags: RescanFlags) -> CommandResult {
         if flags.contains(RescanFlags::FetchPackageIndex) {
             self.index_cache.packages.clear();
-            self.fetch_remotes(flags.contains(RescanFlags::AddDefaultPackageIndexIfNoRemoteExists))?;
+            self.fetch_releases(None);
         }
         if flags.contains(RescanFlags::ScanPackages) {
             self.packages.clear();
@@ -442,17 +436,6 @@ impl Workspace {
         self.save()?;
         self.runtime.status = WorkspaceStatus::Ready;
         Ok(())
-    }
-    pub fn fetch_remotes(&mut self, add_default_remote: bool) -> Result<(), io::Error>{
-        if self.remotes.is_empty() {
-            if add_default_remote {
-                self.add_remote(Remote::new("default", constants::DEFAULT_PACKAGE_INDEX_REPO));
-            } else {
-                return Ok(());
-            }
-        }
-        self.index_cache = Index::fetch(self, self.is_silent());
-        self.save()
     }
     pub fn fetch_package_releases(&mut self, package_name: &str) {
         let mut package_names = HashSet::new();

@@ -1,6 +1,7 @@
 pub mod command;
 pub mod module;
 pub mod index;
+pub mod package_server;
 pub mod workspace;
 pub mod path;
 pub mod constants;

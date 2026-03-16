@@ -1,5 +1,5 @@
 
-pub static DEFAULT_PACKAGE_INDEX_REPO: &str = "https://github.com/nodos-dev/index";
+pub static NODOS_STORE_API_URL: &str = "http://localhost:8080";
 
 pub static PACKAGE_INDEX_ROOT_FILE: &str = "index";
 

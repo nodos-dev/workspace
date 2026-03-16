@@ -13,7 +13,6 @@ pub mod node;
 pub mod pin;
 mod publish;
 mod publish_batch;
-pub mod remote;
 mod remove;
 mod rescan;
 pub mod sample;
@@ -23,7 +22,6 @@ mod unpublish;
 
 use std::io;
 
-use crate::nosman::{constants};
 use crate::nosman::workspace::Workspace;
 use clap::{Arg, ArgMatches};
 use thiserror::Error;
@@ -74,8 +72,6 @@ pub trait Command {
 pub fn commands() -> Vec<Box<dyn Command>> {
     vec![
         Box::new(init::InitCommand {}),
-        Box::new(remote::RemoteAddCommand {}),
-        Box::new(remote::RemoteListCommand {}),
         Box::new(install::InstallCommand {}),
         Box::new(info::InfoCommand {}),
         Box::new(remove::RemoveCommand {}),
@@ -112,15 +108,6 @@ pub fn get_lang_tool_arg() -> Arg {
         .default_value("cpp/cmake")
 }
 
-pub fn get_version_check_arg() -> Arg {
-    Arg::new("version_check")
-        .long("version-check")
-        .help("Check the version of the package against the index, to fail or continue with the release.")
-        .value_parser(clap::builder::PossibleValuesParser::new(constants::POSSIBLE_VERSION_CHECK_STRATEGY))
-        .default_value("strict")
-        .required(false)
-}
-
 pub fn register_cli(app: clap::Command) -> clap::Command {
     app.subcommand(init::get_cli())
         .subcommand(deinit::get_cli())
@@ -130,7 +117,6 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
         .subcommand(list::get_cli())
         .subcommand(info::get_cli())
         .subcommand(sdk_info::get_cli())
-        .subcommand(remote::get_cli())
         .subcommand(create::get_cli())
         .subcommand(sample::get_cli())
         .subcommand(get::get_cli())

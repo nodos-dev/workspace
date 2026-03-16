@@ -52,7 +52,7 @@ impl ListCommand {
                 workspace.with_output_mode_scoped(crate::nosman::workspace::OutputMode::Silent, |ws| {
                     ws.fetch_package_releases(package_name);
                 });
-                println!("{}", "Remote versions".green());
+                println!("{}", "Package server versions".green());
                 if let Some(releases) = workspace.index_cache.packages.get(package_name) {
                     for release_entry in &releases.1 {
                         let mut out_str = String::new();
@@ -91,7 +91,7 @@ impl ListCommand {
             }
             if remote {
                 workspace.with_output_mode_scoped(crate::nosman::workspace::OutputMode::Silent, |ws| {
-                    println!("{}", "Remote packages".green());
+                    println!("{}", "Package server packages".green());
                     ws.fetch_releases(None);
                     let mut package_names: Vec<String> = ws.index_cache.packages.keys().cloned().collect();
                     package_names.sort();

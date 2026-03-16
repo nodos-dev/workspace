@@ -26,15 +26,17 @@ pub fn set_prompt_handler(handler: Option<Box<PromptHandler>>) {
 }
 
 pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandError> {
+    let resolved_url = crate::nosman::package_server::resolve_download_url(url)
+        .map_err(|message| CommandError::Runtime { message })?;
     let mut tmpfile = tempfile::tempfile().expect("Failed to create tempfile");
-    reqwest::blocking::get(url)
-    .unwrap_or_else(|e| panic!("Failed to fetch {}: {}", url, e)).copy_to(&mut tmpfile)
+    reqwest::blocking::get(&resolved_url)
+    .unwrap_or_else(|e| panic!("Failed to fetch {}: {}", resolved_url, e)).copy_to(&mut tmpfile)
     .unwrap_or_else(|e| panic!("Failed to write to {:?}: {}", tmpfile, e));
 
     tmpfile.seek(std::io::SeekFrom::Start(0)).expect("Failed to seek to start of tempfile");
 
     // If tar.gz, use flate2 to extract
-    if url.ends_with(".tar.gz") {
+    if resolved_url.ends_with(".tar.gz") {
         #[cfg(unix)]
         {
             let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(tmpfile));

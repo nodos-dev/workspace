@@ -16,13 +16,13 @@ use serde::{Deserialize, Serialize};
 use tempfile::{tempdir};
 #[cfg(target_os = "windows")]
 use zip::write::{SimpleFileOptions};
-use chrono::{Utc};
 use globwalk::{GlobWalkerBuilder};
-use crate::nosman::command::{Command, CommandError, CommandResult, get_version_check_arg};
+use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::{common, constants};
-use crate::nosman::index::{PackageReleaseEntry, PackageType, SemVer, VersionCheckStrategy};
+use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::module::{get_resolved_binary_path, load_module};
+use crate::nosman::package_server::PublishReleaseRequest;
 use crate::nosman::package::PackageIdentifier;
 use crate::nosman::path::get_package_manifest_file;
 use crate::nosman::platform::{get_host_platform, Platform};
@@ -162,11 +162,8 @@ impl PublishCommand {
 
     pub fn publish(&self, workspace: &Workspace, dry_run: bool, verbose: bool, path: &PathBuf,
                    mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
-                   version_check_strategy: &VersionCheckStrategy, mut package_type: Option<PackageType>,
-                   remote_name: &String, vendor: Option<&String>, publisher_name: Option<&String>, publisher_email: Option<&String>,
-                   release_tags: &Vec<String>, opt_target_platform: Option<&String>, release_notes: Option<&String>) -> Result<PackageIdentifier, CommandError> {
-        // Check if git and gh is installed.
-        Self::check_cli_tools()?;
+                   mut package_type: Option<PackageType>, release_tags: &Vec<String>,
+                   opt_target_platform: Option<&String>) -> Result<PackageIdentifier, CommandError> {
 
         let target_platform = if opt_target_platform.is_none() {
             let current_platform = get_host_platform();
@@ -189,6 +186,8 @@ impl PublishCommand {
         let mut dependencies: Option<Vec<PackageIdentifier>> = None;
         let mut category: Option<String> = None;
         let mut package_tags: Option<Vec<String>> = None;
+        let mut display_name: Option<String> = None;
+        let mut description: Option<String> = None;
         let mut node_class_names: Vec<String> = vec![];
 
         // If path is a directory, search for a manifest file
@@ -223,6 +222,8 @@ impl PublishCommand {
                 let manifest: serde_json::Value = res.unwrap();
                 name = Some(manifest["info"]["id"]["name"].as_str().unwrap_or_else(|| panic!("Package manifest file {:?} must contain info.id.name field!", manifest_file)).to_string());
                 version = Some(manifest["info"]["id"]["version"].as_str().unwrap_or_else(|| panic!("Package manifest file {:?} must contain info.id.version field!", manifest_file)).to_string());
+                display_name = manifest["info"]["display_name"].as_str().map(|s| s.to_string());
+                description = manifest["info"]["description"].as_str().map(|s| s.to_string());
                 let dependencies_json = manifest["info"]["dependencies"].as_array();
                 if dependencies_json.is_some() {
                     let mut deps = vec![];
@@ -272,6 +273,16 @@ impl PublishCommand {
         let name = name.unwrap();
         let version = version.unwrap() + version_suffix;
         let tag = format!("{}-{}-{}", name, version, target_platform);
+        let display_name = display_name.unwrap_or_else(|| name.clone());
+        let description = description.unwrap_or_else(|| format!("Package {}", name));
+        let category = category.unwrap_or_else(|| "General".to_string());
+        let dependencies = dependencies.unwrap_or_default();
+        let mut combined_tags = package_tags.unwrap_or_default();
+        for release_tag in release_tags {
+            if !combined_tags.iter().any(|tag| tag == release_tag) {
+                combined_tags.push(release_tag.clone());
+            }
+        }
 
         let pb: ProgressBar = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
@@ -383,87 +394,57 @@ impl PublishCommand {
             artifact_file_path = abs_path.clone();
         }
 
-        // Create index entry for the release
-        let remote = workspace.find_remote(remote_name);
-        if remote.is_none() {
-            return Err(InvalidArgument { message: format!("Remote {} not found", remote_name) });
-        }
-        let remote = remote.unwrap();
-
-        let now_iso = Utc::now().to_rfc3339();
-        let release = PackageReleaseEntry {
-            version: version.clone(),
-            url: format!("{}/releases/download/{}/{}", remote.url, tag, artifact_file_path.file_name().unwrap().to_str().unwrap()),
-            plugin_api_version: match package_type {
-                PackageType::Plugin => api_version_opt.clone(),
-                _ => None
-            },
-            subsystem_api_version: match package_type {
-                PackageType::Subsystem => api_version_opt,
-                _ => None
-            },
-            release_date: Some(now_iso),
-            dependencies,
-            category,
-            module_tags: package_tags,
-            release_tags: if release_tags.is_empty() { None } else { Some(release_tags.clone()) },
-            platform: Some(target_platform.to_string()),
-            node_names: if node_class_names.is_empty() { None } else { Some(node_class_names) }
-        };
-        if verbose {
-            println!("Release entry: {:?}", release);
-        }
         pb.finish_and_clear();
 
-        println!("Adding package {} version {} release entry to remote {}", name, version, remote.name);
-        let res = remote.fetch_add(dry_run, verbose, &workspace, &name, vendor, &package_type, release, publisher_name, publisher_email, &version_check_strategy);
-        if res.is_err() {
-            return Err(Runtime { message: res.err().unwrap() });
+        if !node_class_names.is_empty() && verbose {
+            println!("Node definitions discovered for {}: {:?}", name, node_class_names);
         }
-        let commit_sha = res.unwrap();
 
-        println!("Uploading release {} on remote {}", format!("{}-{}", name, version), remote.name);
-        let empty_string = String::new();
-        let notes: &String = release_notes.unwrap_or(&empty_string);
-        let res = remote.create_gh_release(dry_run, verbose, &workspace, &commit_sha, &name, &version, &target_platform.to_string(), &tag, vec![artifact_file_path], notes);
-        if res.is_err() {
-            return Err(Runtime { message: res.err().unwrap() });
+        println!(
+            "Publishing {} to package server {}",
+            format!("{}-{}", name, version),
+            constants::NODOS_STORE_API_URL
+        );
+        let res = crate::nosman::package_server::publish_release(
+            constants::NODOS_STORE_API_URL,
+            &PublishReleaseRequest {
+                name: name.clone(),
+                display_name,
+                description,
+                package_type: package_type.clone(),
+                category,
+                version: version.clone(),
+                api_version: api_version_opt,
+                dependencies,
+                tags: combined_tags,
+                target_platform: target_platform.to_string(),
+                artifact_path: artifact_file_path,
+            },
+            dry_run,
+            verbose,
+        );
+        if let Err(message) = res {
+            return Err(Runtime { message });
         }
-        println!("{}", format!("Release {} on remote {} created successfully", format!("{}-{}", name, version), remote.name).as_str().green().to_string());
+        println!(
+            "{}",
+            format!("Release {} created successfully", format!("{}-{}", name, version))
+                .as_str()
+                .green()
+                .to_string()
+        );
         Ok(PackageIdentifier { name, version })
     }
 
     pub fn run_publish(&self, workspace: &Workspace, dry_run: bool, verbose: bool, path: &PathBuf, 
                        name: Option<String>, version: Option<String>, version_suffix: &String,
-                       version_check_strategy: &VersionCheckStrategy, package_type: Option<PackageType>, 
-                       remote_name: &String, vendor: Option<&String>, publisher_name: Option<&String>, publisher_email: Option<&String>, 
-                       release_tags: &Vec<String>, opt_target_platform: Option<&String>, release_notes: Option<&String>) -> CommandResult {
+                       package_type: Option<PackageType>, release_tags: &Vec<String>,
+                       opt_target_platform: Option<&String>) -> CommandResult {
         let res = self.publish(workspace, dry_run, verbose, 
                                path, name, version, 
-                               version_suffix, version_check_strategy, package_type, 
-                               remote_name, vendor, publisher_name, 
-                               publisher_email, release_tags, opt_target_platform, 
-                               release_notes);
+                               version_suffix, package_type, release_tags, opt_target_platform);
         if res.is_err() {
             return Err(res.err().unwrap());
-        }
-        Ok(())
-    }
-
-    fn check_cli_tools() -> CommandResult {
-        let git_installed = std::process::Command::new("git")
-            .arg("--version")
-            .output()
-            .is_ok();
-        if !git_installed {
-            return Err(Runtime { message: "git is not on PATH".to_string() });
-        }
-        let gh_installed = std::process::Command::new("gh")
-            .arg("--version")
-            .output()
-            .is_ok();
-        if !gh_installed {
-            return Err(Runtime { message: "GitHub CLI client 'gh' is not on PATH".to_string() });
         }
         Ok(())
     }
@@ -472,7 +453,7 @@ impl PublishCommand {
 pub fn get_cli() -> clap::Command {
     clap::Command::new("publish")
         .about("Publish a package")
-        .after_help("This command will publish a package to the specified remote.\n\
+        .after_help("This command will publish a package to the configured package server.\n\
     If there is an existing Nodos release, updates it (note that this will remove all installed Nodos engines!)")
         .arg(Arg::new("path")
             .long("path")
@@ -497,32 +478,12 @@ pub fn get_cli() -> clap::Command {
             .help("Suffix to append to the version of the package.")
             .default_value("")
         )
-        .arg(Arg::new("remote")
-            .help("Name of the remote to publish to.")
-            .long("remote")
-            .default_value("default")
-        )
         .arg(Arg::new("type")
             .long("type")
             .short('t')
             .value_parser(clap::builder::PossibleValuesParser::new(["plugin", "subsystem", "nodos", "engine", "generic"]))
             .help("Type of the package. It will be overridden by the package manifest files under <path> if present.\n\
         If the <path> does not contain a package manifest file, this parameter is required.")
-        )
-        .arg(Arg::new("vendor")
-            .help("Who is publishing the package?\n\
-        Required if the package to be published was not added to the index before.")
-            .long("vendor")
-        )
-        .arg(Arg::new("publisher_name")
-            .help("Git name of the publishing agent. If not provided, the name of the current git user will be used.")
-            .long("publisher-name")
-            .required(false)
-        )
-        .arg(Arg::new("publisher_email")
-            .help("Git email of the publishing agent. If not provided, the email of the current git user will be used.")
-            .long("publisher-email")
-            .required(false)
         )
         .arg(Arg::new("dry_run")
             .action(ArgAction::SetTrue)
@@ -550,7 +511,6 @@ pub fn get_cli() -> clap::Command {
             .help("Target architecture and operating system of the package to be published. If not provided, the current platform will be used.")
             .required(false)
         )
-        .arg(get_version_check_arg())
 }
 
 impl Command for PublishCommand {
@@ -564,20 +524,25 @@ impl Command for PublishCommand {
         let opt_version = args.get_one::<String>("version");
         let version_suffix = args.get_one::<String>("version_suffix").unwrap();
         let package_type: Option<PackageType> = args.get_one::<String>("type").map(|s| serde_json::from_str(format!("\"{}\"", &s).as_str()).unwrap());
-        let remote_name = args.get_one::<String>("remote").unwrap();
         let version = if opt_version.is_some() { Some(opt_version.unwrap().clone()) } else { None };
         let name = if opt_name.is_some() { Some(opt_name.unwrap().clone()) } else { None };
-        let vendor = args.get_one::<String>("vendor");
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
         let verbose = args.get_one::<bool>("verbose").unwrap();
-        let publisher_name = args.get_one::<String>("publisher_name");
-        let publisher_email = args.get_one::<String>("publisher_email");
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
         let target_platform: Option<&String> = args.get_one::<String>("target_platform");
-        let version_check_strategy = VersionCheckStrategy::from_str(args.get_one::<String>("version_check").unwrap().as_str());
-        self.run_publish(workspace, *dry_run, *verbose, &path, name, version, version_suffix, &version_check_strategy,
-                         package_type, &remote_name, vendor, publisher_name, publisher_email, &release_tags, target_platform, None)
+        self.run_publish(
+            workspace,
+            *dry_run,
+            *verbose,
+            &path,
+            name,
+            version,
+            version_suffix,
+            package_type,
+            &release_tags,
+            target_platform,
+        )
     }
 
     fn needs_workspace(&self) -> bool {
