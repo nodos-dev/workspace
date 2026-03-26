@@ -170,9 +170,12 @@ impl GetCommand {
         }
         let tmpdir = tempfile::tempdir()?;
         let downloaded_path = tmpdir.path().to_path_buf();
-        pb.println(format!("Downloading and extracting {}-{}", nodos_name, release.version));
-        download_and_extract(&release.url, &downloaded_path)?;
-        pb.println(format!("Installing {}-{}", nodos_name, release.version));
+        let release_url = release.url.clone();
+        let release_version = release.version.clone();
+        let _ = (package_type, release);
+        pb.println(format!("Downloading and extracting {}-{}", nodos_name, release_version));
+        download_and_extract(&release_url, &downloaded_path, workspace.store_client())?;
+        pb.println(format!("Installing {}-{}", nodos_name, release_version));
 
         // Get current executable's absolute path
         let dst_path = dunce::canonicalize(path)?;

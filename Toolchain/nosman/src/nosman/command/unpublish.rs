@@ -1,8 +1,9 @@
+use std::path::PathBuf;
+
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use crate::nosman;
 use crate::nosman::command::{Command, CommandResult};
-use crate::nosman::constants;
 
 use nosman::workspace::Workspace;
 use crate::nosman::command::CommandError::Runtime;
@@ -15,15 +16,47 @@ impl UnpublishCommand {
         if version.is_none() {
             println!("Unpublishing all versions of package {}", package_name);
         }
-        let res = crate::nosman::package_server::delete_release(
-            constants::NODOS_STORE_API_URL,
-            package_name,
-            version,
-            dry_run,
-        );
-        if let Err(msg) = res {
-            return Err(Runtime { message: msg });
-        }
+
+        (|| -> std::result::Result<(), String> {
+            let mut client = nodos_store_client::StoreClient::builder()
+                .with_token_store(nodos_store_client::TokenStore::new(PathBuf::from("nosman")))
+                .build()
+                .map_err(|e| e.to_string())?;
+
+            if dry_run {
+                let releases = client
+                    .get_my_releases(package_name)
+                    .map_err(|e| e.to_string())?;
+
+                let matched: Vec<_> = if let Some(v) = version {
+                    releases.iter().filter(|r| r.version == *v).collect()
+                } else {
+                    releases.iter().collect()
+                };
+
+                if matched.is_empty() {
+                    return if let Some(v) = version {
+                        Err(format!("No release found for package {} version {}", package_name, v))
+                    } else {
+                        Err(format!("No releases found for package {}", package_name))
+                    };
+                }
+
+                for release in matched {
+                    println!(
+                        "Would delete package {} release {} (v{})",
+                        package_name, release.id, release.version
+                    );
+                }
+                return Ok(());
+            }
+
+            client
+                .delete_release(package_name, version.map(|v| v.as_str()))
+                .map_err(|e| e.to_string())
+        })()
+        .map_err(|message| Runtime { message })?;
+
         if let Some(version) = version {
             println!("{}", format!("Package {} version {} unpublished", package_name, version).yellow());
         }

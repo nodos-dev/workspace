@@ -25,9 +25,10 @@ pub fn set_prompt_handler(handler: Option<Box<PromptHandler>>) {
     *guard = handler;
 }
 
-pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandError> {
-    let resolved_url = crate::nosman::package_server::resolve_download_url(url)
-        .map_err(|message| CommandError::Runtime { message })?;
+pub fn download_and_extract(url: &str, target: &PathBuf, client: &nodos_store_client::StoreClient) -> Result<(), CommandError> {
+    let resolved_url = client
+        .resolve_download_url(url)
+        .map_err(|e| CommandError::Runtime { message: e.to_string() })?;
     let mut tmpfile = tempfile::tempfile().expect("Failed to create tempfile");
     reqwest::blocking::get(&resolved_url)
     .unwrap_or_else(|e| panic!("Failed to fetch {}: {}", resolved_url, e)).copy_to(&mut tmpfile)

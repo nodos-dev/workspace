@@ -112,27 +112,33 @@ impl InstallCommand {
                 if pkg.dependencies.is_none() {
                     continue;
                 }
-                for dep in package.dependencies.as_ref().unwrap() {
-                    let res = workspace.get_latest_absent_release_for(&dep.name, &dep.version);
+                for dep in pkg.dependencies.as_ref().unwrap() {
+                    let dep_name = dep.name.clone();
+                    let dep_version = dep.version.clone();
+                    // Fetch releases for dependencies not in the public index (e.g. private packages)
+                    if workspace.index_cache.get_package_releases(&dep_name).is_empty() {
+                        workspace.fetch_package_releases(&dep_name);
+                    }
+                    let res = workspace.get_latest_absent_release_for(&dep_name, &dep_version);
                     if let Err(e) = res {
                         return Err(Runtime { message: format!("\nUnable to satisfy dependency {}\n\tRequested version: {}\n\tRequired by: {}-{}\n\tReason: {}",
-                                                              dep.name, dep.version, rem_pkg_name, pkg.version, e) });
+                                                              dep_name, dep_version, rem_pkg_name, pkg.version, e) });
                     }
                     let opt_absent_release = res?;
                     if opt_absent_release.is_none() {
-                        println!("Dependency {} {} already installed", dep.name, dep.version);
+                        println!("Dependency {} {} already installed", dep_name, dep_version);
                         continue;
                     }
                     let (_, resolved_dep_pkg) = opt_absent_release.unwrap();
                     let to_install = PackageIdentifier {
-                        name: dep.name.clone(),
+                        name: dep_name.clone(),
                         version: resolved_dep_pkg.version.clone(),
                     };
                     if deps_to_install.contains(&to_install) {
                         continue;
                     }
                     deps_to_install.insert(to_install);
-                    remaining.push((dep.name.clone(), resolved_dep_pkg.clone()));
+                    remaining.push((dep_name.clone(), resolved_dep_pkg.clone()));
                 }
             }
             // Since we install it without deps, no need to top-sort it
@@ -175,7 +181,7 @@ impl InstallCommand {
         let package_name_version = format!("{}-{}", package_name, version);
         println!("Downloading {} {}", pkg_type_str, package_name_version);
 
-        download_and_extract(&package.url, &final_out_dir)?;
+        download_and_extract(&package.url, &final_out_dir, workspace.store_client())?;
 
         println!("Extracted {} {} to {}", pkg_type_str, package_name, final_out_dir.display());
         // If the package is installed under workspace, register it.

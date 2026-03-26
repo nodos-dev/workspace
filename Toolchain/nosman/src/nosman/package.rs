@@ -22,6 +22,15 @@ pub struct PackageIdentifier {
     pub version: String,
 }
 
+impl From<nodos_store_client::PackageDependency> for PackageIdentifier {
+    fn from(d: nodos_store_client::PackageDependency) -> Self {
+        Self {
+            name: d.name,
+            version: d.version,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub struct PackageInfo {
     pub id: PackageIdentifier,

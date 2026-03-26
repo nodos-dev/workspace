@@ -12,7 +12,7 @@ use inquire::Select;
 use rayon::iter::IntoParallelRefIterator;
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
-use crate::nosman::constants;
+
 use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::{Index, PackageReleaseEntry, PackageType, SemVer};
 use crate::nosman::plugin::{NodeDefinition, PluginEntry};
@@ -50,6 +50,7 @@ pub enum AutoRescanResult {
 struct WorkspaceRuntimeParams {
     status: WorkspaceStatus,
     output_mode_stack: Vec<OutputMode>,
+    store_client: Option<nodos_store_client::StoreClient>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -90,18 +91,79 @@ impl PartialEq<u8> for RescanFlags {
     }
 }
 
-fn fetch_releases_mt(workspace: &Workspace, package_names: Option<HashSet<String>>) -> HashMap<String, (PackageType, Vec<PackageReleaseEntry>)> {
+fn api_version_to_semver(v: &nodos_store_client::ApiVersion) -> SemVer {
+    SemVer::new(v.major, v.minor, v.patch, None)
+}
+
+fn releases_to_index_entries(
+    package_type: &PackageType,
+    releases: Vec<nodos_store_client::Release>,
+) -> Vec<PackageReleaseEntry> {
+    let base_url = nodos_store_client::DEFAULT_BASE_URL;
+    let mut entries = Vec::new();
+    for release in releases {
+        for artifact in &release.artifacts {
+            entries.push(PackageReleaseEntry {
+                version: release.version.clone(),
+                url: format!(
+                    "{}/api/v1/release-artifacts/{}",
+                    base_url.trim_end_matches('/'),
+                    artifact.id
+                ),
+                plugin_api_version: if *package_type == PackageType::Plugin {
+                    release.api_version.as_ref().map(api_version_to_semver)
+                } else {
+                    None
+                },
+                subsystem_api_version: if *package_type == PackageType::Subsystem {
+                    release.api_version.as_ref().map(api_version_to_semver)
+                } else {
+                    None
+                },
+                release_date: Some(release.updated_at.clone()),
+                dependencies: if release.dependencies.is_empty() {
+                    None
+                } else {
+                    Some(
+                        release
+                            .dependencies
+                            .iter()
+                            .map(|d| crate::nosman::package::PackageIdentifier {
+                                name: d.name.clone(),
+                                version: d.version.clone(),
+                            })
+                            .collect(),
+                    )
+                },
+                category: None,
+                module_tags: None,
+                release_tags: if release.tags.is_empty() {
+                    None
+                } else {
+                    Some(release.tags.clone())
+                },
+                platform: Some(artifact.target_platform.clone()),
+                node_names: None,
+            });
+        }
+    }
+    entries
+}
+
+fn fetch_releases_mt(is_silent: bool, client: &nodos_store_client::StoreClient, package_names: Option<HashSet<String>>) -> HashMap<String, (PackageType, Vec<PackageReleaseEntry>)> {
     let releases = Mutex::new(HashMap::new());
-    let pb = get_progress_bar(workspace.is_silent());
+    let pb = get_progress_bar(is_silent);
     pb.enable_steady_tick(Duration::from_millis(100));
     pb.set_message("Fetching package server index...");
-    let package_list = match crate::nosman::package_server::fetch_packages(constants::NODOS_STORE_API_URL) {
-        Ok(package_list) => package_list,
+
+    let package_list = match client.list_packages().map_err(|e| e.to_string()) {
+        Ok(list) => list,
         Err(e) => {
             pb.println(format!("Failed to fetch package list: {}", e));
             return releases.into_inner().unwrap();
         }
     };
+
     pb.println(format!("Fetched {} packages from package server", package_list.len()));
     package_list.par_iter().for_each(|package| {
         if let Some(ref package_names) = package_names {
@@ -110,19 +172,12 @@ fn fetch_releases_mt(workspace: &Workspace, package_names: Option<HashSet<String
             }
         }
         let package_type = PackageType::from_str(&package.package_type);
-        let res = crate::nosman::package_server::fetch_package_releases(
-            constants::NODOS_STORE_API_URL,
-            &package.name,
-        );
+        let res = client.get_releases(&package.name).map_err(|e| e.to_string());
         if let Err(e) = res {
             pb.println(format!("Failed to fetch package releases for {}: {}", package.name, e));
             return;
         }
-        let releases_for_package = crate::nosman::package_server::to_package_releases(
-            constants::NODOS_STORE_API_URL,
-            &package_type,
-            res.unwrap(),
-        );
+        let releases_for_package = releases_to_index_entries(&package_type, res.unwrap());
         pb.set_message(format!(
             "Found {} releases for package {}",
             releases_for_package.len(),
@@ -145,7 +200,7 @@ impl Workspace {
             root: path,
             packages: HashMap::new(),
             index_cache: Index { packages: HashMap::new() },
-            runtime: WorkspaceRuntimeParams { status: WorkspaceStatus::DoesNotExist, output_mode_stack: vec![OutputMode::Default] },
+            runtime: WorkspaceRuntimeParams { status: WorkspaceStatus::DoesNotExist, output_mode_stack: vec![OutputMode::Default], store_client: None },
         }
     }
     pub fn from_root(path: &PathBuf) -> Workspace {
@@ -180,9 +235,7 @@ impl Workspace {
         self.runtime.status == WorkspaceStatus::Ready
     }
     pub fn save(&self) -> Result<(), std::io::Error>{
-        if !get_nosman_dir_for(&self.root).exists() {
-            fs::create_dir(get_nosman_dir_for(&self.root))?;
-        }
+        fs::create_dir_all(get_nosman_dir_for(&self.root))?;
         let file = fs::File::create(self.get_nosman_index_filepath())?;
         serde_json::to_writer_pretty(file, self)?;
         Ok(())
@@ -368,6 +421,17 @@ impl Workspace {
     pub fn is_silent(&self) -> bool {
         self.runtime.output_mode_stack.last().unwrap_or(&OutputMode::Default) == &OutputMode::Silent
     }
+    pub fn store_client(&mut self) -> &nodos_store_client::StoreClient {
+        if self.runtime.store_client.is_none() {
+            self.runtime.store_client = Some(
+                nodos_store_client::StoreClient::builder()
+                    .build()
+                    .expect("Failed to build store client"),
+            );
+        }
+        self.runtime.store_client.as_ref().unwrap()
+    }
+
     pub fn push_output_mode(&mut self, mode: OutputMode) {
         self.runtime.output_mode_stack.push(mode);
     }
@@ -420,8 +484,8 @@ impl Workspace {
        self.scan_packages_in_folder(self.root.clone(), flags);
     }
     pub fn recreate(&mut self) -> Result<(), CommandError> {
+        fs::create_dir_all(&self.root)?;
         self.rescan(RescanFlags::all())?;
-        self.save()?;
         Ok(())
     }
     pub fn rescan(&mut self, flags: RescanFlags) -> CommandResult {
@@ -438,12 +502,40 @@ impl Workspace {
         Ok(())
     }
     pub fn fetch_package_releases(&mut self, package_name: &str) {
-        let mut package_names = HashSet::new();
-        package_names.insert(package_name.to_string());
-        self.fetch_releases(Some(package_names));
+        if self.runtime.store_client.is_none() {
+            self.runtime.store_client = nodos_store_client::StoreClient::builder().build().ok();
+        }
+        // Fetch directly by name to support packages not in the public list
+        let result = {
+            let client = match self.runtime.store_client.as_ref() {
+                Some(c) => c,
+                None => return,
+            };
+            let package_type = client
+                .get_package(package_name)
+                .map(|pkg| PackageType::from_str(&pkg.package_type))
+                .unwrap_or(PackageType::Generic);
+            client
+                .get_releases(package_name)
+                .ok()
+                .map(|releases| (package_type.clone(), releases_to_index_entries(&package_type, releases)))
+        };
+        if let Some((package_type, entries)) = result {
+            for entry in entries {
+                self.index_cache.add_package(&package_name.to_string(), package_type.clone(), entry);
+            }
+        }
     }
     pub fn fetch_releases(&mut self, package_names: Option<HashSet<String>>) {
-        let res = fetch_releases_mt(self, package_names);
+        if self.runtime.store_client.is_none() {
+            self.runtime.store_client = nodos_store_client::StoreClient::builder().build().ok();
+        }
+        let is_silent = self.is_silent();
+        let client = match self.runtime.store_client.as_ref() {
+            Some(c) => c,
+            None => return,
+        };
+        let res = fetch_releases_mt(is_silent, client, package_names);
         for (name, (package_type, releases)) in res {
             for release in releases {
                 self.index_cache.add_package(&name, package_type.clone(), release);

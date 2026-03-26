@@ -34,6 +34,22 @@ impl PackageType {
             _ => PackageType::Generic,
         }
     }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PackageType::Plugin => "Plugin",
+            PackageType::Subsystem => "Subsystem",
+            PackageType::Nodos => "Nodos",
+            PackageType::Engine => "Engine",
+            PackageType::Generic => "Generic",
+        }
+    }
+}
+
+impl std::fmt::Display for PackageType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
@@ -168,12 +184,12 @@ impl SemVer {
         // For prefix "6.30" (major.minor): matches 6.30.x
         // For prefix "6.30.1" (major.minor.patch): matches 6.30.1.x
         // For prefix "6.30.1.b709" (full): matches exact 6.30.1.b709
-        
+
         // Major version must match
         if self.major != prefix.major {
             return false;
         }
-        
+
         // If prefix specifies minor, check it
         if let Some(prefix_minor) = prefix.minor {
             match self.minor {
@@ -185,7 +201,7 @@ impl SemVer {
             // Prefix is major-only, so any minor matches
             return true;
         }
-        
+
         // If prefix specifies patch, check it
         if let Some(prefix_patch) = prefix.patch {
             match self.patch {
@@ -197,7 +213,7 @@ impl SemVer {
             // Prefix is major.minor, so any patch matches
             return true;
         }
-        
+
         // If prefix specifies build_number, check it
         if let Some(prefix_build) = prefix.build_number {
             match self.build_number {
@@ -209,11 +225,11 @@ impl SemVer {
             // Prefix is major.minor.patch, so any build matches
             return true;
         }
-        
+
         // All specified fields match
         true
     }
-    
+
     pub fn satisfies_requested_version(&self, requested: &SemVer) -> bool {
         if self.major != requested.major {
             return false;

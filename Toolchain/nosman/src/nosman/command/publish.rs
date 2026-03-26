@@ -22,7 +22,6 @@ use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::{common, constants};
 use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::module::{get_resolved_binary_path, load_module};
-use crate::nosman::package_server::PublishReleaseRequest;
 use crate::nosman::package::PackageIdentifier;
 use crate::nosman::path::get_package_manifest_file;
 use crate::nosman::platform::{get_host_platform, Platform};
@@ -403,28 +402,49 @@ impl PublishCommand {
         println!(
             "Publishing {} to package server {}",
             format!("{}-{}", name, version),
-            constants::NODOS_STORE_API_URL
+            nodos_store_client::DEFAULT_BASE_URL
         );
-        let res = crate::nosman::package_server::publish_release(
-            constants::NODOS_STORE_API_URL,
-            &PublishReleaseRequest {
-                name: name.clone(),
-                display_name,
-                description,
-                package_type: package_type.clone(),
-                category,
-                version: version.clone(),
-                api_version: api_version_opt,
-                dependencies,
-                tags: combined_tags,
-                target_platform: target_platform.to_string(),
-                artifact_path: artifact_file_path,
-            },
-            dry_run,
-            verbose,
-        );
-        if let Err(message) = res {
-            return Err(Runtime { message });
+
+        if dry_run {
+            println!(
+                "Would publish {} {} for {}",
+                name, version, target_platform
+            );
+        } else {
+            let api_version = api_version_opt.as_ref().map(|v| nodos_store_client::ApiVersion {
+                major: v.major,
+                minor: v.minor,
+                patch: v.patch,
+            });
+            let deps: Vec<nodos_store_client::PackageDependency> = dependencies
+                .iter()
+                .map(|d| nodos_store_client::PackageDependency {
+                    name: d.name.clone(),
+                    version: d.version.clone(),
+                })
+                .collect();
+            let artifact_data = std::fs::read(&artifact_file_path)
+                .map_err(|e| Runtime {
+                    message: format!("Failed to read artifact {}: {}", artifact_file_path.display(), e),
+                })?;
+
+            nodos_store_client::StoreClient::builder()
+                .with_token_store(nodos_store_client::TokenStore::new(PathBuf::from("nosman")))
+                .build()
+                .and_then(|mut client| client.publish_release(
+                    &name,
+                    &display_name,
+                    &description,
+                    &package_type.to_string(),
+                    &category,
+                    &version,
+                    api_version.as_ref(),
+                    deps,
+                    combined_tags,
+                    &target_platform.to_string(),
+                    artifact_data,
+                ))
+                .map_err(|e| Runtime { message: e.to_string() })?;
         }
         println!(
             "{}",

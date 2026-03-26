@@ -114,7 +114,7 @@ fn install_brings_dependencies() {
             None,
             InstallFlags::UpdatePackageIndex,
         )
-        .unwrap_or_else(|_| panic!("Failed to install {}", package_name));
+        .unwrap_or_else(|e| panic!("Failed to install {}: {:?}", package_name, e));
     assert_eq!(
         requested_modules.len(),
         test.workspace.get_local_package_count()
@@ -658,25 +658,25 @@ fn test_sdk_info(test: &mut WorkspaceGen, version: &str, sdk_type: &str) {
 #[test]
 fn sdk_info_plugin_version_1_3() {
     let mut test = WorkspaceGen::new_random();
-    test_sdk_info(&mut test, "1.3.0.b4429", "plugin");
+    test_sdk_info(&mut test, "1.3.0.b4433", "plugin");
 }
 
 #[test]
 fn sdk_info_process_version_1_3() {
     let mut test = WorkspaceGen::new_random();
-    test_sdk_info(&mut test, "1.3.0.b4429", "process");
+    test_sdk_info(&mut test, "1.3.0.b4433", "process");
 }
 
 #[test]
 fn sdk_info_plugin_version_1_4() {
     let mut test = WorkspaceGen::new_random();
-    test_sdk_info(&mut test, "1.4.0.b4431", "plugin");
+    test_sdk_info(&mut test, "1.4.0.b4709", "plugin");
 }
 
 #[test]
 fn sdk_info_process_version_1_4() {
     let mut test = WorkspaceGen::new_random();
-    test_sdk_info(&mut test, "1.4.0.b4431", "process");
+    test_sdk_info(&mut test, "1.4.0.b4709", "process");
 }
 
 #[test]
