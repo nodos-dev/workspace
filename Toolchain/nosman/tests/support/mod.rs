@@ -7,36 +7,75 @@ use nosman::nosman::index::{PluginType, SemVer};
 use nosman::nosman::lang_tool::LangTool;
 use nosman::nosman::package::get_plugin_manifest_file_ext;
 use nosman::nosman::workspace::{OutputMode, Workspace};
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 use std::path::PathBuf;
 use std::process::Output;
-
-lazy_static::lazy_static! {
-    pub static ref RNG: std::sync::Mutex<StdRng> = std::sync::Mutex::new(StdRng::from_os_rng());
-}
 
 pub struct WorkspaceGen {
     pub workspace: Workspace,
 }
 
 impl WorkspaceGen {
-    fn new(path: &str) -> Self {
-        let mut ws = Workspace::from_root(&PathBuf::from(format!("./test_workspaces/{}", path)));
-        if !ws.ready() {
-            ws.recreate().expect("Failed to create test workspace");
+    pub fn new(name: &str) -> Self {
+        let path = PathBuf::from(format!("./test_workspaces/{}", name));
+        if path.exists() {
+            std::fs::remove_dir_all(&path).expect("Failed to remove existing test workspace");
         }
+        let mut ws = Workspace::from_root(&path);
+        ws.recreate().expect("Failed to create test workspace");
         ws.push_output_mode(OutputMode::Silent);
         WorkspaceGen { workspace: ws }
     }
+}
 
-    pub fn new_random() -> Self {
-        let random_string: String = (0..8)
-            .map(|_| RNG.lock().unwrap().random_range(b'a'..=b'z'))
-            .map(char::from)
-            .collect();
-        WorkspaceGen::new(random_string.as_str())
+/// Returns a fresh, empty directory path for tests that need an uninitialized workspace.
+/// The directory is created but no workspace files are written into it.
+pub fn uninitialized_workspace_path(name: &str) -> PathBuf {
+    let path = PathBuf::from(format!("./test_workspaces/{}", name));
+    if path.exists() {
+        std::fs::remove_dir_all(&path).expect("Failed to remove existing test workspace");
     }
+    std::fs::create_dir_all(&path).expect("Failed to create test directory");
+    path
+}
+
+/// Creates a [`WorkspaceGen`] whose name is automatically derived from the calling
+/// test function — no string literal needed.
+///
+/// ```rust
+/// #[test]
+/// fn my_test() {
+///     let test = workspace!(); // name = "my_test"
+/// }
+/// ```
+#[macro_export]
+macro_rules! workspace {
+    () => {{
+        fn f() {}
+        fn type_name_of<T>(_: T) -> &'static str {
+            ::std::any::type_name::<T>()
+        }
+        let full = type_name_of(f);
+        // full ends with "::my_test::f"; strip "::f" then take the last component
+        let without_f = &full[..full.len() - 3];
+        let name = without_f.rsplit("::").next().unwrap_or(without_f);
+        $crate::support::WorkspaceGen::new(name)
+    }};
+}
+
+/// Same trick as [`workspace!`] but returns a raw directory path for tests that
+/// need an uninitialized workspace (no `Workspace::recreate()` called).
+#[macro_export]
+macro_rules! uninitialized_workspace {
+    () => {{
+        fn f() {}
+        fn type_name_of<T>(_: T) -> &'static str {
+            ::std::any::type_name::<T>()
+        }
+        let full = type_name_of(f);
+        let without_f = &full[..full.len() - 3];
+        let name = without_f.rsplit("::").next().unwrap_or(without_f);
+        $crate::support::uninitialized_workspace_path(name)
+    }};
 }
 
 #[ctor::ctor]

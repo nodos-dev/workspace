@@ -15,8 +15,7 @@ fn read_node_def_json(node_def_path: &PathBuf) -> serde_json::Value {
     serde_json::from_str(&content).expect("Failed to parse node definition JSON")
 }
 
-fn test_node_add_remove(version: SemVer) {
-    let mut test = WorkspaceGen::new_random();
+fn test_node_add_remove(mut test: WorkspaceGen, version: SemVer) {
     let module_name = format!("test{}.plugin", version.major);
     if version < NODOS_1_4 {
         let module_dir = test.workspace.root.join("Module").join(&module_name);
@@ -105,8 +104,7 @@ fn test_node_add_remove(version: SemVer) {
     assert!(!node_def_path.exists());
 }
 
-fn test_pin_add_remove(version: SemVer) {
-    let mut test = WorkspaceGen::new_random();
+fn test_pin_add_remove(mut test: WorkspaceGen, version: SemVer) {
     let module_name = format!("test{}.plugin", version.major);
     if version < NODOS_1_4 {
         let module_dir = test.workspace.root.join("Module").join(&module_name);
@@ -204,20 +202,20 @@ fn test_pin_add_remove(version: SemVer) {
 
 #[test]
 fn node_add_remove_1_3() {
-    test_node_add_remove(SemVer::new(1, Some(3), None, None));
+    test_node_add_remove(workspace!(), SemVer::new(1, Some(3), None, None));
 }
 
 #[test]
 fn node_add_remove_1_4() {
-    test_node_add_remove(SemVer::new(1, Some(4), None, None));
+    test_node_add_remove(workspace!(), SemVer::new(1, Some(4), None, None));
 }
 
 #[test]
 fn pin_add_remove_1_3() {
-    test_pin_add_remove(SemVer::new(1, Some(3), None, None));
+    test_pin_add_remove(workspace!(), SemVer::new(1, Some(3), None, None));
 }
 
 #[test]
 fn pin_add_remove_1_4() {
-    test_pin_add_remove(SemVer::new(1, Some(4), None, None));
+    test_pin_add_remove(workspace!(), SemVer::new(1, Some(4), None, None));
 }

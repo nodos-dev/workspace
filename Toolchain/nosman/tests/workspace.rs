@@ -6,17 +6,10 @@ use nosman::nosman::workspace::Workspace;
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
-use support::{WorkspaceGen, RNG};
-use rand::Rng;
 
 #[test]
 fn auto_rescan_if_needed_workspace_not_ready() {
-    let random_string: String = (0..8)
-        .map(|_| RNG.lock().unwrap().random_range(b'a'..=b'z'))
-        .map(char::from)
-        .collect();
-    let test_path = PathBuf::from(format!("./test_workspaces/{}", random_string));
-    fs::create_dir_all(&test_path).expect("Failed to create test directory");
+    let test_path = uninitialized_workspace!();
 
     let mut workspace = Workspace::from_root(&test_path);
     assert!(!workspace.ready(), "Workspace should not be ready initially");
@@ -34,7 +27,7 @@ fn auto_rescan_if_needed_workspace_not_ready() {
 
 #[test]
 fn auto_rescan_if_needed_no_index_file() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
 
     let index_path = test.workspace.get_nosman_index_filepath();
     if index_path.exists() {
@@ -54,7 +47,7 @@ fn auto_rescan_if_needed_no_index_file() {
 
 #[test]
 fn auto_rescan_if_needed_no_changes() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
 
     let package_name = "nos.sys.vulkan";
     let version = String::from("6.2.1.b612");
@@ -85,7 +78,7 @@ fn auto_rescan_if_needed_no_changes() {
 
 #[test]
 fn auto_rescan_if_needed_missing_manifest() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
 
     let package_name = "nos.sys.vulkan";
     let version = String::from("6.2.1.b612");
@@ -131,7 +124,7 @@ fn auto_rescan_if_needed_missing_manifest() {
 
 #[test]
 fn auto_rescan_if_needed_updated_manifest() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
 
     let package_name = "nos.sys.vulkan";
     let version = String::from("6.2.1.b612");

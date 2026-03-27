@@ -3,11 +3,10 @@ mod support;
 use nosman::nosman::command::info::InfoCommand;
 use nosman::nosman::command::install::{InstallCommand, InstallFlags};
 use std::path::PathBuf;
-use support::WorkspaceGen;
 
 #[test]
 fn info_by_package_and_version() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     let package_name = "nos.sys.vulkan";
     let version = String::from("6.2.1.b612");
 
@@ -32,7 +31,7 @@ fn info_by_package_and_version() {
 
 #[test]
 fn info_by_manifest_path() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     let package_name = "nos.sys.vulkan";
     let version = String::from("6.2.1.b612");
 
@@ -64,7 +63,7 @@ fn info_by_manifest_path() {
 
 #[test]
 fn info_error_both_package_and_manifest() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     let package_name = "nos.sys.vulkan";
     let version = String::from("6.2.1.b612");
 
@@ -100,7 +99,7 @@ fn info_error_both_package_and_manifest() {
 
 #[test]
 fn info_error_no_arguments() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
 
     let result = InfoCommand {}.run_get_info(&mut test.workspace, None, false, None);
     assert!(result.is_err(), "Should fail when no arguments are provided");

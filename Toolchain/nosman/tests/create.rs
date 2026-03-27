@@ -3,11 +3,11 @@ mod support;
 use nosman::nosman::command::create::CreateCommand;
 use nosman::nosman::index::{PluginType, SemVer};
 use nosman::nosman::lang_tool::LangTool;
-use support::{test_create_plugin, WorkspaceGen};
+use support::test_create_plugin;
 
 #[test]
 fn create_plugin_1_3() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     test_create_plugin(
         &mut test.workspace,
         "test.example",
@@ -19,7 +19,7 @@ fn create_plugin_1_3() {
 
 #[test]
 fn create_subsystem_1_3() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     test_create_plugin(
         &mut test.workspace,
         "test.sys.example",
@@ -31,7 +31,7 @@ fn create_subsystem_1_3() {
 
 #[test]
 fn create_plugin_1_4() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     test_create_plugin(
         &mut test.workspace,
         "test.example",
@@ -43,7 +43,7 @@ fn create_plugin_1_4() {
 
 #[test]
 fn create_subsystem_1_4() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     let module_name = "test.sys.example";
     let module_dir = test.workspace.root.join("Module").join(module_name);
     let result = CreateCommand {}.run_create(

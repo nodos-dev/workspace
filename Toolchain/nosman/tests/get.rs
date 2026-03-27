@@ -4,11 +4,10 @@ use nosman::nosman::command::get::GetCommand;
 use nosman::nosman::common::set_prompt_handler;
 use std::fs;
 use std::sync::{Arc, Mutex};
-use support::WorkspaceGen;
 
 #[test]
 fn get_preserves_modules_when_clean_modules_false() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     let module_dir = test.workspace.root.join("Module").join("keep.module");
     fs::create_dir_all(&module_dir).expect("Failed to create module dir");
     let keep_file = module_dir.join("keep.txt");
@@ -36,7 +35,7 @@ fn get_prompts_when_deletions_exist() {
         }
     }
 
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     let stale_dir = test.workspace.root.join("Stale");
     fs::create_dir_all(&stale_dir).expect("Failed to create stale dir");
     fs::write(stale_dir.join("stale.txt"), "stale").expect("Failed to write stale file");

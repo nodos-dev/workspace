@@ -2,11 +2,10 @@ mod support;
 
 use nosman::nosman::command::dev::DevInitCommand;
 use std::fs;
-use support::WorkspaceGen;
 
 #[test]
 fn dev_init_cmake_copies_toolchain() {
-    let test = WorkspaceGen::new_random();
+    let test = workspace!();
 
     DevInitCommand {}
         .run_init(&test.workspace, "cmake")
@@ -19,7 +18,7 @@ fn dev_init_cmake_copies_toolchain() {
 
 #[test]
 fn dev_init_cmake_overwrites_when_exists() {
-    let test = WorkspaceGen::new_random();
+    let test = workspace!();
 
     DevInitCommand {}
         .run_init(&test.workspace, "cmake")

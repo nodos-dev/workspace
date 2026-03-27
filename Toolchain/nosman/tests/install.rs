@@ -4,11 +4,10 @@ use nosman::nosman::command::install::{InstallCommand, InstallFlags, InstallOp};
 use nosman::nosman::index::SemVer;
 use nosman::nosman::package::PackageIdentifier;
 use std::path::PathBuf;
-use support::WorkspaceGen;
 
 #[test]
 fn install_no_deps() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     let package_name = "nos.sys.vulkan";
     let version = String::from("6.2.1.b612");
     InstallCommand {}
@@ -27,7 +26,7 @@ fn install_no_deps() {
 
 #[test]
 fn install_brings_dependencies() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     let package_name = "nos.sys.vulkan";
     let version = String::from("6.2.1.b612");
     test.workspace.fetch_package_releases(package_name);
@@ -74,7 +73,7 @@ fn install_brings_dependencies() {
 
 #[test]
 fn install_skips_if_already_installed() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     let package_name = "nos.sys.vulkan";
     let version = String::from("6.2.1.b612");
     let op = InstallCommand {}
@@ -104,7 +103,7 @@ fn install_skips_if_already_installed() {
 
 #[test]
 fn install_with_only_major_version() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     let package_name = "nos.sys.vulkan";
     let version = String::from("6");
     InstallCommand {}

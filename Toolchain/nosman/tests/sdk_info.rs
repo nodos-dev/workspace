@@ -42,24 +42,24 @@ fn test_sdk_info(test: &mut WorkspaceGen, version: &str, sdk_type: &str) {
 
 #[test]
 fn sdk_info_plugin_version_1_3() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     test_sdk_info(&mut test, "1.3.0.b4433", "plugin");
 }
 
 #[test]
 fn sdk_info_process_version_1_3() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     test_sdk_info(&mut test, "1.3.0.b4433", "process");
 }
 
 #[test]
 fn sdk_info_plugin_version_1_4() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     test_sdk_info(&mut test, "1.4.0.b4709", "plugin");
 }
 
 #[test]
 fn sdk_info_process_version_1_4() {
-    let mut test = WorkspaceGen::new_random();
+    let mut test = workspace!();
     test_sdk_info(&mut test, "1.4.0.b4709", "process");
 }
