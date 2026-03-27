@@ -1,0 +1,165 @@
+#![allow(dead_code)]
+
+use log::{info, warn};
+use nosman::nosman::command::create::CreateCommand;
+use nosman::nosman::command::get::GetCommand;
+use nosman::nosman::index::{PluginType, SemVer};
+use nosman::nosman::lang_tool::LangTool;
+use nosman::nosman::package::get_plugin_manifest_file_ext;
+use nosman::nosman::workspace::{OutputMode, Workspace};
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
+use std::path::PathBuf;
+use std::process::Output;
+use std::{fs, io};
+
+lazy_static::lazy_static! {
+    pub static ref RNG: std::sync::Mutex<StdRng> = std::sync::Mutex::new(StdRng::from_os_rng());
+}
+
+pub struct WorkspaceGen {
+    pub workspace: Workspace,
+}
+
+impl WorkspaceGen {
+    fn new(path: &str) -> Self {
+        let mut ws = Workspace::from_root(&PathBuf::from(format!("./test_workspaces/{}", path)));
+        if !ws.ready() {
+            ws.recreate().expect("Failed to create test workspace");
+        }
+        ws.push_output_mode(OutputMode::Silent);
+        WorkspaceGen { workspace: ws }
+    }
+
+    fn clear_all() -> io::Result<()> {
+        fs::remove_dir_all("./test_workspaces")
+    }
+
+    pub fn new_random() -> Self {
+        let random_string: String = (0..8)
+            .map(|_| RNG.lock().unwrap().random_range(b'a'..=b'z'))
+            .map(char::from)
+            .collect();
+        WorkspaceGen::new(random_string.as_str())
+    }
+}
+
+#[ctor::ctor]
+fn init() {
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info)
+        .init();
+    info!("Starting nosman tests");
+}
+
+#[ctor::dtor]
+fn cleanup() {
+    if let Err(e) = WorkspaceGen::clear_all() {
+        warn!("Failed to clear test workspaces: {}", e);
+    } else {
+        info!("Test workspaces cleared");
+    }
+}
+
+pub fn get_full_output(res: &Output) -> String {
+    let stdout = String::from_utf8_lossy(&res.stdout);
+    let stderr = String::from_utf8_lossy(&res.stderr);
+    let mut output = String::new();
+    if !stdout.is_empty() {
+        output.push_str(&format!("{}", stdout));
+    }
+    if !stderr.is_empty() {
+        output.push_str(&format!("\nError:\n{}", stderr));
+    }
+    output
+}
+
+pub fn test_cmake_build(test_workspace: &Workspace) {
+    let res = std::process::Command::new("cmake")
+        .current_dir(&test_workspace.root)
+        .arg("-S")
+        .arg("Toolchain/CMake")
+        .arg("-B")
+        .arg("Project")
+        .output();
+    if let Err(e) = res {
+        panic!("Failed to generate project: {}", e);
+    }
+    let res = res.unwrap();
+    if !res.status.success() {
+        print!("Output:\n{}", get_full_output(&res));
+        panic!("Failed to generate project");
+    }
+    let res = std::process::Command::new("cmake")
+        .current_dir(&test_workspace.root)
+        .arg("--build")
+        .arg("Project")
+        .output();
+    if let Err(e) = res {
+        panic!("Failed to build project: {}", e);
+    }
+    let res = res.unwrap();
+    if !res.status.success() {
+        print!("Output:\n{}", get_full_output(&res));
+        panic!("Failed to build project");
+    }
+}
+
+pub fn test_create_plugin(
+    test_workspace: &mut Workspace,
+    plugin_name: &str,
+    plugin_type: PluginType,
+    description: &str,
+    nodos_version: &str,
+) {
+    let res = GetCommand {}.run_get(
+        test_workspace,
+        &"nodos".to_string(),
+        &nodos_version.to_string(),
+        true,
+        true,
+        false,
+    );
+    if let Err(e) = res {
+        panic!("Failed to install nodos: {}", e);
+    }
+
+    let nosman_path = env!("CARGO_BIN_EXE_nosman");
+    let target_executable_name = format!("nodos{}", std::env::consts::EXE_SUFFIX);
+    std::fs::copy(
+        nosman_path,
+        &test_workspace.root.join(target_executable_name),
+    )
+    .expect("Failed to copy nosman to workspace");
+
+    let module_dir = test_workspace.root.join("Module").join(plugin_name);
+    let nodos_version = SemVer::parse_from_str(nodos_version);
+    CreateCommand {}
+        .run_create(
+            test_workspace,
+            plugin_name,
+            Some(plugin_type.clone()),
+            LangTool::CppCMake,
+            &module_dir,
+            Vec::new(),
+            description,
+            nodos_version.clone(),
+        )
+        .expect(&format!("Failed to create {:?}", plugin_type));
+
+    assert!(
+        module_dir.exists(),
+        "{:?} directory was not created",
+        plugin_type
+    );
+
+    let extension = get_plugin_manifest_file_ext(Option::from(&nodos_version), &plugin_type);
+    let manifest_path = module_dir.join(format!("{}.{}", plugin_name, extension));
+    assert!(
+        manifest_path.exists(),
+        "{:?} manifest file was not created",
+        plugin_type
+    );
+
+    test_cmake_build(test_workspace);
+}
