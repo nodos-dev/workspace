@@ -1543,13 +1543,12 @@ dependencies = [
 
 [[package]]
 name = "nodos-store-client"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c37314337baa95f1dae2e847be5716926b0563267f962c702307c9ce0ff8aec8"
+checksum = "bba5fdd3c890d62f95b4af66646d6437527b9738a03ac693fdcf44b182b68bc9"
 dependencies = [
  "chrono",
  "hostname",
- "log",
  "reqwest",
  "serde",
  "serde_json",

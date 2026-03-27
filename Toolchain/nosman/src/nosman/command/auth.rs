@@ -7,8 +7,16 @@ pub struct AuthCommand {}
 
 impl AuthCommand {
     fn run_login(&self, workspace: &mut Workspace) -> CommandResult {
-        workspace.authenticated_store_client_mut()
-            .login()
+        let client = workspace.authenticated_store_client_mut();
+        let start = client.start_device_login()
+            .map_err(|e| CommandError::Runtime { message: e.to_string() })?;
+        println!(
+            "Open this URL in your browser to log in:\n  {}\n\nOr visit {} and enter code: {}",
+            start.verification_uri_complete,
+            start.verification_uri,
+            start.user_code,
+        );
+        client.complete_device_login(&start)
             .map_err(|e| CommandError::Runtime { message: e.to_string() })?;
         println!("Logged in successfully.");
         Ok(())
