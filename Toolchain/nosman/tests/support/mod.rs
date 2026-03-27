@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use log::{info, warn};
+use log::info;
 use nosman::nosman::command::create::CreateCommand;
 use nosman::nosman::command::get::GetCommand;
 use nosman::nosman::index::{PluginType, SemVer};
@@ -11,7 +11,6 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::path::PathBuf;
 use std::process::Output;
-use std::{fs, io};
 
 lazy_static::lazy_static! {
     pub static ref RNG: std::sync::Mutex<StdRng> = std::sync::Mutex::new(StdRng::from_os_rng());
@@ -31,10 +30,6 @@ impl WorkspaceGen {
         WorkspaceGen { workspace: ws }
     }
 
-    fn clear_all() -> io::Result<()> {
-        fs::remove_dir_all("./test_workspaces")
-    }
-
     pub fn new_random() -> Self {
         let random_string: String = (0..8)
             .map(|_| RNG.lock().unwrap().random_range(b'a'..=b'z'))
@@ -52,14 +47,10 @@ fn init() {
     info!("Starting nosman tests");
 }
 
-#[ctor::dtor]
-fn cleanup() {
-    if let Err(e) = WorkspaceGen::clear_all() {
-        warn!("Failed to clear test workspaces: {}", e);
-    } else {
-        info!("Test workspaces cleared");
-    }
-}
+// Workspace cleanup is not performed automatically. With nextest, each test
+// runs in its own process, so a dtor that removes ./test_workspaces would
+// destroy directories still in use by parallel tests. Clean up externally
+// (e.g. rm -rf ./test_workspaces) after the test run if needed.
 
 pub fn get_full_output(res: &Output) -> String {
     let stdout = String::from_utf8_lossy(&res.stdout);
