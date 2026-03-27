@@ -51,6 +51,7 @@ struct WorkspaceRuntimeParams {
     status: WorkspaceStatus,
     output_mode_stack: Vec<OutputMode>,
     store_client: Option<nodos_store_client::StoreClient>,
+    authenticated_store_client: Option<nodos_store_client::StoreClient>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -200,7 +201,7 @@ impl Workspace {
             root: path,
             packages: HashMap::new(),
             index_cache: Index { packages: HashMap::new() },
-            runtime: WorkspaceRuntimeParams { status: WorkspaceStatus::DoesNotExist, output_mode_stack: vec![OutputMode::Default], store_client: None },
+            runtime: WorkspaceRuntimeParams { status: WorkspaceStatus::DoesNotExist, output_mode_stack: vec![OutputMode::Default], store_client: None, authenticated_store_client: None },
         }
     }
     pub fn from_root(path: &PathBuf) -> Workspace {
@@ -430,6 +431,18 @@ impl Workspace {
             );
         }
         self.runtime.store_client.as_ref().unwrap()
+    }
+
+    pub fn authenticated_store_client_mut(&mut self) -> &mut nodos_store_client::StoreClient {
+        if self.runtime.authenticated_store_client.is_none() {
+            self.runtime.authenticated_store_client = Some(
+                nodos_store_client::StoreClient::builder()
+                    .with_token_store(nodos_store_client::TokenStore::new(std::path::PathBuf::from("nosman")))
+                    .build()
+                    .expect("Failed to build authenticated store client"),
+            );
+        }
+        self.runtime.authenticated_store_client.as_mut().unwrap()
     }
 
     pub fn push_output_mode(&mut self, mode: OutputMode) {

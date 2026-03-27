@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use clap::ArgMatches;
 
 use crate::nosman::command::{Command, CommandError, CommandResult};
@@ -8,23 +6,18 @@ use crate::nosman::workspace::Workspace;
 pub struct AuthCommand {}
 
 impl AuthCommand {
-    fn make_client() -> Result<nodos_store_client::StoreClient, String> {
-        nodos_store_client::StoreClient::builder()
-            .with_token_store(nodos_store_client::TokenStore::new(PathBuf::from("nosman")))
-            .build()
-            .map_err(|e| e.to_string())
-    }
-
-    fn run_login(&self) -> CommandResult {
-        let mut client = Self::make_client().map_err(|e| CommandError::Runtime { message: e })?;
-        client.login().map_err(|e| CommandError::Runtime { message: e.to_string() })?;
+    fn run_login(&self, workspace: &mut Workspace) -> CommandResult {
+        workspace.authenticated_store_client_mut()
+            .login()
+            .map_err(|e| CommandError::Runtime { message: e.to_string() })?;
         println!("Logged in successfully.");
         Ok(())
     }
 
-    fn run_logout(&self) -> CommandResult {
-        let mut client = Self::make_client().map_err(|e| CommandError::Runtime { message: e })?;
-        client.logout().map_err(|e| CommandError::Runtime { message: e.to_string() })?;
+    fn run_logout(&self, workspace: &mut Workspace) -> CommandResult {
+        workspace.authenticated_store_client_mut()
+            .logout()
+            .map_err(|e| CommandError::Runtime { message: e.to_string() })?;
         println!("Logged out.");
         Ok(())
     }
@@ -59,13 +52,13 @@ impl Command for AuthCommand {
 
     fn run(
         &self,
-        _workspace: &mut Workspace,
+        workspace: &mut Workspace,
         _command_name: Option<&str>,
         args: &ArgMatches,
     ) -> CommandResult {
         match args.subcommand_name() {
-            Some("login") => self.run_login(),
-            Some("logout") => self.run_logout(),
+            Some("login") => self.run_login(workspace),
+            Some("logout") => self.run_logout(workspace),
             _ => unreachable!("subcommand_required ensures a subcommand is always present"),
         }
     }

@@ -118,7 +118,7 @@ impl PublishBatchCommand {
         if rollback {
             println!("{}", "Rolling back published packages".red());
             for id in published {
-                UnpublishCommand {}.run_unpublish(dry_run, &id.name, Option::from(&id.version))?
+                UnpublishCommand {}.run_unpublish(workspace, dry_run, &id.name, Option::from(&id.version))?
             }
             return Err(InvalidArgument { message: "Failed to publish all packages".to_string() });
         }

@@ -159,7 +159,7 @@ impl PublishCommand {
         Ok(api_version_opt)
     }
 
-    pub fn publish(&self, workspace: &Workspace, dry_run: bool, verbose: bool, path: &PathBuf,
+    pub fn publish(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, path: &PathBuf,
                    mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
                    mut package_type: Option<PackageType>, release_tags: &Vec<String>,
                    opt_target_platform: Option<&String>) -> Result<PackageIdentifier, CommandError> {
@@ -428,10 +428,8 @@ impl PublishCommand {
                     message: format!("Failed to read artifact {}: {}", artifact_file_path.display(), e),
                 })?;
 
-            nodos_store_client::StoreClient::builder()
-                .with_token_store(nodos_store_client::TokenStore::new(PathBuf::from("nosman")))
-                .build()
-                .and_then(|mut client| client.publish_release(
+            workspace.authenticated_store_client_mut()
+                .publish_release(
                     &name,
                     &display_name,
                     &description,
@@ -443,7 +441,7 @@ impl PublishCommand {
                     combined_tags,
                     &target_platform.to_string(),
                     artifact_data,
-                ))
+                )
                 .map_err(|e| Runtime { message: e.to_string() })?;
         }
         println!(
@@ -456,7 +454,7 @@ impl PublishCommand {
         Ok(PackageIdentifier { name, version })
     }
 
-    pub fn run_publish(&self, workspace: &Workspace, dry_run: bool, verbose: bool, path: &PathBuf, 
+    pub fn run_publish(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, path: &PathBuf, 
                        name: Option<String>, version: Option<String>, version_suffix: &String,
                        package_type: Option<PackageType>, release_tags: &Vec<String>,
                        opt_target_platform: Option<&String>) -> CommandResult {

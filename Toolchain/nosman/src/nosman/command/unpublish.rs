@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use crate::nosman;
@@ -12,17 +10,14 @@ pub struct UnpublishCommand {
 }
 
 impl UnpublishCommand {
-    pub fn run_unpublish(&self, dry_run: bool, package_name: &String, version: Option<&String>) -> CommandResult {
+    pub fn run_unpublish(&self, workspace: &mut Workspace, dry_run: bool, package_name: &String, version: Option<&String>) -> CommandResult {
         if version.is_none() {
             println!("Unpublishing all versions of package {}", package_name);
         }
 
-        (|| -> std::result::Result<(), String> {
-            let mut client = nodos_store_client::StoreClient::builder()
-                .with_token_store(nodos_store_client::TokenStore::new(PathBuf::from("nosman")))
-                .build()
-                .map_err(|e| e.to_string())?;
+        let client = workspace.authenticated_store_client_mut();
 
+        (|| -> std::result::Result<(), String> {
             if dry_run {
                 let releases = client
                     .get_my_releases(package_name)
@@ -88,11 +83,11 @@ impl Command for UnpublishCommand {
         args.subcommand_matches("unpublish")
     }
 
-    fn run(&self, _workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let package_name = args.get_one::<String>("package_name").unwrap();
         let version = args.get_one::<String>("version");
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
-        self.run_unpublish(*dry_run, package_name, version)
+        self.run_unpublish(workspace, *dry_run, package_name, version)
     }
 
     fn needs_workspace(&self) -> bool {
