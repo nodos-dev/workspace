@@ -116,10 +116,14 @@ jobs:
             cargo build --release
         working-directory: ./nodos-cli-${{ github.ref_name }}/Toolchain/nosman
 
+      - name: Install cargo-nextest
+        shell: bash
+        run: cargo nextest --version 2>/dev/null || cargo install cargo-nextest --locked
+
       - name: Run Regression Tests
         shell: pwsh
         run: |
-            cargo test --release
+            cargo nextest run --release --no-fail-fast
         working-directory: ./nodos-cli-${{ github.ref_name }}/Toolchain/nosman
 
       - name: Get Version & File Names
