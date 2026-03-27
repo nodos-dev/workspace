@@ -1,3 +1,4 @@
+mod auth;
 pub mod create;
 mod deinit;
 mod depend;
@@ -96,6 +97,7 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(extension::Extension {}),
         Box::new(depend::DependCommand {}),
         Box::new(test::TestCommand {}),
+        Box::new(auth::AuthCommand {}),
     ]
 }
 
@@ -129,6 +131,7 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
         .subcommand(launch::get_cli())
         .subcommand(dev::get_cli())
         .subcommand(test::get_cli())
+        .subcommand(auth::get_cli())
 }
 
 pub fn get_nodos_version_from_args(args: &ArgMatches) -> Result<Option<SemVer>, CommandError> {
