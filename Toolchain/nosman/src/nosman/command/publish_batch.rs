@@ -130,7 +130,7 @@ impl PublishBatchCommand {
 pub fn get_cli() -> clap::Command {
     clap::Command::new("publish-batch")
         .about("Publish all/changed packages under the git repository.")
-        .after_help(format!("This command will publish all/changed packages under the git repository to the configured package server.\n\
+        .after_help(format!("This command will publish all/changed packages under the git repository to the Nodos Store.\n\
     It will use the {} files to add the files to the release.", constants::PUBLISH_OPTIONS_FILE_NAME))
         .arg(Arg::new("directory")
             .long("directory")

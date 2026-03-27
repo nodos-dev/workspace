@@ -65,7 +65,7 @@ impl UnpublishCommand {
 pub fn get_cli() -> clap::Command {
     clap::Command::new("unpublish")
         .alias("yank")
-        .about("Unpublish a package from the package server.")
+        .about("Unpublish a package from the Nodos Store.")
         .arg(Arg::new("package_name").required(true))
         .arg(Arg::new("version")
             .help("Version of the package to unpublish. If not provided, all versions will be unpublished."))

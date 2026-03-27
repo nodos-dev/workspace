@@ -63,7 +63,7 @@ impl DependCommand {
             }
 
             if dep.name.is_empty() {
-                return Err(InvalidArgument { message: format!("Dependency {} not found locally or on the package server", dep_id.name) });
+                return Err(InvalidArgument { message: format!("Dependency {} not found locally or on the Nodos Store", dep_id.name) });
             }
 
             // Check if the dependency is already in the manifest

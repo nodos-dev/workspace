@@ -94,13 +94,13 @@ impl InstallCommand {
                     }
                     Some(release.version.clone()) // Clone version to avoid lifetime issues.
                 } else {
-                    return Err(InvalidArgument { message: format!("Package server does not contain a version matching prefix '{}' for package {}", version_prefix.to_string(), package_name) });
+                    return Err(InvalidArgument { message: format!("Nodos Store does not contain a version matching prefix '{}' for package {}", version_prefix.to_string(), package_name) });
                 };
                 self.run_install(workspace, package_name, compatible_package.as_ref(), output_dir, prefix, exact_no_fetch)
             }
         }
         let Some((package_type, package)) = workspace.index_cache.get_package_cpy(package_name, version.as_str()) else {
-            return Err(InvalidArgument { message: format!("Package server does not contain package {} version {}. You can try rescan command to update index.", package_name, version) })
+            return Err(InvalidArgument { message: format!("Nodos Store does not contain package {} version {}. You can try rescan command to update index.", package_name, version) })
         };
 
         // Now, we actually install this package.

@@ -400,7 +400,7 @@ impl PublishCommand {
         }
 
         println!(
-            "Publishing {} to package server {}",
+            "Publishing {} to Nodos Store {}",
             format!("{}-{}", name, version),
             nodos_store_client::DEFAULT_BASE_URL
         );
@@ -471,7 +471,7 @@ impl PublishCommand {
 pub fn get_cli() -> clap::Command {
     clap::Command::new("publish")
         .about("Publish a package")
-        .after_help("This command will publish a package to the configured package server.\n\
+        .after_help("This command will publish a package to the Nodos Store.\n\
     If there is an existing Nodos release, updates it (note that this will remove all installed Nodos engines!)")
         .arg(Arg::new("path")
             .long("path")

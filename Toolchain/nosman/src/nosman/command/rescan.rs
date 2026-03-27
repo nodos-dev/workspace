@@ -11,7 +11,7 @@ pub fn get_cli() -> clap::Command {
         .about("Rescan modules and update caches")
         .arg(Arg::new("fetch_index")
             .action(ArgAction::SetTrue)
-            .help("Fetch package-server metadata before scanning")
+            .help("Fetch Nodos Store metadata before scanning")
             .long("fetch-index")
             .num_args(0)
             .required(false)

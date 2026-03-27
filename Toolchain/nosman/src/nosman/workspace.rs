@@ -155,7 +155,7 @@ fn fetch_releases_mt(is_silent: bool, client: &nodos_store_client::StoreClient, 
     let releases = Mutex::new(HashMap::new());
     let pb = get_progress_bar(is_silent);
     pb.enable_steady_tick(Duration::from_millis(100));
-    pb.set_message("Fetching package server index...");
+    pb.set_message("Fetching Nodos Store index...");
 
     let package_list = match client.list_packages().map_err(|e| e.to_string()) {
         Ok(list) => list,
@@ -165,7 +165,7 @@ fn fetch_releases_mt(is_silent: bool, client: &nodos_store_client::StoreClient, 
         }
     };
 
-    pb.println(format!("Fetched {} packages from package server", package_list.len()));
+    pb.println(format!("Fetched {} packages from Nodos Store", package_list.len()));
     package_list.par_iter().for_each(|package| {
         if let Some(ref package_names) = package_names {
             if !package_names.contains(&package.name) {
