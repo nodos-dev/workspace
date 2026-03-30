@@ -420,13 +420,16 @@ impl Workspace {
     }
     fn ensure_store_client(&mut self) {
         if self.runtime.store_client.is_none() {
-            self.runtime.store_client = nodos_store_client::StoreClient::builder().build().ok();
+            match nodos_store_client::StoreClient::builder().build() {
+                Ok(client) => self.runtime.store_client = Some(client),
+                Err(e) => eprintln!("Warning: failed to build store client: {}", e),
+            }
         }
     }
 
     pub fn store_client(&mut self) -> &nodos_store_client::StoreClient {
         self.ensure_store_client();
-        self.runtime.store_client.as_ref().expect("Failed to build store client")
+        self.runtime.store_client.as_ref().expect("Store client is not available (build failed earlier)")
     }
 
     pub fn authenticated_store_client_mut(&mut self) -> &mut nodos_store_client::StoreClient {

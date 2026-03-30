@@ -154,26 +154,24 @@ impl GetCommand {
             return self.run_get(workspace, nodos_name, version, false, dont_ask, clean_modules)
         }
 
-        let res = if version == "latest" {
-            workspace.index_cache.get_latest_release(nodos_name)
-        } else {
-            let version_prefix = SemVer::parse_from_str(version)
-                .unwrap_or_else(|| panic!("Invalid semantic version: {}", version));
-            workspace.index_cache.get_latest_compatible_release(nodos_name, &version_prefix)
+        let (artifact_id, release_url, release_version) = {
+            let res = if version == "latest" {
+                workspace.index_cache.get_latest_release(nodos_name)
+            } else {
+                let version_prefix = SemVer::parse_from_str(version)
+                    .unwrap_or_else(|| panic!("Invalid semantic version: {}", version));
+                workspace.index_cache.get_latest_compatible_release(nodos_name, &version_prefix)
+            };
+            let (package_type, release) = res.ok_or_else(|| InvalidArgument {
+                message: format!("No release found for {} version {}", nodos_name, version),
+            })?;
+            if *package_type != PackageType::Nodos {
+                return Err(InvalidArgument { message: format!("Package {} found in the index is not a Nodos package", nodos_name) });
+            }
+            (release.artifact_id, release.url.clone(), release.version.clone())
         };
-        if res.is_none() {
-            return Err(InvalidArgument { message: format!("No release found for {} version {}", nodos_name, version) });
-        }
-        let (package_type, release) = res.unwrap();
-        if *package_type != PackageType::Nodos {
-            return Err(InvalidArgument { message: format!("Package {} found in the index is not a Nodos package", nodos_name) });
-        }
         let tmpdir = tempfile::tempdir()?;
         let downloaded_path = tmpdir.path().to_path_buf();
-        let artifact_id = release.artifact_id;
-        let release_url = release.url.clone();
-        let release_version = release.version.clone();
-        let _ = (package_type, release);
         let download_url = match artifact_id {
             Some(id) => workspace.store_client()
                 .get_artifact_download_url(id)

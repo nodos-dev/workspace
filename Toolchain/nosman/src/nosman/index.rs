@@ -269,31 +269,6 @@ pub struct PackageReleaseEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_names: Option<Vec<String>>,
 }
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct PackageReleases {
-    pub(crate) name: String,
-    pub(crate) releases: Vec<PackageReleaseEntry>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum VersionCheckStrategy {
-    None,
-    Strict, // If the version components major, minor & patch is the same, it is considered the same version
-    Loose,  // If the version string is the same, it is considered the same version
-}
-
-impl VersionCheckStrategy {
-    pub fn from_str(s: &str) -> VersionCheckStrategy {
-        match s {
-            "none" => VersionCheckStrategy::None,
-            "strict" => VersionCheckStrategy::Strict,
-            "loose" => VersionCheckStrategy::Loose,
-            _ => VersionCheckStrategy::None,
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Index {
     pub packages: HashMap<String, (PackageType, Vec<PackageReleaseEntry>)>, // name -> version -> ModuleReleaseEntry
