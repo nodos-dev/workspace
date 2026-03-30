@@ -61,7 +61,7 @@ impl InstallCommand {
                 }
             }
         }
-        // Fetch package metadata from the package server.
+        // Fetch package metadata from the Nodos Store.
         if flags.contains(InstallFlags::UpdatePackageIndex) {
             println!("Fetching index...");
             workspace.fetch_package_releases(package_name);
@@ -179,13 +179,10 @@ impl InstallCommand {
         let package_name_version = format!("{}-{}", package_name, version);
         println!("Downloading {} {}", pkg_type_str, package_name_version);
 
-        let download_url = match package.artifact_id {
-            Some(id) => workspace.store_client()?
-                .get_artifact_download_url(id)
-                .map_err(|e| Runtime { message: e.to_string() })?,
-            None => package.url.clone(),
+        match package.artifact_id {
+            Some(id) => workspace.download_and_extract_artifact(id, &final_out_dir)?,
+            None => download_and_extract(&package.url, &final_out_dir)?,
         };
-        download_and_extract(&download_url, &final_out_dir)?;
 
         println!("Extracted {} {} to {}", pkg_type_str, package_name, final_out_dir.display());
         // If the package is installed under workspace, register it.

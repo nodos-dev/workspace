@@ -25,7 +25,7 @@ pub fn set_prompt_handler(handler: Option<Box<PromptHandler>>) {
     *guard = handler;
 }
 
-pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandError> {
+pub fn download_and_extract(url: &str, target: &Path) -> Result<(), CommandError> {
     let mut tmpfile = tempfile::tempfile().expect("Failed to create tempfile");
     reqwest::blocking::get(url)
     .unwrap_or_else(|e| panic!("Failed to fetch {}: {}", url, e)).copy_to(&mut tmpfile)
@@ -38,20 +38,29 @@ pub fn download_and_extract(url: &str, target: &PathBuf) -> Result<(), CommandEr
         #[cfg(unix)]
         {
             let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(tmpfile));
-            fs::create_dir_all(target.clone())?;
-            archive.unpack(&target)?;
+            fs::create_dir_all(target)?;
+            archive.unpack(target)?;
             return Ok(());
         }
     }
-    
+
+    extract_zip(tmpfile, target)
+}
+
+/// Extracts a zip archive from an already-downloaded file into `target`.
+pub fn download_and_extract_file(tmpfile: std::fs::File, target: &Path) -> Result<(), CommandError> {
+    extract_zip(tmpfile, target)
+}
+
+fn extract_zip(tmpfile: std::fs::File, target: &Path) -> Result<(), CommandError> {
     let mut archive = ZipArchive::new(tmpfile)?;
-    fs::create_dir_all(target.clone())?;
+    fs::create_dir_all(target)?;
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         let filename = file.name();
         // It might contain \, so convert this to POSIX compatible path
         let filename = filename.replace("\\", "/");
-        let outpath = Path::new(&target).join(filename);
+        let outpath = target.join(filename);
 
         if file.is_dir() {
             fs::create_dir_all(&outpath)?;

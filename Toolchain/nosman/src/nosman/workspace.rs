@@ -2,6 +2,7 @@ use rayon::iter::ParallelIterator;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::cmp::PartialEq;
+use std::io::Seek;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration};
@@ -444,6 +445,27 @@ impl Workspace {
             );
         }
         Ok(self.runtime.authenticated_store_client.as_mut().unwrap())
+    }
+
+    /// Downloads and extracts a store artifact into `target`.
+    ///
+    /// Uses [`StoreClient::download_artifact`] to stream the artifact into a
+    /// temporary file, then delegates to [`download_and_extract_file`] for
+    /// archive extraction.
+    pub fn download_and_extract_artifact(
+        &mut self,
+        artifact_id: i64,
+        target: &std::path::Path,
+    ) -> CommandResult {
+        use crate::nosman::common::download_and_extract_file;
+        let mut tmpfile = tempfile::tempfile()
+            .map_err(|e| CommandError::Runtime { message: format!("Failed to create tempfile: {}", e) })?;
+        self.store_client()?
+            .download_artifact(artifact_id, &mut tmpfile)
+            .map_err(|e| CommandError::Runtime { message: format!("Failed to download artifact: {}", e) })?;
+        tmpfile.seek(std::io::SeekFrom::Start(0))
+            .map_err(|e| CommandError::Runtime { message: format!("Failed to seek tempfile: {}", e) })?;
+        download_and_extract_file(tmpfile, target)
     }
 
     pub fn push_output_mode(&mut self, mode: OutputMode) {
