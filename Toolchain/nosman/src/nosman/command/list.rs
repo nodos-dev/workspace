@@ -45,7 +45,7 @@ impl ListCommand {
                     a_version.cmp(&b_version)
                 });
                 for (_name, version, module) in local_versions {
-                    println!("  {} ({})", format!("{}", version).green(), module.get_package_root().display());
+                    println!("  {} ({})", version.green(), module.get_package_root().display());
                 }
             }
             if store {
@@ -86,7 +86,7 @@ impl ListCommand {
                 }
                 installed_modules_alphabetical.sort_by(|a, b| a.0.cmp(&b.0));
                 for (name, version, module) in installed_modules_alphabetical {
-                    println!("  {} ({})", format!("{} ({})", name.green(), version.yellow()), module.get_package_root().display());
+                    println!("  {} ({}) ({})", name.green(), version.yellow(), module.get_package_root().display());
                 }
             }
             if store {

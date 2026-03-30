@@ -147,7 +147,11 @@ fn releases_to_index_entries(
     entries
 }
 
-fn fetch_releases_mt(is_silent: bool, client: &nodos_store_client::StoreClient, package_names: Option<HashSet<String>>) -> HashMap<String, (PackageType, Vec<PackageReleaseEntry>)> {
+fn fetch_releases_mt(
+    is_silent: bool,
+    client: &nodos_store_client::StoreClient,
+    package_names: Option<HashSet<String>>,
+) -> HashMap<String, (PackageType, Vec<PackageReleaseEntry>)> {
     let releases = Mutex::new(HashMap::new());
     let pb = get_progress_bar(is_silent);
     pb.enable_steady_tick(Duration::from_millis(100));
@@ -180,12 +184,12 @@ fn fetch_releases_mt(is_silent: bool, client: &nodos_store_client::StoreClient, 
             releases_for_package.len(),
             package.name
         ));
-        for release in releases_for_package {
+        {
             let mut map = releases.lock().unwrap();
             let entry = map
                 .entry(package.name.clone())
                 .or_insert((package_type.clone(), Vec::new()));
-            entry.1.push(release);
+            entry.1.extend(releases_for_package);
         }
     });
     releases.into_inner().unwrap()
@@ -201,7 +205,7 @@ impl Workspace {
         }
     }
     pub fn from_root(path: &PathBuf) -> Workspace {
-        let index_filepath = get_nosman_index_filepath_for(&path);
+        let index_filepath = get_nosman_index_filepath_for(path);
         let exists = index_filepath.exists();
         let mut workspace = Workspace::new_empty(std::path::absolute(path).unwrap_or_else(|e| panic!("Failed to get absolute path from {:?}: {}", path, e)));
         if !exists {
@@ -247,7 +251,7 @@ impl Workspace {
         }
     }
 
-    pub fn normalize_to_workspace<'a, P: AsRef<Path>>(
+    pub fn normalize_to_workspace<P: AsRef<Path>>(
         &self, path: P,
     ) -> Option<PathBuf> {
         let path = path.as_ref();
@@ -283,10 +287,7 @@ impl Workspace {
         let normalized_path = self.normalize_to_workspace(path.clone()).unwrap();
         for version_map in self.packages.values() {
             for entry in version_map.values() {
-                if entry.manifest_path == path {
-                    return Some(entry);
-                }
-                else if entry.manifest_path == normalized_path{
+                if entry.manifest_path == path || entry.manifest_path == normalized_path {
                     return Some(entry);
                 }
             }
@@ -296,7 +297,7 @@ impl Workspace {
     pub fn get_packages(&self, name: &str) -> Vec<&LocalPackageEntry> {
         let mut res = Vec::new();
         if let Some(versions) = self.packages.get(name) {
-            for (_version, package) in versions {
+            for package in versions.values() {
                 res.push(package);
             }
         }
@@ -305,7 +306,7 @@ impl Workspace {
     pub fn get_or_select_package(&self, package_name: &String) -> Result<LocalPackageEntry, CommandError> {
         let packages = self.get_packages(package_name);
         let package;
-        if packages.len() == 0 {
+        if packages.is_empty() {
             return Err(InvalidArgument { message: format!("Package {} not found", package_name) });
         } else if packages.len() > 1 {
             let selection = Select::new(format!("Multiple packages found with name {}. Please select one:", package_name).as_str(), packages)
@@ -363,7 +364,7 @@ impl Workspace {
         let version_prefix = semver_res.unwrap();
         let res = self.get_latest_local_package_for_prefix(module_name, &version_prefix);
         if res.is_none() {
-            return Err(format!("No installed version matching prefix '{}' for package {}", version_prefix.to_string(), module_name));
+            return Err(format!("No installed version matching prefix '{}' for package {}", version_prefix, module_name));
         }
         Ok(res.unwrap())
     }
@@ -380,12 +381,12 @@ impl Workspace {
         }
         let res = self.index_cache.get_latest_compatible_release(name, &version_prefix);
         if res.is_none() {
-            return Err(InvalidArgument { message: format!("No releases found for package {} matching prefix '{}'", name, version_prefix.to_string()) });
+            return Err(InvalidArgument { message: format!("No releases found for package {} matching prefix '{}'", name, version_prefix) });
         }
         Ok(Some(res.unwrap()))
     }
     pub fn add(&mut self, package: LocalPackageEntry) {
-        let versions = self.packages.entry(package.info.id.name.clone()).or_insert(HashMap::new());
+        let versions = self.packages.entry(package.info.id.name.clone()).or_default();
         versions.insert(package.info.id.version.clone(), package);
     }
     pub fn remove(&mut self, name: &str, version: &str) -> CommandResult {
@@ -418,30 +419,31 @@ impl Workspace {
     pub fn is_silent(&self) -> bool {
         self.runtime.output_mode_stack.last().unwrap_or(&OutputMode::Default) == &OutputMode::Silent
     }
-    fn ensure_store_client(&mut self) {
+    pub fn store_client(&mut self) -> Result<&nodos_store_client::StoreClient, CommandError> {
         if self.runtime.store_client.is_none() {
-            match nodos_store_client::StoreClient::builder().build() {
-                Ok(client) => self.runtime.store_client = Some(client),
-                Err(e) => eprintln!("Warning: failed to build store client: {}", e),
-            }
+            self.runtime.store_client = Some(
+                nodos_store_client::StoreClient::builder()
+                    .build()
+                    .map_err(|e| CommandError::Runtime {
+                        message: format!("Failed to build store client: {}", e),
+                    })?,
+            );
         }
+        Ok(self.runtime.store_client.as_ref().unwrap())
     }
 
-    pub fn store_client(&mut self) -> &nodos_store_client::StoreClient {
-        self.ensure_store_client();
-        self.runtime.store_client.as_ref().expect("Store client is not available (build failed earlier)")
-    }
-
-    pub fn authenticated_store_client_mut(&mut self) -> &mut nodos_store_client::StoreClient {
+    pub fn authenticated_store_client_mut(&mut self) -> Result<&mut nodos_store_client::StoreClient, CommandError> {
         if self.runtime.authenticated_store_client.is_none() {
             self.runtime.authenticated_store_client = Some(
                 nodos_store_client::StoreClient::builder()
                     .with_token_store(nodos_store_client::TokenStore::new(std::path::PathBuf::from("nosman")))
                     .build()
-                    .expect("Failed to build authenticated store client"),
+                    .map_err(|e| CommandError::Runtime {
+                        message: format!("Failed to build authenticated store client: {}", e),
+                    })?,
             );
         }
-        self.runtime.authenticated_store_client.as_mut().unwrap()
+        Ok(self.runtime.authenticated_store_client.as_mut().unwrap())
     }
 
     pub fn push_output_mode(&mut self, mode: OutputMode) {
@@ -473,15 +475,14 @@ impl Workspace {
 
         for (ty, path) in package_manifests {
             pb.set_message(format!("Scanning: {}", path.display()));
-            let res = LocalPackageEntry::new(&self, get_rel_path_based_on(&path, &self.root), ty, flags.contains(ScanPackagesFlags::RegisterCommands));
+            let res = LocalPackageEntry::new(self, get_rel_path_based_on(&path, &self.root), ty, flags.contains(ScanPackagesFlags::RegisterCommands));
             if let Err(msg) = res {
                 pb.println(format!("Error while scanning {}: {}", path.display(), msg).red().to_string());
                 continue;
             }
             let package = res.unwrap();
             let opt_found = self.get_package(&package.info.id.name, &package.info.id.version);
-            if opt_found.is_some() {
-                let found = opt_found.unwrap();
+            if let Some(found) = opt_found {
                 if flags.contains(ScanPackagesFlags::ForceReplaceInRegistry) {
                     pb.println(format!("Updating package entry in registry: {}. {} <=> {}", package.info.id, path.display(), found.manifest_path.display()));
                 } else {
@@ -514,11 +515,13 @@ impl Workspace {
         Ok(())
     }
     pub fn fetch_package_releases(&mut self, package_name: &str) {
-        self.ensure_store_client();
         let result = {
-            let client = match self.runtime.store_client.as_ref() {
-                Some(c) => c,
-                None => return,
+            let client = match self.store_client() {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Warning: {}", e);
+                    return;
+                }
             };
             let package_type = client
                 .get_package(package_name)
@@ -531,16 +534,18 @@ impl Workspace {
         };
         if let Some((package_type, entries)) = result {
             for entry in entries {
-                self.index_cache.add_package(&package_name.to_string(), package_type.clone(), entry);
+                self.index_cache.add_package(package_name, package_type.clone(), entry);
             }
         }
     }
     pub fn fetch_releases(&mut self, package_names: Option<HashSet<String>>) {
-        self.ensure_store_client();
         let is_silent = self.is_silent();
-        let client = match self.runtime.store_client.as_ref() {
-            Some(c) => c,
-            None => return,
+        let client = match self.store_client() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Warning: {}", e);
+                return;
+            }
         };
         let res = fetch_releases_mt(is_silent, client, package_names);
         for (name, (package_type, releases)) in res {
@@ -549,7 +554,7 @@ impl Workspace {
             }
         }
     }
-    pub fn get_node_definitions(&self, node_class_name: &String, nodos_version: &Option<SemVer>) -> Vec<NodeDefinition> {
+    pub fn get_node_definitions(&self, node_class_name: &str, nodos_version: &Option<SemVer>) -> Vec<NodeDefinition> {
         let mut res = Vec::new();
         for versions in self.packages.values() {
             for package in versions.values() {
@@ -608,10 +613,10 @@ impl Workspace {
     }
 
     /// Automatically rescans the workspace if needed based on manifest file status.
-    /// - If any manifest files are missing, performs a full rescan
-    /// - If manifest files are only updated, rescans only the folders containing those files
+    ///   - If any manifest files are missing, performs a full rescan
+    ///   - If manifest files are only updated, rescans only the folders containing those files
+    ///
     /// Returns an AutoRescanResult indicating what action was taken
-
     pub fn auto_rescan_if_needed(&mut self) -> Result<AutoRescanResult, CommandError> {
         // If workspace is not ready, return early - no auto-rescan needed
         if !self.ready() {
@@ -698,7 +703,7 @@ impl Workspace {
                     versions.retain(|_version, package| {
                         let package_folder = package.manifest_path.parent()
                             .map(|p| p.to_path_buf())
-                            .unwrap_or_else(|| PathBuf::new());
+                            .unwrap_or_default();
                         package_folder != folder_relative
                     });
                     !versions.is_empty()
@@ -717,8 +722,8 @@ impl Workspace {
     }
 }
 
-pub fn find_root_from(path: &PathBuf) -> Option<PathBuf> {
-    let mut current = path.clone();
+pub fn find_root_from(path: &Path) -> Option<PathBuf> {
+    let mut current = path.to_path_buf();
     loop {
         if get_nosman_index_filepath_for(&current).exists() {
             return Some(current);
@@ -730,10 +735,10 @@ pub fn find_root_from(path: &PathBuf) -> Option<PathBuf> {
     None
 }
 
-pub fn get_nosman_dir_for(path: &PathBuf) -> PathBuf {
+pub fn get_nosman_dir_for(path: &Path) -> PathBuf {
     path.join(".nosman")
 }
 
-pub fn get_nosman_index_filepath_for(path: &PathBuf) -> PathBuf {
+pub fn get_nosman_index_filepath_for(path: &Path) -> PathBuf {
     get_nosman_dir_for(path).join("index")
 }

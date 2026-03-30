@@ -54,9 +54,9 @@ impl From<io::Error> for CommandError {
 pub(crate) type CommandResult = Result<(), CommandError>;
 
 pub trait Command {
-    fn matched_args<'a, 'b>(
+    fn matched_args<'b>(
         &self,
-        workspace: &'a Workspace,
+        workspace: &Workspace,
         args: &'b ArgMatches,
     ) -> Option<&'b ArgMatches>;
     fn run(

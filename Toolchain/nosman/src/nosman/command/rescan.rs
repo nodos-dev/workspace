@@ -8,7 +8,7 @@ pub struct RescanCommand {
 
 pub fn get_cli() -> clap::Command {
     clap::Command::new("rescan")
-        .about("Rescan modules and update caches")
+        .about("Rescan packages and update caches")
         .arg(Arg::new("fetch_index")
             .action(ArgAction::SetTrue)
             .help("Fetch Nodos Store metadata before scanning")

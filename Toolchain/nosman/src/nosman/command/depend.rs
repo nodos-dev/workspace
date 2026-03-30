@@ -115,7 +115,7 @@ impl Command for DependCommand {
         let mut success = false;
         let deps = get_dependency_arguments(args, true, &mut success);
         if !success{
-            return Err(InvalidArgument { message: format!("Invalid dependency format") });
+            return Err(InvalidArgument { message: "Invalid dependency format".to_string() });
         }
         self.run_depend(workspace, package_name, &deps)
     }

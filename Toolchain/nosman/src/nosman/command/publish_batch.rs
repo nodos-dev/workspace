@@ -16,19 +16,21 @@ pub struct PublishBatchCommand {
 }
 
 impl PublishBatchCommand {
+    #[allow(clippy::too_many_arguments)]
     fn run_publish_batch(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, directory: &PathBuf,
-                         version_suffix: &String, release_tags: &Vec<String>, opt_target_platform: Option<&String>,
+                         version_suffix: &str, release_tags: &Vec<String>, opt_target_platform: Option<&String>,
                          publish_all: bool, packages: Vec<&String>) -> CommandResult {
         if !directory.exists() {
             return Err(InvalidArgument { message: format!("Repo {} does not exist", directory.display()) });
         }
 
-		let target_platform = if opt_target_platform.is_none() {
-            let current_platform = get_host_platform();
-            println!("{}", format!("Target platform is not provided. Using the current platform: {}", current_platform).yellow());
-            current_platform
-        } else {
-            Platform::from_str(opt_target_platform.unwrap()).expect("Invalid target platform")
+		let target_platform = match opt_target_platform {
+            Some(platform_str) => Platform::from_str(platform_str).expect("Invalid target platform"),
+            None => {
+                let current_platform = get_host_platform();
+                println!("{}", format!("Target platform is not provided. Using the current platform: {}", current_platform).yellow());
+                current_platform
+            }
         };
 
         let directory = dunce::canonicalize(directory).unwrap_or_else(|e| panic!("Failed to canonicalize directory {:?}: {}", directory, e));
@@ -47,17 +49,15 @@ impl PublishBatchCommand {
             }
             if let Some(targets) = publish_options.target_platforms {
                 if !targets.contains(&target_platform.to_string()) {
-                    println!("{}", format!("Target platform {} is not in the list of target platforms in {} for package at {}", target_platform.to_string(), constants::PUBLISH_OPTIONS_FILE_NAME, relative_path.display()));
+                    println!("Target platform {} is not in the list of target platforms in {} for package at {}", target_platform, constants::PUBLISH_OPTIONS_FILE_NAME, relative_path.display());
 					continue;
 				}
             }
             let package_info = get_package_info_from_manifest(&manifest_file_path)
                 .map_err(|e| InvalidArgument { message: format!("Failed to get package info from manifest at {}: {}", relative_path.display(), e) })?;
-            if !packages.is_empty() {
-                if !packages.contains(&&package_info.id.name) {
-                    println!("{}", format!("Package {} is not in the list of packages to be published, skipping", package_info.id.name).dimmed());
-                    continue;
-                }
+            if !packages.is_empty() && !packages.contains(&&package_info.id.name) {
+                println!("{}", format!("Package {} is not in the list of packages to be published, skipping", package_info.id.name).dimmed());
+                continue;
             }
             let mut skip = false;
             if !publish_all {
@@ -69,7 +69,7 @@ impl PublishBatchCommand {
                 let publish_version_excl_build_no = SemVer::new(publish_version.major, publish_version.minor, publish_version.patch, None);
                 for existing_release in workspace.index_cache.get_package_releases(&package_info.id.name) {
                     if let Some(existing_platform) = &existing_release.platform {
-                        let existing_release_platform = Platform::from_str(&existing_platform);
+                        let existing_release_platform = Platform::from_str(existing_platform);
                         if existing_release_platform.is_some() && existing_release_platform.unwrap() != target_platform {
                             continue;
                         }
@@ -206,7 +206,7 @@ impl Command for PublishBatchCommand {
             *dry_run,
             *verbose,
             &directory,
-            &version_suffix,
+            version_suffix,
             &release_tags,
             target_platform,
             *publish_all,

@@ -7,7 +7,7 @@ pub struct AuthCommand {}
 
 impl AuthCommand {
     fn run_login(&self, workspace: &mut Workspace) -> CommandResult {
-        let client = workspace.authenticated_store_client_mut();
+        let client = workspace.authenticated_store_client_mut()?;
         let start = client.start_device_login()
             .map_err(|e| CommandError::Runtime { message: e.to_string() })?;
         println!(
@@ -23,7 +23,7 @@ impl AuthCommand {
     }
 
     fn run_logout(&self, workspace: &mut Workspace) -> CommandResult {
-        workspace.authenticated_store_client_mut()
+        workspace.authenticated_store_client_mut()?
             .logout()
             .map_err(|e| CommandError::Runtime { message: e.to_string() })?;
         println!("Logged out.");
@@ -46,9 +46,9 @@ pub fn get_cli() -> clap::Command {
 }
 
 impl Command for AuthCommand {
-    fn matched_args<'a, 'b>(
+    fn matched_args<'b>(
         &self,
-        _workspace: &'a Workspace,
+        _workspace: &Workspace,
         args: &'b ArgMatches,
     ) -> Option<&'b ArgMatches> {
         args.subcommand_matches("auth")

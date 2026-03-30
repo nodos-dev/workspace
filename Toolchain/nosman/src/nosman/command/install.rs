@@ -47,8 +47,7 @@ impl InstallCommand {
         let mut exact_no_fetch = flags;
         exact_no_fetch.remove(InstallFlags::UpdatePackageIndex);
         exact_no_fetch.insert(InstallFlags::InstallExactVersion);
-        if version_opt.is_some() {
-            let version = version_opt.unwrap();
+        if let Some(version) = version_opt {
             if !flags.contains(InstallFlags::InstallExactVersion) {
                 let version_prefix = SemVer::parse_from_str(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
                 if let Some(installed_package) = workspace.get_latest_local_package_for_prefix(package_name, &version_prefix) {
@@ -70,31 +69,30 @@ impl InstallCommand {
                 workspace.fetch_releases(None);
             }
         }
-        let version;
-        if version_opt.is_none() {
+        let version = if let Some(version_val) = version_opt {
+            version_val.to_string()
+        } else {
             let latest = workspace.index_cache.get_latest_release(package_name);
             if latest.is_none() {
                 return Err(InvalidArgument { message: format!("No versions found for package {}", package_name) });
             }
-            version = latest.unwrap().1.version.clone();
-            println!("Installing latest version {} of {}", version, package_name);
-            return self.run_install(workspace, package_name, Some(&version), output_dir, prefix, exact_no_fetch);
-        } else {
-            version = version_opt.unwrap().to_string();
-        }
+            let ver = latest.unwrap().1.version.clone();
+            println!("Installing latest version {} of {}", ver, package_name);
+            return self.run_install(workspace, package_name, Some(&ver), output_dir, prefix, exact_no_fetch);
+        };
         if !flags.contains(InstallFlags::InstallExactVersion) {
             // Find or download a version matching the provided prefix
             let version_prefix = SemVer::parse_from_str(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
-            println!("Installing {} matching version prefix '{}'", package_name, version_prefix.to_string());
+            println!("Installing {} matching version prefix '{}'", package_name, version_prefix);
             return {
-                let latest_compatible_opt = workspace.index_cache.get_latest_compatible_release(&package_name, &version_prefix);
+                let latest_compatible_opt = workspace.index_cache.get_latest_compatible_release(package_name, &version_prefix);
                 let compatible_package = if let Some((package_type, release)) = latest_compatible_opt {
                     if *package_type == PackageType::Nodos || *package_type == PackageType::Engine {
                         return Err(InvalidArgument { message: format!("Package {} requires special treatment", package_name) });
                     }
                     Some(release.version.clone()) // Clone version to avoid lifetime issues.
                 } else {
-                    return Err(InvalidArgument { message: format!("Nodos Store does not contain a version matching prefix '{}' for package {}", version_prefix.to_string(), package_name) });
+                    return Err(InvalidArgument { message: format!("Nodos Store does not contain a version matching prefix '{}' for package {}", version_prefix, package_name) });
                 };
                 self.run_install(workspace, package_name, compatible_package.as_ref(), output_dir, prefix, exact_no_fetch)
             }
@@ -182,7 +180,7 @@ impl InstallCommand {
         println!("Downloading {} {}", pkg_type_str, package_name_version);
 
         let download_url = match package.artifact_id {
-            Some(id) => workspace.store_client()
+            Some(id) => workspace.store_client()?
                 .get_artifact_download_url(id)
                 .map_err(|e| Runtime { message: e.to_string() })?,
             None => package.url.clone(),

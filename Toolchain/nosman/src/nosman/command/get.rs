@@ -1,6 +1,6 @@
 use std::{fs, io};
 use std::fs::File;
-use std::io::{Error, Read, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use clap::{Arg, ArgAction, ArgMatches};
@@ -46,12 +46,12 @@ impl GetCommand {
             };
             let res = fs_more::directory::move_directory(src, dst, opts);
             if let Err(e) = res {
-                return Err(Error::new(io::ErrorKind::Other, e.to_string()));
+                return Err(std::io::Error::other(e.to_string()));
             }
         } else {
-            let res = File::open(&src);
+            let res = File::open(src);
             let mut source = res?;
-            let res = File::create(&dst);
+            let res = File::create(dst);
             let mut target = res?;
             std::io::copy(&mut source, &mut target)?;
             // Copy last access and modification times
@@ -62,7 +62,7 @@ impl GetCommand {
             filetime::set_file_times(dst, atime, mtime)?;
             let res = rm_rf::remove(src);
             if let Err(e) = res {
-                return Err(Error::new(io::ErrorKind::Other, e.to_string()));
+                return Err(std::io::Error::other(e.to_string()));
             }
         }
         Ok(())
@@ -105,7 +105,7 @@ impl GetCommand {
         }
         for (removed_path, original_path) in removed {
             pb.println(format!("Rolling back: Restore {}", original_path.display()).yellow().dimmed().to_string());
-            let res = Self::move_file_or_dir(&removed_path, &original_path);
+            let res = Self::move_file_or_dir(removed_path, original_path);
             if let Err(e) = res {
                 pb.println(format!("Failed to rollback: {}", e).red().to_string());
             }
@@ -126,9 +126,9 @@ impl GetCommand {
         }
     }
     fn remove_or_rollback(pb: &ProgressBar, cur_dst_path: &PathBuf, removed_path: &PathBuf, removed: &Vec<(PathBuf, PathBuf)>, new_paths: &LinkedHashSet<PathBuf>, dont_ask: bool) -> Result<(), CommandError> {
-        if !Self::temp_remove(&pb, &cur_dst_path, &removed_path, dont_ask) {
+        if !Self::temp_remove(pb, cur_dst_path, removed_path, dont_ask) {
             pb.println(format!("Failed to remove file: {}", cur_dst_path.display()).red().to_string());
-            Self::rollback(&pb, removed, new_paths);
+            Self::rollback(pb, removed, new_paths);
             return Err(IO { file: cur_dst_path.display().to_string(), message: "Failed to remove file".to_string() });
         }
         Ok(())
@@ -173,7 +173,7 @@ impl GetCommand {
         let tmpdir = tempfile::tempdir()?;
         let downloaded_path = tmpdir.path().to_path_buf();
         let download_url = match artifact_id {
-            Some(id) => workspace.store_client()
+            Some(id) => workspace.store_client()?
                 .get_artifact_download_url(id)
                 .map_err(|e| CommandError::Runtime { message: e.to_string() })?,
             None => release_url,
@@ -221,11 +221,11 @@ impl GetCommand {
             let entry = entry.unwrap();
             let curr_file_path = entry.path();
             let relative_path = curr_file_path.strip_prefix(&downloaded_path).unwrap();
-            let cur_dst_path = dst_path.join(&relative_path);
+            let cur_dst_path = dst_path.join(relative_path);
             if let Some(eula_confirmed_contents) = eula_confirmed_opt.as_ref() {
                 if is_eula_file(relative_path, EulaFileType::Unconfirmed) {
                     // If 'text' field is same as EULA_CONFIRMED.json, remove EULA_UNCONFIRMED.json
-                    let mut file = File::open(&curr_file_path)?;
+                    let mut file = File::open(curr_file_path)?;
                     let mut contents = String::new();
                     file.read_to_string(&mut contents)?;
                     // Check "text" field in JSON
@@ -280,7 +280,7 @@ impl GetCommand {
                 if common::check_file_contents_same(&curr_file_path.to_path_buf(), &cur_dst_path) {
                     continue;
                 }
-                let removed_path = removed_dir.path().join(&relative_path);
+                let removed_path = removed_dir.path().join(relative_path);
                 pb.set_message(format!("Removing: {}", cur_dst_path.display()));
                 Self::remove_or_rollback(&pb, &cur_dst_path, &removed_path, &removed, &new_paths, dont_ask)?;
                 removed.push((removed_path, cur_dst_path.clone()));
@@ -294,7 +294,7 @@ impl GetCommand {
                         while common::ask("Retry copying", false, dont_ask) {
                             res = fs::copy(curr_file_path, &cur_dst_path);
                             if let Err(e) = res.as_ref() {
-                                println!("{}", format!("Error copying {}: {}",  cur_dst_path.display(), e).red().to_string());
+                                println!("{}", format!("Error copying {}: {}",  cur_dst_path.display(), e).red());
                                 continue;
                             }
                             break;

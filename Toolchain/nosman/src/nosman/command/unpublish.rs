@@ -15,7 +15,7 @@ impl UnpublishCommand {
             println!("Unpublishing all versions of package {}", package_name);
         }
 
-        let client = workspace.authenticated_store_client_mut();
+        let client = workspace.authenticated_store_client_mut()?;
 
         if dry_run {
             let releases = client

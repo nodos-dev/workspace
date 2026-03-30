@@ -109,7 +109,7 @@ pub struct PublishCommand {
 }
 
 impl PublishCommand {
-    fn is_name_valid(name: &String) -> bool {
+    fn is_name_valid(name: &str) -> bool {
         // Should be lowercase alphanumeric, with only . and _ symbols are permitted
         name.chars().all(|c| c == '.' || c == '_' || c.is_numeric() || c.is_ascii_lowercase())
     }
@@ -123,10 +123,7 @@ impl PublishCommand {
         if !binary_path.exists() {
             return Ok(None);
         }
-        let lib = match load_module(verbose, package_type, manifest, manifest_dir.clone(), workspace) {
-            Ok(lib) => lib,
-            Err(error) => return Err(error),
-        };
+        let lib = load_module(verbose, package_type, manifest, manifest_dir.clone(), workspace)?;
         if verbose {
             println!("Package binary {} loaded successfully. Checking Nodos {:?} API version...", binary_path.display(), package_type);
         }
@@ -159,17 +156,19 @@ impl PublishCommand {
         Ok(api_version_opt)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn publish(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, path: &PathBuf,
-                   mut name: Option<String>, mut version: Option<String>, version_suffix: &String,
+                   mut name: Option<String>, mut version: Option<String>, version_suffix: &str,
                    mut package_type: Option<PackageType>, release_tags: &Vec<String>,
                    opt_target_platform: Option<&String>) -> Result<PackageIdentifier, CommandError> {
 
-        let target_platform = if opt_target_platform.is_none() {
-            let current_platform = get_host_platform();
-            println!("{}", format!("Target platform is not provided. Using the current platform: {}", current_platform).yellow());
-            current_platform
-        } else {
-            Platform::from_str(opt_target_platform.unwrap()).expect("Invalid target platform")
+        let target_platform = match opt_target_platform {
+            Some(platform_str) => Platform::from_str(platform_str).expect("Invalid target platform"),
+            None => {
+                let current_platform = get_host_platform();
+                println!("{}", format!("Target platform is not provided. Using the current platform: {}", current_platform).yellow());
+                current_platform
+            }
         };
 
         if !path.exists() {
@@ -198,7 +197,7 @@ impl PublishCommand {
                 println!("{}", format!("No {} file found in {}. All files will be included in the release.", constants::PUBLISH_OPTIONS_FILE_NAME, abs_path.display()).as_str().yellow());
             } else if let Some(targets) = publish_options.target_platforms {
                 if !targets.contains(&target_platform.to_string()) {
-                    return Err (InvalidArgument { message: format!("Target platform {} is not in the list of target platforms in {}", target_platform.to_string(), constants::PUBLISH_OPTIONS_FILE_NAME) });
+                    return Err (InvalidArgument { message: format!("Target platform {} is not in the list of target platforms in {}", target_platform, constants::PUBLISH_OPTIONS_FILE_NAME) });
                 }
             }
 
@@ -210,9 +209,8 @@ impl PublishCommand {
                 manifest_file = Some(file);
                 package_type = Some(pkg_type);
             }
-            if manifest_file.is_some() {
+            if let Some(manifest_file) = manifest_file.as_ref() {
                 let package_type = package_type.as_ref().unwrap();
-                let manifest_file = manifest_file.as_ref().unwrap();
                 let contents = std::fs::read_to_string(manifest_file)?;
                 let res = serde_json::from_str(&contents);
                 if let Err(err) = res {
@@ -224,9 +222,9 @@ impl PublishCommand {
                 display_name = manifest["info"]["display_name"].as_str().map(|s| s.to_string());
                 description = manifest["info"]["description"].as_str().map(|s| s.to_string());
                 let dependencies_json = manifest["info"]["dependencies"].as_array();
-                if dependencies_json.is_some() {
+                if let Some(deps_json) = dependencies_json {
                     let mut deps = vec![];
-                    for dep in dependencies_json.unwrap() {
+                    for dep in deps_json {
                         let dep_name = dep["name"].as_str().unwrap();
                         let dep_version = dep["version"].as_str().unwrap();
                         deps.push(PackageIdentifier { name: dep_name.to_string(), version: dep_version.to_string() });
@@ -367,7 +365,7 @@ impl PublishCommand {
                                           .map(|s| s.replace("\\", "/"))
                                           .expect("Failed to convert path to string"), options)
                         .unwrap_or_else(|e| panic!("Failed to start file in zip {:?}: {}", file_path, e));
-                    writer.write_all(&buffer).unwrap_or_else(|e| panic!("Failed to write to zip {:?}: {}", file_path, e));
+                    writer.write_all(buffer).unwrap_or_else(|e| panic!("Failed to write to zip {:?}: {}", file_path, e));
                 }
                 #[cfg(unix)]
                 {
@@ -399,7 +397,7 @@ impl PublishCommand {
             println!("Node definitions discovered for {}: {:?}", name, node_class_names);
         }
 
-        println!("Publishing {} to Nodos Store", format!("{}-{}", name, version));
+        println!("Publishing {}-{} to Nodos Store", name, version);
 
         if dry_run {
             println!(
@@ -424,7 +422,7 @@ impl PublishCommand {
                     message: format!("Failed to read artifact {}: {}", artifact_file_path.display(), e),
                 })?;
 
-            workspace.authenticated_store_client_mut()
+            workspace.authenticated_store_client_mut()?
                 .publish_release(
                     &name,
                     &display_name,
@@ -440,18 +438,13 @@ impl PublishCommand {
                 )
                 .map_err(|e| Runtime { message: e.to_string() })?;
         }
-        println!(
-            "{}",
-            format!("Release {} created successfully", format!("{}-{}", name, version))
-                .as_str()
-                .green()
-                .to_string()
-        );
+        println!("{}", format!("Release {}-{} created successfully", name, version).green());
         Ok(PackageIdentifier { name, version })
     }
 
-    pub fn run_publish(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, path: &PathBuf, 
-                       name: Option<String>, version: Option<String>, version_suffix: &String,
+    #[allow(clippy::too_many_arguments)]
+    pub fn run_publish(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, path: &PathBuf,
+                       name: Option<String>, version: Option<String>, version_suffix: &str,
                        package_type: Option<PackageType>, release_tags: &Vec<String>,
                        opt_target_platform: Option<&String>) -> CommandResult {
         let res = self.publish(workspace, dry_run, verbose, 
@@ -538,8 +531,8 @@ impl Command for PublishCommand {
         let opt_version = args.get_one::<String>("version");
         let version_suffix = args.get_one::<String>("version_suffix").unwrap();
         let package_type: Option<PackageType> = args.get_one::<String>("type").map(|s| serde_json::from_str(format!("\"{}\"", &s).as_str()).unwrap());
-        let version = if opt_version.is_some() { Some(opt_version.unwrap().clone()) } else { None };
-        let name = if opt_name.is_some() { Some(opt_name.unwrap().clone()) } else { None };
+        let version = opt_version.cloned();
+        let name = opt_name.cloned();
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
         let verbose = args.get_one::<bool>("verbose").unwrap();
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();

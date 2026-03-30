@@ -19,12 +19,10 @@ pub enum PackageType {
 
 impl PackageType {
     pub fn is_plugin(&self) -> bool {
-        match self {
-            PackageType::Plugin | PackageType::Subsystem => true,
-            _ => false,
-        }
+        matches!(self, PackageType::Plugin | PackageType::Subsystem)
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(value: &str) -> PackageType {
         match value {
             "Plugin" => PackageType::Plugin,
@@ -86,43 +84,43 @@ pub struct SemVer {
 }
 
 // Implement ordering for SemVer
-impl PartialOrd for SemVer {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+impl std::cmp::Ord for SemVer {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         if self.major < other.major {
-            return Some(std::cmp::Ordering::Less);
+            return std::cmp::Ordering::Less;
         }
         if self.major > other.major {
-            return Some(std::cmp::Ordering::Greater);
+            return std::cmp::Ordering::Greater;
         }
         if self.minor < other.minor {
-            return Some(std::cmp::Ordering::Less);
+            return std::cmp::Ordering::Less;
         }
         if self.minor > other.minor {
-            return Some(std::cmp::Ordering::Greater);
+            return std::cmp::Ordering::Greater;
         }
         if self.patch < other.patch {
-            return Some(std::cmp::Ordering::Less);
+            return std::cmp::Ordering::Less;
         }
         if self.patch > other.patch {
-            return Some(std::cmp::Ordering::Greater);
+            return std::cmp::Ordering::Greater;
         }
         if let Some(build_number) = self.build_number {
             if let Some(other_build_number) = other.build_number {
                 if build_number < other_build_number {
-                    return Some(std::cmp::Ordering::Less);
+                    return std::cmp::Ordering::Less;
                 }
                 if build_number > other_build_number {
-                    return Some(std::cmp::Ordering::Greater);
+                    return std::cmp::Ordering::Greater;
                 }
             }
         }
-        Some(std::cmp::Ordering::Equal)
+        std::cmp::Ordering::Equal
     }
 }
 
-impl std::cmp::Ord for SemVer {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap()
+impl PartialOrd for SemVer {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -147,7 +145,7 @@ impl SemVer {
         // Parse 1.2 -> (1, 2, 0, None)
         // Parse 1 -> (1, 0, 0, None)
         let parts: Vec<&str> = s.split('.').collect();
-        let opt_major = parts.get(0).and_then(|s| s.parse::<u32>().ok());
+        let opt_major = parts.first().and_then(|s| s.parse::<u32>().ok());
         let opt_minor = parts.get(1).and_then(|s| s.parse::<u32>().ok());
         let opt_patch = parts.get(2).and_then(|s| s.parse::<u32>().ok());
         let opt_build_number = parts.get(3).and_then(|s| {
@@ -164,19 +162,6 @@ impl SemVer {
             patch: opt_patch,
             build_number: opt_build_number,
         })
-    }
-    pub fn to_string(&self) -> String {
-        let mut s = self.major.to_string();
-        if let Some(minor) = self.minor {
-            s.push_str(&format!(".{}", minor));
-        }
-        if let Some(patch) = self.patch {
-            s.push_str(&format!(".{}", patch));
-        }
-        if let Some(build_number) = self.build_number {
-            s.push_str(&format!(".b{}", build_number));
-        }
-        s
     }
     pub fn matches_prefix(&self, prefix: &SemVer) -> bool {
         // Check if this version matches the prefix
@@ -241,6 +226,22 @@ impl SemVer {
     }
 }
 
+impl std::fmt::Display for SemVer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.major)?;
+        if let Some(minor) = self.minor {
+            write!(f, ".{}", minor)?;
+        }
+        if let Some(patch) = self.patch {
+            write!(f, ".{}", patch)?;
+        }
+        if let Some(build_number) = self.build_number {
+            write!(f, ".b{}", build_number)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PackageReleaseEntry {
     pub(crate) version: String,
@@ -290,13 +291,13 @@ fn sort_version_list(versions: &mut Vec<&PackageReleaseEntry>) {
 impl Index {
     pub fn add_package(
         &mut self,
-        name: &String,
+        name: &str,
         package_type: PackageType,
         package: PackageReleaseEntry,
     ) {
         let type_versions = self
             .packages
-            .entry(name.clone())
+            .entry(name.to_owned())
             .or_insert((package_type, Vec::new()));
         type_versions.1.push(package);
     }
@@ -330,11 +331,7 @@ impl Index {
         name: &str,
         version: &str,
     ) -> Option<(PackageType, PackageReleaseEntry)> {
-        let res = self.get_package(name, version);
-        if res.is_none() {
-            return None;
-        }
-        let (package_type, pkg_release) = res.unwrap();
+        let (package_type, pkg_release) = self.get_package(name, version)?;
         Some((package_type.clone(), pkg_release.clone()))
     }
     pub fn get_latest_release(&self, name: &str) -> Option<(&PackageType, &PackageReleaseEntry)> {
@@ -349,7 +346,7 @@ impl Index {
         let platform = get_host_platform().to_string();
         for module in versions {
             if module.platform.is_none() || module.platform.as_ref()? == &platform {
-                return Some((package_type, &module));
+                return Some((package_type, module));
             }
         }
         None

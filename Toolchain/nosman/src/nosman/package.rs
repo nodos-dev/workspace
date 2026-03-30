@@ -159,7 +159,7 @@ impl LocalPackageEntry {
             }
         }
         if register_commands {
-            package.register_commands(&workspace);
+            package.register_commands(workspace);
         }
 
         package.sdk_version = manifest
@@ -175,12 +175,11 @@ impl LocalPackageEntry {
         // Read module manifest file as JSON, and read node definition files
         let manifest_file = fs::File::open(&self.manifest_path)
             .unwrap_or_else(|e| panic!("Failed to open package manifest file {:?}: {}", self.manifest_path, e));
-        let manifest_json: serde_json::Value = serde_json::from_reader(manifest_file)
-            .unwrap_or_else(|e| panic!("Failed to parse package manifest file {:?}: {}", self.manifest_path, e));
-        manifest_json
+        serde_json::from_reader(manifest_file)
+            .unwrap_or_else(|e| panic!("Failed to parse package manifest file {:?}: {}", self.manifest_path, e))
     }
     pub fn register_commands(&mut self, workspace: &Workspace) {
-        let res = load_module_from_manifest(&self, workspace);
+        let res = load_module_from_manifest(self, workspace);
         let lib = match res {
             Ok(lib) => lib,
             Err(_) => {
@@ -197,7 +196,7 @@ impl LocalPackageEntry {
         workspace.root.join(&self.manifest_path)
     }
     pub fn run_command(&self, workspace: &Workspace, command_name: &str, params: NosCommand) -> CommandResult {
-        let lib = load_module_from_manifest(&self, workspace)?;
+        let lib = load_module_from_manifest(self, workspace)?;
         let fn_name = b"nosRunCommand\0";
         let res = unsafe { lib.get::<unsafe extern "C" fn(*const CNosRunCommandParams) -> c_int>(fn_name) };
         match res {
@@ -282,11 +281,9 @@ pub fn get_package_manifests(folder: &PathBuf, silent: bool) -> Vec<(PackageType
     pb.enable_steady_tick(Duration::from_millis(100));
 
     pb.set_message(format!("Looking for Nodos packages in {}", folder.to_str().unwrap_or_else(|| panic!("Non-UTF-8 path: {}", folder.display()))).to_string());
-    let res = get_package_manifest_file(&folder);
-    if res.is_ok() {
-        if let Some((ty, mpath)) = res.unwrap() {
-            return vec![(ty, mpath)];
-        }
+    let res = get_package_manifest_file(folder);
+    if let Ok(Some((ty, mpath))) = res {
+        return vec![(ty, mpath)];
     }
 
     let patterns = &[
@@ -307,10 +304,8 @@ pub fn get_package_manifests(folder: &PathBuf, silent: bool) -> Vec<(PackageType
                 // If multiple manifest files are found in the same folder, we will skip this folder
                 let parent = path.parent().unwrap_or_else(|| panic!("No parent folder found for path: {}", path.display())).to_path_buf();
                 let res = get_package_manifest_file(&parent);
-                if let Ok(res) = res {
-                    if let Some((ty, mpath)) = res {
-                        package_manifest_files.push((ty, mpath));
-                    }
+                if let Ok(Some((ty, mpath))) = res {
+                    package_manifest_files.push((ty, mpath));
                 }
             }
             Err(e) => {
@@ -324,14 +319,16 @@ pub fn get_package_manifests(folder: &PathBuf, silent: bool) -> Vec<(PackageType
 }
 
 pub fn get_plugin_manifest_file_ext(nodos_version: Option<&SemVer>, plugin_type: &PluginType) -> &'static str {
-    let ext = if nodos_version.is_some() && *nodos_version.unwrap() >= NODOS_1_4 {
-        constants::PLUGIN_MANIFEST_FILE_EXT
-    } else if *plugin_type == PluginType::Default {
+    if let Some(ver) = nodos_version {
+        if *ver >= NODOS_1_4 {
+            return constants::PLUGIN_MANIFEST_FILE_EXT;
+        }
+    }
+    if *plugin_type == PluginType::Default {
         constants::LEGACY_PLUGIN_MANIFEST_FILE_EXT
     } else {
         constants::LEGACY_SUBSYSTEM_MANIFEST_FILE_EXT
-    };
-    ext
+    }
 }
 
 pub fn get_package_info_from_manifest(manifest_path: &PathBuf) -> Result<PackageInfo, String> {
