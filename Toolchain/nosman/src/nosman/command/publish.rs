@@ -399,11 +399,7 @@ impl PublishCommand {
             println!("Node definitions discovered for {}: {:?}", name, node_class_names);
         }
 
-        println!(
-            "Publishing {} to Nodos Store {}",
-            format!("{}-{}", name, version),
-            nodos_store_client::DEFAULT_BASE_URL
-        );
+        println!("Publishing {} to Nodos Store", format!("{}-{}", name, version));
 
         if dry_run {
             println!(

@@ -43,9 +43,9 @@ impl DependCommand {
             if dep_id.version == "any" {
                 if let Ok(module) = workspace.get_or_select_package(&dep_id.name) {
                     dep = module.info.id.clone();
-                } else if let Some(remote_package) = workspace.index_cache.get_latest_release(&dep_id.name) {
+                } else if let Some(store_package) = workspace.index_cache.get_latest_release(&dep_id.name) {
                     dep.name = dep_id.name.clone();
-                    dep.version = remote_package.1.version.clone();
+                    dep.version = store_package.1.version.clone();
                     println!("Found latest version {} for {}", dep.version, dep.name);
                 }
             } else if let Ok(module) = workspace.get_latest_local_package_for_version(&dep_id.name, &dep_id.version) {
@@ -55,10 +55,10 @@ impl DependCommand {
                 let version_prefix = SemVer::parse_from_str(&dep_id.version)
                     .ok_or(InvalidArgument { message: "Invalid version format".to_string() })?;
 
-                if let Some(remote_package) = workspace.index_cache.get_latest_compatible_release(
+                if let Some(store_package) = workspace.index_cache.get_latest_compatible_release(
                     &dep_id.name, &version_prefix) {
                     dep.name = dep_id.name.clone();
-                    dep.version = remote_package.1.version.clone();  // Assuming remote_package.1 has a `version` field
+                    dep.version = store_package.1.version.clone();
                     println!("Found latest version {} for {}", dep.version, dep.name);}
             }
 

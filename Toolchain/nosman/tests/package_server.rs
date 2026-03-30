@@ -126,7 +126,7 @@ fn zip_bytes() -> Vec<u8> {
 }
 
 #[test]
-fn download_and_extract_resolves_package_server_artifact_url() {
+fn download_artifact_by_id() {
     let zip = zip_bytes();
     let base_url_ref = Arc::new(Mutex::new(String::new()));
     let base_url_for_handler = Arc::clone(&base_url_ref);
@@ -153,11 +153,11 @@ fn download_and_extract_resolves_package_server_artifact_url() {
     }));
     *base_url_ref.lock().unwrap() = server.base_url.clone();
     let client = server.client();
+    let download_url = client.get_artifact_download_url(7).expect("get download url");
     let output_dir = tempdir().expect("output dir");
     download_and_extract(
-        &format!("{}/api/v1/release-artifacts/7", server.base_url),
+        &download_url,
         &PathBuf::from(output_dir.path()),
-        &client,
     )
     .expect("download and extract");
     assert_eq!(

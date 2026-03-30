@@ -181,7 +181,14 @@ impl InstallCommand {
         let package_name_version = format!("{}-{}", package_name, version);
         println!("Downloading {} {}", pkg_type_str, package_name_version);
 
-        download_and_extract(&package.url, &final_out_dir, workspace.store_client())?;
+        let download_url = if let Some(id) = package.artifact_id {
+            workspace.store_client()
+                .get_artifact_download_url(id)
+                .map_err(|e| Runtime { message: e.to_string() })?
+        } else {
+            package.url.clone()
+        };
+        download_and_extract(&download_url, &final_out_dir)?;
 
         println!("Extracted {} {} to {}", pkg_type_str, package_name, final_out_dir.display());
         // If the package is installed under workspace, register it.

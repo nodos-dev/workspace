@@ -100,17 +100,13 @@ fn releases_to_index_entries(
     package_type: &PackageType,
     releases: Vec<nodos_store_client::Release>,
 ) -> Vec<PackageReleaseEntry> {
-    let base_url = nodos_store_client::DEFAULT_BASE_URL;
     let mut entries = Vec::new();
     for release in releases {
         for artifact in &release.artifacts {
             entries.push(PackageReleaseEntry {
                 version: release.version.clone(),
-                url: format!(
-                    "{}/api/v1/release-artifacts/{}",
-                    base_url.trim_end_matches('/'),
-                    artifact.id
-                ),
+                artifact_id: Some(artifact.id),
+                url: String::new(),
                 plugin_api_version: if *package_type == PackageType::Plugin {
                     release.api_version.as_ref().map(api_version_to_semver)
                 } else {
@@ -422,15 +418,15 @@ impl Workspace {
     pub fn is_silent(&self) -> bool {
         self.runtime.output_mode_stack.last().unwrap_or(&OutputMode::Default) == &OutputMode::Silent
     }
-    pub fn store_client(&mut self) -> &nodos_store_client::StoreClient {
+    fn ensure_store_client(&mut self) {
         if self.runtime.store_client.is_none() {
-            self.runtime.store_client = Some(
-                nodos_store_client::StoreClient::builder()
-                    .build()
-                    .expect("Failed to build store client"),
-            );
+            self.runtime.store_client = nodos_store_client::StoreClient::builder().build().ok();
         }
-        self.runtime.store_client.as_ref().unwrap()
+    }
+
+    pub fn store_client(&mut self) -> &nodos_store_client::StoreClient {
+        self.ensure_store_client();
+        self.runtime.store_client.as_ref().expect("Failed to build store client")
     }
 
     pub fn authenticated_store_client_mut(&mut self) -> &mut nodos_store_client::StoreClient {
@@ -515,10 +511,7 @@ impl Workspace {
         Ok(())
     }
     pub fn fetch_package_releases(&mut self, package_name: &str) {
-        if self.runtime.store_client.is_none() {
-            self.runtime.store_client = nodos_store_client::StoreClient::builder().build().ok();
-        }
-        // Fetch directly by name to support packages not in the public list
+        self.ensure_store_client();
         let result = {
             let client = match self.runtime.store_client.as_ref() {
                 Some(c) => c,
@@ -540,9 +533,7 @@ impl Workspace {
         }
     }
     pub fn fetch_releases(&mut self, package_names: Option<HashSet<String>>) {
-        if self.runtime.store_client.is_none() {
-            self.runtime.store_client = nodos_store_client::StoreClient::builder().build().ok();
-        }
+        self.ensure_store_client();
         let is_silent = self.is_silent();
         let client = match self.runtime.store_client.as_ref() {
             Some(c) => c,

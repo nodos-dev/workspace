@@ -244,6 +244,8 @@ impl SemVer {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PackageReleaseEntry {
     pub(crate) version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) artifact_id: Option<i64>,
     pub(crate) url: String,
     // TODO: Replace plugin_api_version & subsystem_api_version with these
     // plugin_type: String,

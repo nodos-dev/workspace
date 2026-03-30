@@ -10,47 +10,46 @@ pub struct UnpublishCommand {
 }
 
 impl UnpublishCommand {
-    pub fn run_unpublish(&self, workspace: &mut Workspace, dry_run: bool, package_name: &String, version: Option<&String>) -> CommandResult {
+    pub fn run_unpublish(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, package_name: &String, version: Option<&String>) -> CommandResult {
         if version.is_none() {
             println!("Unpublishing all versions of package {}", package_name);
         }
 
         let client = workspace.authenticated_store_client_mut();
 
-        (|| -> std::result::Result<(), String> {
-            if dry_run {
-                let releases = client
-                    .get_my_releases(package_name)
-                    .map_err(|e| e.to_string())?;
+        if dry_run {
+            let releases = client
+                .get_my_releases(package_name)
+                .map_err(|e| Runtime { message: e.to_string() })?;
 
-                let matched: Vec<_> = if let Some(v) = version {
-                    releases.iter().filter(|r| r.version == *v).collect()
+            let matched: Vec<_> = if let Some(v) = version {
+                releases.iter().filter(|r| r.version == *v).collect()
+            } else {
+                releases.iter().collect()
+            };
+
+            if matched.is_empty() {
+                return if let Some(v) = version {
+                    Err(Runtime { message: format!("No release found for package {} version {}", package_name, v) })
                 } else {
-                    releases.iter().collect()
+                    Err(Runtime { message: format!("No releases found for package {}", package_name) })
                 };
-
-                if matched.is_empty() {
-                    return if let Some(v) = version {
-                        Err(format!("No release found for package {} version {}", package_name, v))
-                    } else {
-                        Err(format!("No releases found for package {}", package_name))
-                    };
-                }
-
-                for release in matched {
-                    println!(
-                        "Would delete package {} release {} (v{})",
-                        package_name, release.id, release.version
-                    );
-                }
-                return Ok(());
             }
 
+            for release in matched {
+                println!(
+                    "Would delete package {} release {} (v{})",
+                    package_name, release.id, release.version
+                );
+            }
+        } else {
+            if verbose {
+                println!("Requesting deletion of {} {}", package_name, version.map_or("(all versions)".to_string(), |v| format!("v{}", v)));
+            }
             client
                 .delete_release(package_name, version.map(|v| v.as_str()))
-                .map_err(|e| e.to_string())
-        })()
-        .map_err(|message| Runtime { message })?;
+                .map_err(|e| Runtime { message: e.to_string() })?;
+        }
 
         if let Some(version) = version {
             println!("{}", format!("Package {} version {} unpublished", package_name, version).yellow());
@@ -72,7 +71,14 @@ pub fn get_cli() -> clap::Command {
         .arg(Arg::new("dry_run")
             .action(ArgAction::SetTrue)
             .long("dry-run")
-            .help("Do not actually publish the package, just show what would be done.")
+            .help("Do not actually unpublish the package, just show what would be done.")
+            .num_args(0)
+            .required(false)
+        )
+        .arg(Arg::new("verbose")
+            .action(ArgAction::SetTrue)
+            .long("verbose")
+            .help("Print more information about the process.")
             .num_args(0)
             .required(false)
         )
@@ -87,7 +93,8 @@ impl Command for UnpublishCommand {
         let package_name = args.get_one::<String>("package_name").unwrap();
         let version = args.get_one::<String>("version");
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
-        self.run_unpublish(workspace, *dry_run, package_name, version)
+        let verbose = args.get_one::<bool>("verbose").unwrap();
+        self.run_unpublish(workspace, *dry_run, *verbose, package_name, version)
     }
 
     fn needs_workspace(&self) -> bool {

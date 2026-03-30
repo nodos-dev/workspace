@@ -170,11 +170,19 @@ impl GetCommand {
         }
         let tmpdir = tempfile::tempdir()?;
         let downloaded_path = tmpdir.path().to_path_buf();
+        let artifact_id = release.artifact_id;
         let release_url = release.url.clone();
         let release_version = release.version.clone();
         let _ = (package_type, release);
+        let download_url = if let Some(id) = artifact_id {
+            workspace.store_client()
+                .get_artifact_download_url(id)
+                .map_err(|e| CommandError::Runtime { message: e.to_string() })?
+        } else {
+            release_url
+        };
         pb.println(format!("Downloading and extracting {}-{}", nodos_name, release_version));
-        download_and_extract(&release_url, &downloaded_path, workspace.store_client())?;
+        download_and_extract(&download_url, &downloaded_path)?;
         pb.println(format!("Installing {}-{}", nodos_name, release_version));
 
         // Get current executable's absolute path
