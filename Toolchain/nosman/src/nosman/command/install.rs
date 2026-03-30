@@ -182,12 +182,9 @@ impl InstallCommand {
         println!("Downloading {} {}", pkg_type_str, package_name_version);
 
         let download_url = match package.artifact_id {
-            Some(id) => {
-                let client = workspace.store_client();
-                let artifact_url = format!("{}/api/v1/release-artifacts/{}", client.base_url(), id);
-                client.resolve_download_url(&artifact_url)
-                    .map_err(|e| Runtime { message: e.to_string() })?
-            }
+            Some(id) => workspace.store_client()
+                .get_artifact_download_url(id)
+                .map_err(|e| Runtime { message: e.to_string() })?,
             None => package.url.clone(),
         };
         download_and_extract(&download_url, &final_out_dir)?;

@@ -153,8 +153,7 @@ fn download_artifact_by_id() {
     }));
     *base_url_ref.lock().unwrap() = server.base_url.clone();
     let client = server.client();
-    let artifact_url = format!("{}/api/v1/release-artifacts/7", client.base_url());
-    let download_url = client.resolve_download_url(&artifact_url).expect("resolve download url");
+    let download_url = client.get_artifact_download_url(7).expect("get download url");
     let output_dir = tempdir().expect("output dir");
     download_and_extract(
         &download_url,
