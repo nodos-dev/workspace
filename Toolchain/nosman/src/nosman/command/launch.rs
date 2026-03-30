@@ -90,7 +90,7 @@ pub fn get_cli() -> clap::Command {
 }
 
 impl Command for LaunchCommand {
-    fn matched_args<'a, 'b>(&self, _workspace: &'a Workspace, args : &'b ArgMatches) -> Option<&'b ArgMatches> {
+    fn matched_args<'b>(&self, _workspace: &Workspace, args : &'b ArgMatches) -> Option<&'b ArgMatches> {
         args.subcommand_matches("launch")
     }
 

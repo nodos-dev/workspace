@@ -47,8 +47,7 @@ impl InstallCommand {
         let mut exact_no_fetch = flags;
         exact_no_fetch.remove(InstallFlags::UpdatePackageIndex);
         exact_no_fetch.insert(InstallFlags::InstallExactVersion);
-        if version_opt.is_some() {
-            let version = version_opt.unwrap();
+        if let Some(version) = version_opt {
             if !flags.contains(InstallFlags::InstallExactVersion) {
                 let version_prefix = SemVer::parse_from_str(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
                 if let Some(installed_package) = workspace.get_latest_local_package_for_prefix(package_name, &version_prefix) {
@@ -62,7 +61,7 @@ impl InstallCommand {
                 }
             }
         }
-        // Fetch remotes
+        // Fetch package metadata from the Nodos Store.
         if flags.contains(InstallFlags::UpdatePackageIndex) {
             println!("Fetching index...");
             workspace.fetch_package_releases(package_name);
@@ -70,37 +69,36 @@ impl InstallCommand {
                 workspace.fetch_releases(None);
             }
         }
-        let version;
-        if version_opt.is_none() {
+        let version = if let Some(version_val) = version_opt {
+            version_val.to_string()
+        } else {
             let latest = workspace.index_cache.get_latest_release(package_name);
             if latest.is_none() {
                 return Err(InvalidArgument { message: format!("No versions found for package {}", package_name) });
             }
-            version = latest.unwrap().1.version.clone();
-            println!("Installing latest version {} of {}", version, package_name);
-            return self.run_install(workspace, package_name, Some(&version), output_dir, prefix, exact_no_fetch);
-        } else {
-            version = version_opt.unwrap().to_string();
-        }
+            let ver = latest.unwrap().1.version.clone();
+            println!("Installing latest version {} of {}", ver, package_name);
+            return self.run_install(workspace, package_name, Some(&ver), output_dir, prefix, exact_no_fetch);
+        };
         if !flags.contains(InstallFlags::InstallExactVersion) {
             // Find or download a version matching the provided prefix
             let version_prefix = SemVer::parse_from_str(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
-            println!("Installing {} matching version prefix '{}'", package_name, version_prefix.to_string());
+            println!("Installing {} matching version prefix '{}'", package_name, version_prefix);
             return {
-                let latest_compatible_opt = workspace.index_cache.get_latest_compatible_release(&package_name, &version_prefix);
+                let latest_compatible_opt = workspace.index_cache.get_latest_compatible_release(package_name, &version_prefix);
                 let compatible_package = if let Some((package_type, release)) = latest_compatible_opt {
                     if *package_type == PackageType::Nodos || *package_type == PackageType::Engine {
                         return Err(InvalidArgument { message: format!("Package {} requires special treatment", package_name) });
                     }
                     Some(release.version.clone()) // Clone version to avoid lifetime issues.
                 } else {
-                    return Err(InvalidArgument { message: format!("No remote contained a version matching prefix '{}' for package {}", version_prefix.to_string(), package_name) });
+                    return Err(InvalidArgument { message: format!("Nodos Store does not contain a version matching prefix '{}' for package {}", version_prefix, package_name) });
                 };
                 self.run_install(workspace, package_name, compatible_package.as_ref(), output_dir, prefix, exact_no_fetch)
             }
         }
         let Some((package_type, package)) = workspace.index_cache.get_package_cpy(package_name, version.as_str()) else {
-            return Err(InvalidArgument { message: format!("None of the remotes contain package {} version {}. You can try rescan command to update index.", package_name, version) })
+            return Err(InvalidArgument { message: format!("Nodos Store does not contain package {} version {}. You can try rescan command to update index.", package_name, version) })
         };
 
         // Now, we actually install this package.
@@ -112,27 +110,33 @@ impl InstallCommand {
                 if pkg.dependencies.is_none() {
                     continue;
                 }
-                for dep in package.dependencies.as_ref().unwrap() {
-                    let res = workspace.get_latest_absent_release_for(&dep.name, &dep.version);
+                for dep in pkg.dependencies.as_ref().unwrap() {
+                    let dep_name = dep.name.clone();
+                    let dep_version = dep.version.clone();
+                    // Fetch releases for dependencies not in the public index (e.g. private packages)
+                    if workspace.index_cache.get_package_releases(&dep_name).is_empty() {
+                        workspace.fetch_package_releases(&dep_name);
+                    }
+                    let res = workspace.get_latest_absent_release_for(&dep_name, &dep_version);
                     if let Err(e) = res {
                         return Err(Runtime { message: format!("\nUnable to satisfy dependency {}\n\tRequested version: {}\n\tRequired by: {}-{}\n\tReason: {}",
-                                                              dep.name, dep.version, rem_pkg_name, pkg.version, e) });
+                                                              dep_name, dep_version, rem_pkg_name, pkg.version, e) });
                     }
                     let opt_absent_release = res?;
                     if opt_absent_release.is_none() {
-                        println!("Dependency {} {} already installed", dep.name, dep.version);
+                        println!("Dependency {} {} already installed", dep_name, dep_version);
                         continue;
                     }
                     let (_, resolved_dep_pkg) = opt_absent_release.unwrap();
                     let to_install = PackageIdentifier {
-                        name: dep.name.clone(),
+                        name: dep_name.clone(),
                         version: resolved_dep_pkg.version.clone(),
                     };
                     if deps_to_install.contains(&to_install) {
                         continue;
                     }
                     deps_to_install.insert(to_install);
-                    remaining.push((dep.name.clone(), resolved_dep_pkg.clone()));
+                    remaining.push((dep_name.clone(), resolved_dep_pkg.clone()));
                 }
             }
             // Since we install it without deps, no need to top-sort it
@@ -175,7 +179,10 @@ impl InstallCommand {
         let package_name_version = format!("{}-{}", package_name, version);
         println!("Downloading {} {}", pkg_type_str, package_name_version);
 
-        download_and_extract(&package.url, &final_out_dir)?;
+        match package.artifact_id {
+            Some(id) => workspace.download_and_extract_artifact(id, &final_out_dir)?,
+            None => download_and_extract(&package.url, &final_out_dir)?,
+        };
 
         println!("Extracted {} {} to {}", pkg_type_str, package_name, final_out_dir.display());
         // If the package is installed under workspace, register it.

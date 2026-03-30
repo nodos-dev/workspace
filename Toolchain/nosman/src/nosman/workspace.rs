@@ -1,7 +1,8 @@
 use rayon::iter::ParallelIterator;
 use std::collections::{HashMap, HashSet};
-use std::{fs, io};
+use std::fs;
 use std::cmp::PartialEq;
+use std::io::Seek;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration};
@@ -12,9 +13,9 @@ use inquire::Select;
 use rayon::iter::IntoParallelRefIterator;
 use serde::{Deserialize, Serialize};
 use crate::nosman::command::{CommandError, CommandResult};
-use crate::nosman::constants;
+
 use crate::nosman::command::CommandError::InvalidArgument;
-use crate::nosman::index::{Index, PackageIndexEntry, PackageReleaseEntry, PackageReleases, PackageType, Remote, SemVer};
+use crate::nosman::index::{Index, PackageReleaseEntry, PackageType, SemVer};
 use crate::nosman::plugin::{NodeDefinition, PluginEntry};
 use crate::nosman::package::{get_package_manifests, LocalPackageEntry};
 use crate::nosman::path::get_rel_path_based_on;
@@ -50,13 +51,14 @@ pub enum AutoRescanResult {
 struct WorkspaceRuntimeParams {
     status: WorkspaceStatus,
     output_mode_stack: Vec<OutputMode>,
+    store_client: Option<nodos_store_client::StoreClient>,
+    authenticated_store_client: Option<nodos_store_client::StoreClient>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Workspace {
     #[serde(skip_serializing, skip_deserializing)]
     pub root: PathBuf,
-    pub remotes: Vec<Remote>,
     #[serde(alias = "installed_modules")]
     pub packages: HashMap<String, HashMap<String, LocalPackageEntry>>,
     #[serde(skip_serializing, skip_deserializing)]
@@ -72,7 +74,6 @@ bitflags! {
     impl RescanFlags: u8 {
         const ScanPackages = 0b1;
         const FetchPackageIndex = 0b10;
-        const AddDefaultPackageIndexIfNoRemoteExists = 0b100;
     }
 }
 
@@ -92,45 +93,105 @@ impl PartialEq<u8> for RescanFlags {
     }
 }
 
-fn fetch_releases_mt(workspace: &Workspace, package_names: Option<HashSet<String>>) -> HashMap<String, (PackageType, Vec<PackageReleaseEntry>)> {
+fn api_version_to_semver(v: &nodos_store_client::ApiVersion) -> SemVer {
+    SemVer::new(v.major, v.minor, v.patch, None)
+}
+
+fn releases_to_index_entries(
+    package_type: &PackageType,
+    releases: Vec<nodos_store_client::Release>,
+) -> Vec<PackageReleaseEntry> {
+    let mut entries = Vec::new();
+    for release in releases {
+        for artifact in &release.artifacts {
+            entries.push(PackageReleaseEntry {
+                version: release.version.clone(),
+                artifact_id: Some(artifact.id),
+                url: String::new(),
+                plugin_api_version: if *package_type == PackageType::Plugin {
+                    release.api_version.as_ref().map(api_version_to_semver)
+                } else {
+                    None
+                },
+                subsystem_api_version: if *package_type == PackageType::Subsystem {
+                    release.api_version.as_ref().map(api_version_to_semver)
+                } else {
+                    None
+                },
+                release_date: Some(release.updated_at.clone()),
+                dependencies: if release.dependencies.is_empty() {
+                    None
+                } else {
+                    Some(
+                        release
+                            .dependencies
+                            .iter()
+                            .map(|d| crate::nosman::package::PackageIdentifier {
+                                name: d.name.clone(),
+                                version: d.version.clone(),
+                            })
+                            .collect(),
+                    )
+                },
+                category: None,
+                module_tags: None,
+                release_tags: if release.tags.is_empty() {
+                    None
+                } else {
+                    Some(release.tags.clone())
+                },
+                platform: Some(artifact.target_platform.clone()),
+                node_names: None,
+            });
+        }
+    }
+    entries
+}
+
+fn fetch_releases_mt(
+    is_silent: bool,
+    client: &nodos_store_client::StoreClient,
+    package_names: Option<HashSet<String>>,
+) -> HashMap<String, (PackageType, Vec<PackageReleaseEntry>)> {
     let releases = Mutex::new(HashMap::new());
-    let pb = get_progress_bar(workspace.is_silent());
+    let pb = get_progress_bar(is_silent);
     pb.enable_steady_tick(Duration::from_millis(100));
-    pb.set_message("Fetching package index...");
-    workspace.remotes.par_iter().for_each(|remote| {
-        pb.set_message(format!("Fetching remote {}", remote.name));
-        let res = remote.fetch(&workspace);
+    pb.set_message("Fetching Nodos Store index...");
+
+    let package_list = match client.list_packages().map_err(|e| e.to_string()) {
+        Ok(list) => list,
+        Err(e) => {
+            pb.println(format!("Failed to fetch package list: {}", e));
+            return releases.into_inner().unwrap();
+        }
+    };
+
+    pb.println(format!("Fetched {} packages from Nodos Store", package_list.len()));
+    package_list.par_iter().for_each(|package| {
+        if let Some(ref package_names) = package_names {
+            if !package_names.contains(&package.name) {
+                return;
+            }
+        }
+        let package_type = PackageType::from_str(&package.package_type);
+        let res = client.get_releases(&package.name).map_err(|e| e.to_string());
         if let Err(e) = res {
-            pb.println(format!("Failed to fetch remote: {}", e));
+            pb.println(format!("Failed to fetch package releases for {}: {}", package.name, e));
             return;
         }
-        let package_list: Vec<PackageIndexEntry> = res.unwrap();
-        pb.println(format!("Fetched {} packages from remote {}", package_list.len(), remote.name));
-        package_list.par_iter().for_each(|package| {
-            if let Some(ref package_names) = package_names {
-                if !package_names.contains(&package.name) {
-                    return;
-                }
-            }
-            let res = reqwest::blocking::get(&package.releases_url);
-            if let Err(e) = res {
-                pb.println(format!("Failed to fetch package releases for {}: {}", package.name, e));
-                return;
-            }
-            let res = res.unwrap().json();
-            if let Err(e) = res {
-                pb.println(format!("Failed to parse package releases for {}: {}", package.name, e));
-                return;
-            }
-            let versions: PackageReleases = res.unwrap();
-            pb.set_message(format!("Remote {}: Found {} releases for package {}", remote.name, versions.releases.len(), versions.name));
-            // For each version in list
-            for release in versions.releases {
-                let mut map = releases.lock().unwrap();
-                let entry = map.entry(versions.name.clone()).or_insert((package.package_type.clone(), Vec::new()));
-                entry.1.push(release);
-            }
-        });
+        let releases_for_package = releases_to_index_entries(&package_type, res.unwrap());
+        pb.set_message(format!(
+            "Found {} releases for package {}",
+            releases_for_package.len(),
+            package.name
+        ));
+        {
+            let mut map = releases.lock().unwrap();
+            let entry = map
+                .entry(package.name.clone())
+                .or_insert((package_type.clone(), Vec::new()));
+            entry.1.extend(releases_for_package);
+        }
     });
     releases.into_inner().unwrap()
 }
@@ -139,14 +200,13 @@ impl Workspace {
     fn new_empty(path: PathBuf) -> Workspace {
         Workspace {
             root: path,
-            remotes: Vec::new(),
             packages: HashMap::new(),
             index_cache: Index { packages: HashMap::new() },
-            runtime: WorkspaceRuntimeParams { status: WorkspaceStatus::DoesNotExist, output_mode_stack: vec![OutputMode::Default] },
+            runtime: WorkspaceRuntimeParams { status: WorkspaceStatus::DoesNotExist, output_mode_stack: vec![OutputMode::Default], store_client: None, authenticated_store_client: None },
         }
     }
     pub fn from_root(path: &PathBuf) -> Workspace {
-        let index_filepath = get_nosman_index_filepath_for(&path);
+        let index_filepath = get_nosman_index_filepath_for(path);
         let exists = index_filepath.exists();
         let mut workspace = Workspace::new_empty(std::path::absolute(path).unwrap_or_else(|e| panic!("Failed to get absolute path from {:?}: {}", path, e)));
         if !exists {
@@ -176,19 +236,8 @@ impl Workspace {
     pub fn ready(&self) -> bool {
         self.runtime.status == WorkspaceStatus::Ready
     }
-    pub fn get_remote_repo_dir(&self, remote: &Remote) -> PathBuf {
-        get_nosman_dir_for(&self.root).join("remote").join(remote.name.clone())
-    }
-    pub fn add_remote(&mut self, remote: Remote) {
-        self.remotes.push(remote);
-    }
-    pub fn find_remote(&self, name: &str) -> Option<&Remote> {
-        self.remotes.iter().find(|r| r.name == name)
-    }
     pub fn save(&self) -> Result<(), std::io::Error>{
-        if !get_nosman_dir_for(&self.root).exists() {
-            fs::create_dir(get_nosman_dir_for(&self.root))?;
-        }
+        fs::create_dir_all(get_nosman_dir_for(&self.root))?;
         let file = fs::File::create(self.get_nosman_index_filepath())?;
         serde_json::to_writer_pretty(file, self)?;
         Ok(())
@@ -203,7 +252,7 @@ impl Workspace {
         }
     }
 
-    pub fn normalize_to_workspace<'a, P: AsRef<Path>>(
+    pub fn normalize_to_workspace<P: AsRef<Path>>(
         &self, path: P,
     ) -> Option<PathBuf> {
         let path = path.as_ref();
@@ -239,10 +288,7 @@ impl Workspace {
         let normalized_path = self.normalize_to_workspace(path.clone()).unwrap();
         for version_map in self.packages.values() {
             for entry in version_map.values() {
-                if entry.manifest_path == path {
-                    return Some(entry);
-                }
-                else if entry.manifest_path == normalized_path{
+                if entry.manifest_path == path || entry.manifest_path == normalized_path {
                     return Some(entry);
                 }
             }
@@ -252,7 +298,7 @@ impl Workspace {
     pub fn get_packages(&self, name: &str) -> Vec<&LocalPackageEntry> {
         let mut res = Vec::new();
         if let Some(versions) = self.packages.get(name) {
-            for (_version, package) in versions {
+            for package in versions.values() {
                 res.push(package);
             }
         }
@@ -261,7 +307,7 @@ impl Workspace {
     pub fn get_or_select_package(&self, package_name: &String) -> Result<LocalPackageEntry, CommandError> {
         let packages = self.get_packages(package_name);
         let package;
-        if packages.len() == 0 {
+        if packages.is_empty() {
             return Err(InvalidArgument { message: format!("Package {} not found", package_name) });
         } else if packages.len() > 1 {
             let selection = Select::new(format!("Multiple packages found with name {}. Please select one:", package_name).as_str(), packages)
@@ -319,7 +365,7 @@ impl Workspace {
         let version_prefix = semver_res.unwrap();
         let res = self.get_latest_local_package_for_prefix(module_name, &version_prefix);
         if res.is_none() {
-            return Err(format!("No installed version matching prefix '{}' for package {}", version_prefix.to_string(), module_name));
+            return Err(format!("No installed version matching prefix '{}' for package {}", version_prefix, module_name));
         }
         Ok(res.unwrap())
     }
@@ -336,12 +382,12 @@ impl Workspace {
         }
         let res = self.index_cache.get_latest_compatible_release(name, &version_prefix);
         if res.is_none() {
-            return Err(InvalidArgument { message: format!("No releases found for package {} matching prefix '{}'", name, version_prefix.to_string()) });
+            return Err(InvalidArgument { message: format!("No releases found for package {} matching prefix '{}'", name, version_prefix) });
         }
         Ok(Some(res.unwrap()))
     }
     pub fn add(&mut self, package: LocalPackageEntry) {
-        let versions = self.packages.entry(package.info.id.name.clone()).or_insert(HashMap::new());
+        let versions = self.packages.entry(package.info.id.name.clone()).or_default();
         versions.insert(package.info.id.version.clone(), package);
     }
     pub fn remove(&mut self, name: &str, version: &str) -> CommandResult {
@@ -374,6 +420,54 @@ impl Workspace {
     pub fn is_silent(&self) -> bool {
         self.runtime.output_mode_stack.last().unwrap_or(&OutputMode::Default) == &OutputMode::Silent
     }
+    pub fn store_client(&mut self) -> Result<&nodos_store_client::StoreClient, CommandError> {
+        if self.runtime.store_client.is_none() {
+            self.runtime.store_client = Some(
+                nodos_store_client::StoreClient::builder()
+                    .build()
+                    .map_err(|e| CommandError::Runtime {
+                        message: format!("Failed to build store client: {}", e),
+                    })?,
+            );
+        }
+        Ok(self.runtime.store_client.as_ref().unwrap())
+    }
+
+    pub fn authenticated_store_client_mut(&mut self) -> Result<&mut nodos_store_client::StoreClient, CommandError> {
+        if self.runtime.authenticated_store_client.is_none() {
+            self.runtime.authenticated_store_client = Some(
+                nodos_store_client::StoreClient::builder()
+                    .with_token_store(nodos_store_client::TokenStore::new(std::path::PathBuf::from("nosman")))
+                    .build()
+                    .map_err(|e| CommandError::Runtime {
+                        message: format!("Failed to build authenticated store client: {}", e),
+                    })?,
+            );
+        }
+        Ok(self.runtime.authenticated_store_client.as_mut().unwrap())
+    }
+
+    /// Downloads and extracts a store artifact into `target`.
+    ///
+    /// Uses [`StoreClient::download_artifact`] to stream the artifact into a
+    /// temporary file, then delegates to [`download_and_extract_file`] for
+    /// archive extraction.
+    pub fn download_and_extract_artifact(
+        &mut self,
+        artifact_id: i64,
+        target: &std::path::Path,
+    ) -> CommandResult {
+        use crate::nosman::common::download_and_extract_file;
+        let mut tmpfile = tempfile::tempfile()
+            .map_err(|e| CommandError::Runtime { message: format!("Failed to create tempfile: {}", e) })?;
+        self.store_client()?
+            .download_artifact(artifact_id, &mut tmpfile)
+            .map_err(|e| CommandError::Runtime { message: format!("Failed to download artifact: {}", e) })?;
+        tmpfile.seek(std::io::SeekFrom::Start(0))
+            .map_err(|e| CommandError::Runtime { message: format!("Failed to seek tempfile: {}", e) })?;
+        download_and_extract_file(tmpfile, target)
+    }
+
     pub fn push_output_mode(&mut self, mode: OutputMode) {
         self.runtime.output_mode_stack.push(mode);
     }
@@ -403,15 +497,14 @@ impl Workspace {
 
         for (ty, path) in package_manifests {
             pb.set_message(format!("Scanning: {}", path.display()));
-            let res = LocalPackageEntry::new(&self, get_rel_path_based_on(&path, &self.root), ty, flags.contains(ScanPackagesFlags::RegisterCommands));
+            let res = LocalPackageEntry::new(self, get_rel_path_based_on(&path, &self.root), ty, flags.contains(ScanPackagesFlags::RegisterCommands));
             if let Err(msg) = res {
                 pb.println(format!("Error while scanning {}: {}", path.display(), msg).red().to_string());
                 continue;
             }
             let package = res.unwrap();
             let opt_found = self.get_package(&package.info.id.name, &package.info.id.version);
-            if opt_found.is_some() {
-                let found = opt_found.unwrap();
+            if let Some(found) = opt_found {
                 if flags.contains(ScanPackagesFlags::ForceReplaceInRegistry) {
                     pb.println(format!("Updating package entry in registry: {}. {} <=> {}", package.info.id, path.display(), found.manifest_path.display()));
                 } else {
@@ -426,14 +519,14 @@ impl Workspace {
        self.scan_packages_in_folder(self.root.clone(), flags);
     }
     pub fn recreate(&mut self) -> Result<(), CommandError> {
+        fs::create_dir_all(&self.root)?;
         self.rescan(RescanFlags::all())?;
-        self.save()?;
         Ok(())
     }
     pub fn rescan(&mut self, flags: RescanFlags) -> CommandResult {
         if flags.contains(RescanFlags::FetchPackageIndex) {
             self.index_cache.packages.clear();
-            self.fetch_remotes(flags.contains(RescanFlags::AddDefaultPackageIndexIfNoRemoteExists))?;
+            self.fetch_releases(None);
         }
         if flags.contains(RescanFlags::ScanPackages) {
             self.packages.clear();
@@ -443,31 +536,47 @@ impl Workspace {
         self.runtime.status = WorkspaceStatus::Ready;
         Ok(())
     }
-    pub fn fetch_remotes(&mut self, add_default_remote: bool) -> Result<(), io::Error>{
-        if self.remotes.is_empty() {
-            if add_default_remote {
-                self.add_remote(Remote::new("default", constants::DEFAULT_PACKAGE_INDEX_REPO));
-            } else {
-                return Ok(());
+    pub fn fetch_package_releases(&mut self, package_name: &str) {
+        let result = {
+            let client = match self.store_client() {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Warning: {}", e);
+                    return;
+                }
+            };
+            let package_type = client
+                .get_package(package_name)
+                .map(|pkg| PackageType::from_str(&pkg.package_type))
+                .unwrap_or(PackageType::Generic);
+            client
+                .get_releases(package_name)
+                .ok()
+                .map(|releases| (package_type.clone(), releases_to_index_entries(&package_type, releases)))
+        };
+        if let Some((package_type, entries)) = result {
+            for entry in entries {
+                self.index_cache.add_package(package_name, package_type.clone(), entry);
             }
         }
-        self.index_cache = Index::fetch(self, self.is_silent());
-        self.save()
-    }
-    pub fn fetch_package_releases(&mut self, package_name: &str) {
-        let mut package_names = HashSet::new();
-        package_names.insert(package_name.to_string());
-        self.fetch_releases(Some(package_names));
     }
     pub fn fetch_releases(&mut self, package_names: Option<HashSet<String>>) {
-        let res = fetch_releases_mt(self, package_names);
+        let is_silent = self.is_silent();
+        let client = match self.store_client() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Warning: {}", e);
+                return;
+            }
+        };
+        let res = fetch_releases_mt(is_silent, client, package_names);
         for (name, (package_type, releases)) in res {
             for release in releases {
                 self.index_cache.add_package(&name, package_type.clone(), release);
             }
         }
     }
-    pub fn get_node_definitions(&self, node_class_name: &String, nodos_version: &Option<SemVer>) -> Vec<NodeDefinition> {
+    pub fn get_node_definitions(&self, node_class_name: &str, nodos_version: &Option<SemVer>) -> Vec<NodeDefinition> {
         let mut res = Vec::new();
         for versions in self.packages.values() {
             for package in versions.values() {
@@ -526,10 +635,10 @@ impl Workspace {
     }
 
     /// Automatically rescans the workspace if needed based on manifest file status.
-    /// - If any manifest files are missing, performs a full rescan
-    /// - If manifest files are only updated, rescans only the folders containing those files
+    ///   - If any manifest files are missing, performs a full rescan
+    ///   - If manifest files are only updated, rescans only the folders containing those files
+    ///
     /// Returns an AutoRescanResult indicating what action was taken
-
     pub fn auto_rescan_if_needed(&mut self) -> Result<AutoRescanResult, CommandError> {
         // If workspace is not ready, return early - no auto-rescan needed
         if !self.ready() {
@@ -616,7 +725,7 @@ impl Workspace {
                     versions.retain(|_version, package| {
                         let package_folder = package.manifest_path.parent()
                             .map(|p| p.to_path_buf())
-                            .unwrap_or_else(|| PathBuf::new());
+                            .unwrap_or_default();
                         package_folder != folder_relative
                     });
                     !versions.is_empty()
@@ -635,8 +744,8 @@ impl Workspace {
     }
 }
 
-pub fn find_root_from(path: &PathBuf) -> Option<PathBuf> {
-    let mut current = path.clone();
+pub fn find_root_from(path: &Path) -> Option<PathBuf> {
+    let mut current = path.to_path_buf();
     loop {
         if get_nosman_index_filepath_for(&current).exists() {
             return Some(current);
@@ -648,10 +757,10 @@ pub fn find_root_from(path: &PathBuf) -> Option<PathBuf> {
     None
 }
 
-pub fn get_nosman_dir_for(path: &PathBuf) -> PathBuf {
+pub fn get_nosman_dir_for(path: &Path) -> PathBuf {
     path.join(".nosman")
 }
 
-pub fn get_nosman_index_filepath_for(path: &PathBuf) -> PathBuf {
+pub fn get_nosman_index_filepath_for(path: &Path) -> PathBuf {
     get_nosman_dir_for(path).join("index")
 }

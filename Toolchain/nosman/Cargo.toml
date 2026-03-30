@@ -1,6 +1,6 @@
 [package]
 name = "nosman"
-version = "0.9.1"
+version = "0.10.0"
 edition = "2021"
 
 [profile.release]
@@ -43,11 +43,10 @@ rayon = "1.10.0"
 hostname = "0.4.0"
 thiserror = "2.0.9"
 wait-timeout = "0.2"
+nodos-store-client = "0.5"
 
 [dev-dependencies]
 log = "0.4.21"
-rand = "0.9.2"
-lazy_static = "1.4.0"
 env_logger = "0.11.3"
 ctor = "0.6.2"
 

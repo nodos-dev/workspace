@@ -10,20 +10,20 @@ use crate::nosman::workspace::{Workspace};
 pub struct ListCommand {}
 
 impl ListCommand {
-    fn run_list(&self, workspace: &mut Workspace, mut local: bool, mut remote: bool, opt_package_name: Option<&String>) -> CommandResult {
-        if !local && !remote {
+    fn run_list(&self, workspace: &mut Workspace, mut local: bool, mut store: bool, opt_package_name: Option<&String>) -> CommandResult {
+        if !local && !store {
             // Select
-            let selection = MultiSelect::new("What do you want to list?", vec!["Local packages", "Remote packages"])
+            let selection = MultiSelect::new("What do you want to list?", vec!["Local packages", "Nodos Store packages"])
                 .prompt();
             let selection = selection.map_err(|e| crate::nosman::command::CommandError::Runtime { message: format!("Failed to prompt user: {}", e) })?;
             for sel in selection {
                 match sel {
                     "Local packages" => local = true,
-                    "Remote packages" => remote = true,
+                    "Nodos Store packages" => store = true,
                     _ => {}
                 }
             }
-            if !local && !remote {
+            if !local && !store {
                 println!("{}", "Nothing selected".to_string().yellow());
             }
         }
@@ -45,14 +45,14 @@ impl ListCommand {
                     a_version.cmp(&b_version)
                 });
                 for (_name, version, module) in local_versions {
-                    println!("  {} ({})", format!("{}", version).green(), module.get_package_root().display());
+                    println!("  {} ({})", version.green(), module.get_package_root().display());
                 }
             }
-            if remote {
+            if store {
                 workspace.with_output_mode_scoped(crate::nosman::workspace::OutputMode::Silent, |ws| {
                     ws.fetch_package_releases(package_name);
                 });
-                println!("{}", "Remote versions".green());
+                println!("{}", "Nodos Store versions".green());
                 if let Some(releases) = workspace.index_cache.packages.get(package_name) {
                     for release_entry in &releases.1 {
                         let mut out_str = String::new();
@@ -86,12 +86,12 @@ impl ListCommand {
                 }
                 installed_modules_alphabetical.sort_by(|a, b| a.0.cmp(&b.0));
                 for (name, version, module) in installed_modules_alphabetical {
-                    println!("  {} ({})", format!("{} ({})", name.green(), version.yellow()), module.get_package_root().display());
+                    println!("  {} ({}) ({})", name.green(), version.yellow(), module.get_package_root().display());
                 }
             }
-            if remote {
+            if store {
                 workspace.with_output_mode_scoped(crate::nosman::workspace::OutputMode::Silent, |ws| {
-                    println!("{}", "Remote packages".green());
+                    println!("{}", "Nodos Store packages".green());
                     ws.fetch_releases(None);
                     let mut package_names: Vec<String> = ws.index_cache.packages.keys().cloned().collect();
                     package_names.sort();
@@ -147,15 +147,16 @@ pub fn get_cli() -> clap::Command {
             .num_args(0)
             .required(false)
         )
-        .arg(Arg::new("remote")
+        .arg(Arg::new("store")
             .action(ArgAction::SetTrue)
-            .help("List remote packages")
-            .long("remote")
+            .help("List packages from the Nodos Store")
+            .long("store")
+            .alias("remote")
             .num_args(0)
             .required(false)
         )
         .arg(Arg::new("package_name")
-            .help("Name of the package to list remote/local packages of")
+            .help("Name of the package to list versions of")
             .long("package-name")
             .short('p')
             .required(false)
@@ -173,8 +174,8 @@ impl Command for ListCommand {
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let local = args.get_one::<bool>("local").unwrap();
-        let remote = args.get_one::<bool>("remote").unwrap();
+        let store = args.get_one::<bool>("store").unwrap();
         let opt_package_name = args.get_one::<String>("package_name");
-        self.run_list(workspace, *local, *remote, opt_package_name)
+        self.run_list(workspace, *local, *store, opt_package_name)
     }
 }

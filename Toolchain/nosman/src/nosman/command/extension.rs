@@ -93,7 +93,7 @@ impl Extension {
 }
 
 impl Command for Extension {
-    fn matched_args<'a, 'b>(&self, workspace: &'a Workspace, args: &'b ArgMatches) -> Option<&'b ArgMatches> {
+    fn matched_args<'b>(&self, workspace: &Workspace, args: &'b ArgMatches) -> Option<&'b ArgMatches> {
         if let Some((_command_desc, _module, matches)) = Self::get_command(workspace, &args) {
             return Some(matches);
         }
