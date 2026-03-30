@@ -174,12 +174,14 @@ impl GetCommand {
         let release_url = release.url.clone();
         let release_version = release.version.clone();
         let _ = (package_type, release);
-        let download_url = if let Some(id) = artifact_id {
-            workspace.store_client()
-                .get_artifact_download_url(id)
-                .map_err(|e| CommandError::Runtime { message: e.to_string() })?
-        } else {
-            release_url
+        let download_url = match artifact_id {
+            Some(id) => {
+                let client = workspace.store_client();
+                let artifact_url = format!("{}/api/v1/release-artifacts/{}", client.base_url(), id);
+                client.resolve_download_url(&artifact_url)
+                    .map_err(|e| CommandError::Runtime { message: e.to_string() })?
+            }
+            None => release_url,
         };
         pb.println(format!("Downloading and extracting {}-{}", nodos_name, release_version));
         download_and_extract(&download_url, &downloaded_path)?;
