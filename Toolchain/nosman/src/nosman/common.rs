@@ -47,11 +47,6 @@ pub fn download_and_extract(url: &str, target: &Path) -> Result<(), CommandError
     extract_zip(tmpfile, target)
 }
 
-/// Extracts a zip archive from an already-downloaded file into `target`.
-pub fn download_and_extract_file(tmpfile: std::fs::File, target: &Path) -> Result<(), CommandError> {
-    extract_zip(tmpfile, target)
-}
-
 fn extract_zip(tmpfile: std::fs::File, target: &Path) -> Result<(), CommandError> {
     let mut archive = ZipArchive::new(tmpfile)?;
     fs::create_dir_all(target)?;
