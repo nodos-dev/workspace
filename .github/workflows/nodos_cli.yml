@@ -175,7 +175,7 @@ jobs:
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nosman-${{ matrix.runner[0] }}
+          name: ${{ steps.get.outputs.file_to_release }}
           path: nodos-cli-${{ github.ref_name }}/Toolchain/nosman/target/release/${{ steps.get.outputs.file_to_release }}
 
   release:
