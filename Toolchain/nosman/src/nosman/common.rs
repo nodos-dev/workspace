@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
-use std::io::{Read, Seek};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 use std::sync::{Mutex, OnceLock};
@@ -9,7 +9,6 @@ use colored::Colorize;
 use include_dir::Dir;
 use indicatif::ProgressBar;
 use inquire::Confirm;
-use zip::ZipArchive;
 use serde_json::Value;
 use crate::nosman::command::CommandError;
 use crate::nosman::command::sdk_info::get_engine_sdk_infos;
@@ -23,53 +22,6 @@ pub fn set_prompt_handler(handler: Option<Box<PromptHandler>>) {
     let slot = PROMPT_HANDLER.get_or_init(|| Mutex::new(None));
     let mut guard = slot.lock().unwrap();
     *guard = handler;
-}
-
-pub fn download_and_extract(url: &str, target: &Path) -> Result<(), CommandError> {
-    let mut tmpfile = tempfile::tempfile().expect("Failed to create tempfile");
-    reqwest::blocking::get(url)
-    .unwrap_or_else(|e| panic!("Failed to fetch {}: {}", url, e)).copy_to(&mut tmpfile)
-    .unwrap_or_else(|e| panic!("Failed to write to {:?}: {}", tmpfile, e));
-
-    tmpfile.seek(std::io::SeekFrom::Start(0)).expect("Failed to seek to start of tempfile");
-
-    // If tar.gz, use flate2 to extract
-    if url.ends_with(".tar.gz") {
-        #[cfg(unix)]
-        {
-            let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(tmpfile));
-            fs::create_dir_all(target)?;
-            archive.unpack(target)?;
-            return Ok(());
-        }
-    }
-
-    extract_zip(tmpfile, target)
-}
-
-fn extract_zip(tmpfile: std::fs::File, target: &Path) -> Result<(), CommandError> {
-    let mut archive = ZipArchive::new(tmpfile)?;
-    fs::create_dir_all(target)?;
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i)?;
-        let filename = file.name();
-        // It might contain \, so convert this to POSIX compatible path
-        let filename = filename.replace("\\", "/");
-        let outpath = target.join(filename);
-
-        if file.is_dir() {
-            fs::create_dir_all(&outpath)?;
-        } else {
-            if let Some(parent) = outpath.parent() {
-                if !parent.exists() {
-                    fs::create_dir_all(parent)?;
-                }
-            }
-            let mut outfile = fs::File::create(&outpath)?;
-            std::io::copy(&mut file, &mut outfile)?;
-        }
-    }
-    Ok(())
 }
 
 pub fn check_file_contents_same(path1: &PathBuf, path2: &PathBuf) -> bool {

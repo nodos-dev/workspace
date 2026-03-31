@@ -13,7 +13,6 @@ use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument, IO};
 use crate::nosman::command::init::InitCommand;
 use crate::nosman::index::{PackageType, SemVer};
-use crate::nosman::common::{download_and_extract};
 use crate::nosman::{common, constants};
 use crate::nosman::workspace::{Workspace};
 
@@ -154,7 +153,7 @@ impl GetCommand {
             return self.run_get(workspace, nodos_name, version, false, dont_ask, clean_modules)
         }
 
-        let (artifact_id, release_url, release_version) = {
+        let (artifact_id, release_version) = {
             let res = if version == "latest" {
                 workspace.index_cache.get_latest_release(nodos_name)
             } else {
@@ -168,15 +167,14 @@ impl GetCommand {
             if *package_type != PackageType::Nodos {
                 return Err(InvalidArgument { message: format!("Package {} found in the index is not a Nodos package", nodos_name) });
             }
-            (release.artifact_id, release.url.clone(), release.version.clone())
+            (release.artifact_id.ok_or_else(|| InvalidArgument {
+                message: format!("No artifact ID found for {} version {}", nodos_name, release.version),
+            })?, release.version.clone())
         };
         let tmpdir = tempfile::tempdir()?;
         let downloaded_path = tmpdir.path().to_path_buf();
         pb.println(format!("Downloading and extracting {}-{}", nodos_name, release_version));
-        match artifact_id {
-            Some(id) => workspace.download_and_extract_artifact(id, &downloaded_path)?,
-            None => download_and_extract(&release_url, &downloaded_path)?,
-        };
+        workspace.download_and_extract_artifact(artifact_id, &downloaded_path)?;
         pb.println(format!("Installing {}-{}", nodos_name, release_version));
 
         // Get current executable's absolute path

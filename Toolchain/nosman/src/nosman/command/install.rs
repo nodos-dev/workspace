@@ -11,7 +11,6 @@ use zip::result::ZipError;
 use nosman::workspace::Workspace;
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::index::{PackageType, SemVer};
-use crate::nosman::common::download_and_extract;
 use bitflags::bitflags;
 use crate::nosman::package::PackageIdentifier;
 use crate::nosman::workspace::ScanPackagesFlags;
@@ -179,10 +178,10 @@ impl InstallCommand {
         let package_name_version = format!("{}-{}", package_name, version);
         println!("Downloading {} {}", pkg_type_str, package_name_version);
 
-        match package.artifact_id {
-            Some(id) => workspace.download_and_extract_artifact(id, &final_out_dir)?,
-            None => download_and_extract(&package.url, &final_out_dir)?,
-        };
+        let artifact_id = package.artifact_id.ok_or_else(|| CommandError::InvalidArgument {
+            message: format!("No artifact ID found for {} version {}", package_name, version),
+        })?;
+        workspace.download_and_extract_artifact(artifact_id, &final_out_dir)?;
 
         println!("Extracted {} {} to {}", pkg_type_str, package_name, final_out_dir.display());
         // If the package is installed under workspace, register it.

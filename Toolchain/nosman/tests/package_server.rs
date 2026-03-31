@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use nosman::nosman::common::download_and_extract;
 use tempfile::tempdir;
 use zip::write::SimpleFileOptions;
 
@@ -153,13 +152,9 @@ fn download_artifact_by_id() {
     }));
     *base_url_ref.lock().unwrap() = server.base_url.clone();
     let client = server.client();
-    let download_url = client.get_artifact_download_url(7).expect("get download url");
     let output_dir = tempdir().expect("output dir");
-    download_and_extract(
-        &download_url,
-        &PathBuf::from(output_dir.path()),
-    )
-    .expect("download and extract");
+    client.install_artifact(7, output_dir.path())
+        .expect("install artifact");
     assert_eq!(
         std::fs::read_to_string(output_dir.path().join("plugin").join("test.txt")).unwrap(),
         "hello from package"

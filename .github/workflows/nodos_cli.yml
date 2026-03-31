@@ -29,6 +29,11 @@ on:
         required: true
         default: true
         type: boolean
+      linux_arm:
+        description: 'Cross-compile for Linux ARM (aarch64)'
+        required: false
+        default: true
+        type: boolean
       publish_mode:
         description: 'Publish Mode'
         required: true
@@ -53,9 +58,9 @@ jobs:
     name: Prepare Strategy
     runs-on: self-hosted
     outputs:
-      runner-list: ${{ steps.prepare-step.outputs.runner-list }}
+      build-matrix: ${{ steps.prepare-step.outputs.build-matrix }}
     steps:
-      - name: Prepare Runner List
+      - name: Prepare Build Matrix
         id: prepare-step
         shell: bash
         run: |
@@ -67,23 +72,42 @@ jobs:
             --event-name ${{ github.event_name }} \
             --push-event-defaults '{"linux": true, "windows": true, "sign": false}')
           echo Runners: $runner_list
-          echo "runner-list=$runner_list" >> $GITHUB_OUTPUT
+
+          # Build matrix entries: [{runner: [...], rust_target: ""}] for native,
+          # plus [{runner: <linux-runner>, rust_target: "aarch64-unknown-linux-gnu"}] for cross.
+          build_matrix=$(python3 -c "
+          import json, sys
+          runners = $runner_list
+          linux_arm_input = '${{ inputs.linux_arm }}'.lower()
+          linux_arm = linux_arm_input == 'true' or linux_arm_input == ''
+          matrix = []
+          linux_runner = None
+          for r in runners:
+              matrix.append({'runner': r, 'rust_target': ''})
+              if r[0] == 'Linux':
+                  linux_runner = r
+          if linux_arm and linux_runner:
+              matrix.append({'runner': linux_runner, 'rust_target': 'aarch64-unknown-linux-gnu'})
+          print(json.dumps(matrix))
+          ")
+          echo "Build matrix: $build_matrix"
+          echo "build-matrix=$build_matrix" >> $GITHUB_OUTPUT
 
   build_nosman:
     strategy:
       matrix:
-        runner: ${{ fromJson(needs.prepare-strategy.outputs.runner-list) }}
+        entry: ${{ fromJson(needs.prepare-strategy.outputs.build-matrix) }}
       fail-fast: false
     outputs:
       version: ${{ steps.get.outputs.version }}
-    name: "Nodos CLI: ${{ github.ref_name }} - ${{ github.run_number }} (${{ matrix.runner[0] }})"
-    runs-on: ${{ matrix.runner }}
+    name: "Nodos CLI: ${{ github.ref_name }} - ${{ github.run_number }} (${{ matrix.entry.runner[0] }}${{ matrix.entry.rust_target != '' && format(', {0}', matrix.entry.rust_target) || '' }})"
+    runs-on: ${{ matrix.entry.runner }}
     needs: prepare-strategy
     steps:
       - name: Update Git Credentials
         shell: bash
         run: |
-            if [ "${{ matrix.runner[0] }}" == "Linux" ]; then
+            if [ "${{ matrix.entry.runner[0] }}" == "Linux" ]; then
               export GPG_TTY=$(tty)
             fi
             git credential-manager github login --username ${{ env.GH_USERNAME }} --token ${{ secrets.CI_TOKEN }} --force
@@ -110,17 +134,37 @@ jobs:
           git submodule update --init --recursive --depth 1
           git status
 
+      - name: Setup Cross-Compilation Toolchain
+        if: ${{ matrix.entry.rust_target != '' }}
+        shell: bash
+        run: |
+          if ! command -v aarch64-linux-gnu-gcc &> /dev/null; then
+            echo "::error::aarch64-linux-gnu-gcc is not installed. Please install it on the runner: sudo apt-get install gcc-aarch64-linux-gnu"
+            exit 1
+          fi
+          aarch64-linux-gnu-gcc --version
+          rustup target add ${{ matrix.entry.rust_target }}
+
       - name: Build Nodos CLI
         shell: pwsh
         run: |
-            cargo build --release
+            $target = "${{ matrix.entry.rust_target }}"
+            if ($target -ne "") {
+                $env:CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = "aarch64-linux-gnu-gcc"
+                $env:CC_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-gcc"
+                cargo build --release --target $target
+            } else {
+                cargo build --release
+            }
         working-directory: ./nodos-cli-${{ github.ref_name }}/Toolchain/nosman
 
       - name: Install cargo-nextest
+        if: ${{ matrix.entry.rust_target == '' }}
         shell: bash
         run: cargo nextest --version 2>/dev/null || cargo install cargo-nextest --locked
 
       - name: Run Regression Tests
+        if: ${{ matrix.entry.rust_target == '' }}
         shell: pwsh
         run: |
             cargo nextest run --release --no-fail-fast
@@ -131,12 +175,15 @@ jobs:
         id: get
         run: |
           set -e
-          version=$(./nosman --version | sed -nE 's/.*?([0-9]+\.[0-9]+\.[0-9]+).*/\1/p')
-          echo "Version: $version"
-          echo "version=$version" >> $GITHUB_OUTPUT
+          rust_target="${{ matrix.entry.rust_target }}"
+          if [[ -n "$rust_target" ]]; then
+            release_dir="./nodos-cli-${{ github.ref_name }}/Toolchain/nosman/target/$rust_target/release"
+          else
+            release_dir="./nodos-cli-${{ github.ref_name }}/Toolchain/nosman/target/release"
+          fi
 
           file="nosman"
-          if [[ "${{ matrix.runner[0] }}" == "Windows" ]]; then
+          if [[ "${{ matrix.entry.runner[0] }}" == "Windows" ]]; then
             platform="windows"
             platform_exe_suffix=".exe"
             arch=$(pwsh -Command "Write-Output \$env:PROCESSOR_ARCHITECTURE" | tr '[:upper:]' '[:lower:]')
@@ -148,35 +195,36 @@ jobs:
           else
             platform="linux"
             platform_exe_suffix=""
-            arch=$(uname -m)
-            if [[ "$arch" == "x86_64" ]]; then
-              arch="x86_64"
-            elif [[ "$arch" == "aarch64" ]]; then
+            if [[ "$rust_target" == *"aarch64"* ]]; then
               arch="aarch64"
+            else
+              arch=$(uname -m)
             fi
           fi
 
           renamed_file="nosman-$platform-$arch$platform_exe_suffix"
           original_file="$file$platform_exe_suffix"
 
-          cp -f "$original_file" "$renamed_file"
+          cp -f "$release_dir/$original_file" "$release_dir/$renamed_file"
 
+          version=$(grep '^version' ./nodos-cli-${{ github.ref_name }}/Toolchain/nosman/Cargo.toml | head -1 | sed -nE 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/p')
+          echo "Version: $version"
+          echo "version=$version" >> $GITHUB_OUTPUT
           echo "file_to_release=$renamed_file" >> $GITHUB_OUTPUT
-          echo "original_file=$original_file" >> $GITHUB_OUTPUT
-        working-directory: ./nodos-cli-${{ github.ref_name }}/Toolchain/nosman/target/release
+          echo "release_dir=$release_dir" >> $GITHUB_OUTPUT
 
       - name: Sign Binaries
-        if: ${{ inputs.publish_mode == 'Publish' && matrix.runner[0] == 'Windows' && inputs.sign == 'true' }}
+        if: ${{ inputs.publish_mode == 'Publish' && matrix.entry.runner[0] == 'Windows' && inputs.sign == 'true' }}
         run: |
           cd $MEDIAZ_SCRIPTS_DIR
-          python sign_module.py "${{ github.workspace }}/nodos-cli-${{ github.ref_name }}/Toolchain/nosman/target/release"
+          python sign_module.py "${{ github.workspace }}/${{ steps.get.outputs.release_dir }}"
         shell: bash
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.get.outputs.file_to_release }}
-          path: nodos-cli-${{ github.ref_name }}/Toolchain/nosman/target/release/${{ steps.get.outputs.file_to_release }}
+          path: ${{ steps.get.outputs.release_dir }}/${{ steps.get.outputs.file_to_release }}
 
   release:
     name: GitHub Release
