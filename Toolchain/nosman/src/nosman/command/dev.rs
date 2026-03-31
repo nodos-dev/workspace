@@ -337,7 +337,7 @@ impl DevGenCommand {
                 let status = cmd
                     .args(&cmake_args)
                     .status();
-                if !status.is_ok() {
+                if !status.is_ok() || !status.unwrap().success() {
                     return Err(CommandError::Runtime { message: format!("Error during running '{:?}'. See output.", cmake_args)});
                 }
                 Ok(())
