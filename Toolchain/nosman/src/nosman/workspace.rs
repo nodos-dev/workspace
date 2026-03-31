@@ -437,6 +437,7 @@ impl Workspace {
             self.runtime.authenticated_store_client = Some(
                 nodos_store_client::StoreClient::builder()
                     .with_token_store(nodos_store_client::TokenStore::new(std::path::PathBuf::from("nosman")))
+                    .with_auth(nodos_store_client::Auth::from_env().unwrap_or(nodos_store_client::Auth::None))
                     .build()
                     .map_err(|e| CommandError::Runtime {
                         message: format!("Failed to build authenticated store client: {}", e),
