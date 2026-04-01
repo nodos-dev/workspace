@@ -612,11 +612,13 @@ impl Workspace {
         }
         ret
     }
-    pub fn exit_if_required_but_not_found(&self, required: bool) {
+    pub fn ensure_ready_if_required(&self, required: bool) -> Result<(), CommandError> {
         if required && !self.ready() {
-            eprintln!("Workspace required but not found in {}", self.root.display());
-            std::process::exit(1);
+            return Err(CommandError::Runtime {
+                message: format!("Workspace required but not found in {}", self.root.display()),
+            });
         }
+        Ok(())
     }
     #[allow(dead_code)]
     pub fn get_local_package_count(&self) -> usize {

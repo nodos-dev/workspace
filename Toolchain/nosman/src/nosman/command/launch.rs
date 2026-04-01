@@ -3,12 +3,12 @@ use clap::{ArgMatches};
 use colored::Colorize;
 use native_dialog::DialogBuilder;
 use crate::nosman;
-use crate::nosman::command::{Command, CommandResult};
+use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::workspace::Workspace;
 
 pub struct LaunchCommand {}
 
-pub fn launch_nodos(workspace_dir: &PathBuf, hide_output: bool) {
+pub fn launch_nodos(workspace_dir: &PathBuf, hide_output: bool) -> CommandResult {
     println!("{}", "Launching Nodos...".green());
     // Assume workspace is cwd.
     let engines_dir = nosman::path::get_default_engines_dir(workspace_dir);
@@ -19,7 +19,7 @@ pub fn launch_nodos(workspace_dir: &PathBuf, hide_output: bool) {
             .alert()
             .show()
             .expect("Failed to show message dialog");
-        std::process::exit(1);
+        return Err(CommandError::Runtime { message: "No installed Nodos engine found in workspace.".to_string() });
     }
 
     let mut opt_editor_path = None;
@@ -56,7 +56,7 @@ pub fn launch_nodos(workspace_dir: &PathBuf, hide_output: bool) {
             .alert()
             .show()
             .expect("Failed to show message dialog");
-        std::process::exit(1);
+        return Err(CommandError::Runtime { message: "No installed Nodos engine found in workspace. Check Engine folder.".to_string() });
     }
     let editor_path = opt_editor_path.unwrap();
     let engine_path = opt_engine_path.unwrap();
@@ -75,12 +75,12 @@ pub fn launch_nodos(workspace_dir: &PathBuf, hide_output: bool) {
     }
     editor_cmd.spawn().unwrap_or_else(|e| panic!("Failed to launch nosEditor: {}", e));
     engine_cmd.spawn().unwrap_or_else(|e| panic!("Failed to launch nosLauncher: {}", e));
+    Ok(())
 }
 
 impl LaunchCommand {
     fn launch_nodos(&self, workspace_dir: &PathBuf) -> CommandResult {
-        launch_nodos(workspace_dir, true);
-        Ok(())
+        launch_nodos(workspace_dir, true)
     }
 }
 

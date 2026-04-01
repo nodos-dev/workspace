@@ -4,20 +4,10 @@ use std::error::Error;
 use std::mem;
 use clap::{Arg, ArgAction, Command};
 use clap::builder::StyledStr;
-use colored::Colorize;
 use sysinfo::System;
 use crate::nosman;
 use crate::nosman::command;
 use crate::nosman::workspace::Workspace;
-
-fn print_error(e: &dyn Error) {
-    eprintln!("{}", format!("Error: {}", e).as_str().red());
-    let mut cause = e.source();
-    while let Some(e) = cause {
-        eprintln!("{}", format!("Caused by: {}", e).as_str().red());
-        cause = e.source();
-    }
-}
 
 fn launched_from_file_explorer() -> bool {
     let mut sys = System::new_all();
@@ -51,15 +41,15 @@ fn get_workspace_dir_from_cmd(cmd: &Command) -> std::path::PathBuf {
     std::path::PathBuf::from(matches.get_one::<String>("workspace").unwrap_or(&".".to_string()))
 }
 
-pub fn run_cli() {
+pub fn run_cli() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() == 1 {
         // Get parent process name. If it is a file explorer, open Nodos
         if launched_from_file_explorer() {
             let workspace_dir = std::env::current_exe().expect("Unable to access current executable path.")
                 .parent().expect("Unable to access parent directory of executable.").to_path_buf();
-            command::launch::launch_nodos(&workspace_dir, false);
-            return;
+            command::launch::launch_nodos(&workspace_dir, false)?;
+            return Ok(());
         }
     }
 
@@ -111,9 +101,9 @@ pub fn run_cli() {
     // If contains --silently-agree-eula, agree to EULAs
     if let Some(agree_eula) = matches.get_one::<bool>("silently_agree_eula") {
         if *agree_eula {
-            workspace.exit_if_required_but_not_found(true);
+            workspace.ensure_ready_if_required(true)?;
             nosman::eula::silently_agree_eulas(&workspace.root);
-            return;
+            return Ok(());
         }
     }
 
@@ -123,56 +113,36 @@ pub fn run_cli() {
         let subcommand_name = matches.get_one::<String>("help");
         if subcommand_name.is_none() {
             println!("{}", help_str.ansi());
-            std::process::exit(0);
+            return Ok(());
         }
         // If help is called with a subcommand, print the help string for that subcommand
         let subcommand_name = subcommand_name.unwrap();
         if let Some(help) = subcommand_helps.get(subcommand_name) {
             println!("{}", help.ansi());
-            std::process::exit(0);
+            return Ok(());
         }
     }
 
-    let mut matched = false;
     let workspace_ref = RefCell::new(workspace);
     for command in nosman::command::commands().iter() {
         let match_res = command.matched_args(&workspace_ref.borrow(), &matches);
         match match_res {
             Some(matched_args) => {
                 let needs_workspace = (*command).needs_workspace();
-                workspace_ref.borrow().exit_if_required_but_not_found(needs_workspace);
-                
+                workspace_ref.borrow().ensure_ready_if_required(needs_workspace)?;
+
                 // Auto-rescan workspace if needed when workspace is required
                 if needs_workspace && workspace_ref.borrow().ready() {
-                    match workspace_ref.borrow_mut().auto_rescan_if_needed() {
-                        Ok(_rescan_result) => {
-                            // Auto-rescan completed successfully - no output needed
-                        },
-                        Err(e) => {
-                            print_error(&e);
-                            std::process::exit(1);
-                        }
-                    }
+                    workspace_ref.borrow_mut().auto_rescan_if_needed()?;
                 }
-                
-                match (*command).run(&mut workspace_ref.borrow_mut(), matches.subcommand_name(), matched_args) {
-                    Ok(_) => {
-                        // nothing
-                    },
-                    Err(e) => {
-                        print_error(&e);
-                        std::process::exit(1);
-                    }
-                };
-                matched = true;
-                break;
+
+                (*command).run(&mut workspace_ref.borrow_mut(), matches.subcommand_name(), matched_args)?;
+                return Ok(());
             }
             None => continue,
         };
     }
 
-    if !matched {
-        println!("{}", help_str.ansi());
-        std::process::exit(1);
-    }
+    println!("{}", help_str.ansi());
+    Err("No matching command found".into())
 }
