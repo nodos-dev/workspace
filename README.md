@@ -71,7 +71,7 @@ nos_get_module("nos.sys.vulkan" "6.7" NOS_SYS_VULKAN_TARGET)
 nos_add_plugin("MyPlugin" "${NOS_PLUGIN_SDK_TARGET};${NOS_SYS_VULKAN_TARGET}" "${CMAKE_CURRENT_SOURCE_DIR}/Include")
 
 # Optional: generate flatbuffers
-nos_generate_flatbuffers("Types" "${CMAKE_CURRENT_SOURCE_DIR}/Include/MyPlugin" "cpp" "${NOS_SDK_DIR}/Types" MyPlugin_generated)
+nos_generate_flatbuffers("Types" "${CMAKE_CURRENT_SOURCE_DIR}/Include/MyPlugin" "cpp" "${NOS_SDK_TYPES_DIR}" MyPlugin_generated)
 target_sources(MyPlugin PUBLIC ${MyPlugin_generated})
 ```
 

@@ -77,7 +77,7 @@ function(_nos_generate_plugin_target plugin_manifest_file_path plugin_name manif
 
 	_nos_get_custom_type_paths_from_json(${plugin_manifest_file_path} TYPE_FOLDERS)
 	if(TYPE_FOLDERS)
-		nos_generate_flatbuffers("${TYPE_FOLDERS}" "${plugin_root}/Include/${target_name}" "cpp" "${NOS_SDK_DIR}/Types;${found_dep_dirs}" ${target_name}_generated)
+		nos_generate_flatbuffers("${TYPE_FOLDERS}" "${plugin_root}/Include/${target_name}" "cpp" "${NOS_SDK_TYPES_DIR};${found_dep_dirs}" ${target_name}_generated)
 		list(APPEND plugin_dep_targets ${target_name}_generated)
 	endif()
 
