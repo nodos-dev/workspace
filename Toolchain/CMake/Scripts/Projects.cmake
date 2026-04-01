@@ -7,6 +7,12 @@ function(nos_generate_flatbuffers fbs_paths dst_folder out_language include_fold
 		nos_fatal_error("Flatbuffers compiler not found. Please set FLATC_EXECUTABLE variable.")
 	endif()
 
+	# Ensure NOS_SDK_TYPES_DIR is always included regardless of caller-provided paths
+	if(DEFINED NOS_SDK_TYPES_DIR)
+		list(APPEND include_folders "${NOS_SDK_TYPES_DIR}")
+		list(REMOVE_DUPLICATES include_folders)
+	endif()
+
 	list(APPEND fbs_files)
 	foreach (fbs_path ${fbs_paths})
 		if (EXISTS "${fbs_path}")
