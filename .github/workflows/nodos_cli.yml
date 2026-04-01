@@ -138,20 +138,29 @@ jobs:
         if: ${{ matrix.entry.rust_target != '' }}
         shell: bash
         run: |
-          if ! command -v aarch64-linux-gnu-gcc &> /dev/null; then
-            echo "::error::aarch64-linux-gnu-gcc is not installed. Please install it on the runner: sudo apt-get install gcc-aarch64-linux-gnu"
+          set -euo pipefail
+          rust_target="${{ matrix.entry.rust_target }}"
+          # Derive GNU toolchain prefix from Rust target triple (e.g. aarch64-unknown-linux-gnu -> aarch64-linux-gnu)
+          gcc_prefix=$(echo "$rust_target" | sed -E 's/-unknown//')
+          gcc="${gcc_prefix}-gcc"
+          if ! command -v "$gcc" &> /dev/null; then
+            echo "::error::${gcc} is not installed. Please install it on the runner (e.g. sudo apt-get install gcc-${gcc_prefix})"
             exit 1
           fi
-          aarch64-linux-gnu-gcc --version
-          rustup target add ${{ matrix.entry.rust_target }}
+          $gcc --version
+          rustup target add "$rust_target"
+          # Cargo linker env var: CARGO_TARGET_<UPPER_TARGET>_LINKER
+          upper_target=$(echo "$rust_target" | tr '[:lower:]-' '[:upper:]_')
+          echo "CARGO_TARGET_${upper_target}_LINKER=${gcc}" >> $GITHUB_ENV
+          # CC env var: CC_<target_with_underscores>
+          underscore_target=$(echo "$rust_target" | tr '-' '_')
+          echo "CC_${underscore_target}=${gcc}" >> $GITHUB_ENV
 
       - name: Build Nodos CLI
         shell: pwsh
         run: |
             $target = "${{ matrix.entry.rust_target }}"
             if ($target -ne "") {
-                $env:CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = "aarch64-linux-gnu-gcc"
-                $env:CC_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-gcc"
                 cargo build --release --target $target
             } else {
                 cargo build --release
