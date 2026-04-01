@@ -128,9 +128,9 @@ jobs:
           cd "./nodos-cli-${{ github.ref_name }}"
           git fetch origin
           git fetch --tags --force
+          git reset --hard
           git clean -ffd
           git checkout ${{ github.sha }}
-          git reset --hard
           git submodule update --init --recursive --depth 1
           git status
 
