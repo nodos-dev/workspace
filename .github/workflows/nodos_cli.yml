@@ -127,7 +127,7 @@ jobs:
           fi
           cd "./nodos-cli-${{ github.ref_name }}"
           git fetch origin
-          git fetch --tags
+          git fetch --tags --force
           git clean -ffd
           git checkout ${{ github.sha }}
           git reset --hard
