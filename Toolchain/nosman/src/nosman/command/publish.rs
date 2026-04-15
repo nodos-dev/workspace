@@ -251,6 +251,11 @@ impl PublishCommand {
                     // 1.3 and below plugins do not specify sdk_version, and we have to load the binary to get the API version.
                     // Node class names are not published.
                     else {
+                        if !workspace.ready() {
+                            return Err(Runtime { message: format!(
+                                "Package {} has no sdk_version in its manifest (legacy plugin). Detecting the API version requires loading the binary with workspace-resolved dependency search paths, but no workspace was found at {}. Run this command from within a workspace, or update the plugin manifest to include sdk_version.",
+                                name.as_ref().unwrap(), workspace.root.display()) });
+                        }
                         api_version_opt = Self::get_plugin_api_version_from_binary(verbose, package_type, &manifest, &abs_path, workspace)?;
                     }
                 }
@@ -553,6 +558,6 @@ impl Command for PublishCommand {
     }
 
     fn needs_workspace(&self) -> bool {
-        true
+        false
     }
 }

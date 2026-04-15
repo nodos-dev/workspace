@@ -215,6 +215,6 @@ impl Command for PublishBatchCommand {
     }
 
     fn needs_workspace(&self) -> bool {
-        true
+        false
     }
 }
