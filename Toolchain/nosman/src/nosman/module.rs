@@ -4,6 +4,7 @@ use crate::nosman::index::PackageType;
 use crate::nosman::platform::get_host_platform;
 use crate::nosman::workspace::Workspace;
 use crate::nosman::common;
+#[cfg(target_os = "windows")]
 use colored::Colorize;
 use libloading::Library;
 #[cfg(unix)]

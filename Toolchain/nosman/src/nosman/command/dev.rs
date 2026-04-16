@@ -428,9 +428,11 @@ impl DevStatusCommand {
         });
         pb.finish_and_clear();
 
-        // Sort: unchanged repos first, then changed
+        // Sort: unchanged repos first, then changed; lexicographic within each group
         let mut repos: Vec<_> = output_map_locked.into_inner().unwrap().into_iter().collect();
-        repos.sort_by_key(|(_, (_, _, has_changes))| *has_changes);
+        repos.sort_by(|(a_path, (_, _, a_changed)), (b_path, (_, _, b_changed))| {
+            a_changed.cmp(b_changed).then_with(|| a_path.cmp(b_path))
+        });
 
         for (path, (branch, status, has_changes)) in repos {
             if has_changes {
