@@ -91,8 +91,9 @@ macro(nos_find_plugin_sdk requested_sdk_version out_sdk_target out_sdk_dir)
 		get_filename_component(sdk_path "${sdk_manifest_path}" DIRECTORY)
 		set(${out_sdk_target} ${sdk_target_name})
 		set(${out_sdk_dir} ${sdk_path})
-	
+
 		set(FLATC_EXECUTABLE "${sdk_path}/Binaries/flatc" CACHE PATH "Path to the flatc executable" FORCE)
+		set(NOS_SDK_TYPES_DIR "${sdk_path}/Types" CACHE PATH "Path to the Nodos SDK types directory" FORCE)
 	else()
 		# For all nodos sdks, call `nodos sdk-info ${requested_sdk_version} plugin` and read the json if ret code is 0
 		if(NOT NOSMAN_EXECUTABLE)
@@ -133,8 +134,10 @@ macro(nos_find_plugin_sdk requested_sdk_version out_sdk_target out_sdk_dir)
 
 		if (${plugin_sdk_version} VERSION_GREATER_EQUAL "39.11.0")
 			set(FLATC_EXECUTABLE "${plugin_sdk_path}/Binaries/flatc" CACHE PATH "Path to the flatc executable" FORCE)
+			set(NOS_SDK_TYPES_DIR "${plugin_sdk_path}/Types" CACHE PATH "Path to the Nodos SDK types directory" FORCE)
 		else()
 			set(FLATC_EXECUTABLE "${plugin_sdk_path}/bin/flatc" CACHE PATH "Path to the flatc executable" FORCE)
+			set(NOS_SDK_TYPES_DIR "${plugin_sdk_path}/types" CACHE PATH "Path to the Nodos SDK types directory" FORCE)
 		endif()
 	endif()
 endmacro()
