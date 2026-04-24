@@ -373,6 +373,17 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 		LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL "${plugin_root}/Binaries"
 	)
 
+	if (NOT WIN32 AND NOT (NOS_PLUGIN_TYPE STREQUAL "INTERFACE"))
+		# Hide internals so dyld/ld can't merge weak symbols (template
+		# instantiations, Meyers-singleton guards, inline function copies)
+		# across mappings when the same plugin is loaded more than once in
+		# one process. `nosExportPlugin` stays visible via NOSAPI_ATTR.
+		set_target_properties(${NAME} PROPERTIES
+			C_VISIBILITY_PRESET hidden
+			CXX_VISIBILITY_PRESET hidden
+			VISIBILITY_INLINES_HIDDEN ON)
+	endif()
+
 	foreach(source IN LISTS source_files)
 		get_filename_component(source_path "${source}" PATH)
 		file(RELATIVE_PATH source_path_compact "${plugin_root}" "${source_path}")
