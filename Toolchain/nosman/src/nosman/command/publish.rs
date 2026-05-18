@@ -160,7 +160,9 @@ impl PublishCommand {
     pub fn publish(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, path: &PathBuf,
                    mut name: Option<String>, mut version: Option<String>, version_suffix: &str,
                    mut package_type: Option<PackageType>, release_tags: &Vec<String>,
-                   opt_target_platform: Option<&String>) -> Result<PackageIdentifier, CommandError> {
+                   opt_target_platform: Option<&String>,
+                   visibility: nodos_store_client::PackageVisibility,
+    ) -> Result<PackageIdentifier, CommandError> {
 
         let target_platform = match opt_target_platform {
             Some(platform_str) => Platform::from_str(platform_str).expect("Invalid target platform"),
@@ -440,6 +442,7 @@ impl PublishCommand {
                     combined_tags,
                     &target_platform.to_string(),
                     artifact_data,
+                    visibility,
                 )
                 .map_err(|e| Runtime { message: e.to_string() })?;
         }
@@ -451,10 +454,13 @@ impl PublishCommand {
     pub fn run_publish(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, path: &PathBuf,
                        name: Option<String>, version: Option<String>, version_suffix: &str,
                        package_type: Option<PackageType>, release_tags: &Vec<String>,
-                       opt_target_platform: Option<&String>) -> CommandResult {
-        let res = self.publish(workspace, dry_run, verbose, 
-                               path, name, version, 
-                               version_suffix, package_type, release_tags, opt_target_platform);
+                       opt_target_platform: Option<&String>,
+                       visibility: nodos_store_client::PackageVisibility,
+    ) -> CommandResult {
+        let res = self.publish(workspace, dry_run, verbose,
+                               path, name, version,
+                               version_suffix, package_type, release_tags, opt_target_platform,
+                               visibility);
         if res.is_err() {
             return Err(res.err().unwrap());
         }
@@ -523,6 +529,17 @@ pub fn get_cli() -> clap::Command {
             .help("Target architecture and operating system of the package to be published. If not provided, the current platform will be used.")
             .required(false)
         )
+        .arg(Arg::new("visibility")
+            .long("visibility")
+            .value_parser(clap::builder::PossibleValuesParser::new(["public", "private"]))
+            .default_value("public")
+            .help("Package visibility on first publish. 'public' lets anyone download; 'private' restricts downloads to namespace members and explicitly granted accounts. Ignored when the package already exists on the store (manage existing-package visibility from the Nodos Store dashboard).")
+            .required(false)
+        )
+}
+
+fn parse_visibility(value: &str) -> nodos_store_client::PackageVisibility {
+    nodos_store_client::PackageVisibility::from_str(value)
 }
 
 impl Command for PublishCommand {
@@ -543,6 +560,7 @@ impl Command for PublishCommand {
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
         let target_platform: Option<&String> = args.get_one::<String>("target_platform");
+        let visibility = parse_visibility(args.get_one::<String>("visibility").map(String::as_str).unwrap_or("public"));
         self.run_publish(
             workspace,
             *dry_run,
@@ -554,6 +572,7 @@ impl Command for PublishCommand {
             package_type,
             &release_tags,
             target_platform,
+            visibility,
         )
     }
 

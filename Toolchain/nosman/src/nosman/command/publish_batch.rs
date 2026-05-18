@@ -19,7 +19,9 @@ impl PublishBatchCommand {
     #[allow(clippy::too_many_arguments)]
     fn run_publish_batch(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, directory: &PathBuf,
                          version_suffix: &str, release_tags: &Vec<String>, opt_target_platform: Option<&String>,
-                         publish_all: bool, packages: Vec<&String>) -> CommandResult {
+                         publish_all: bool, packages: Vec<&String>,
+                         visibility: nodos_store_client::PackageVisibility,
+    ) -> CommandResult {
         if !directory.exists() {
             return Err(InvalidArgument { message: format!("Repo {} does not exist", directory.display()) });
         }
@@ -105,7 +107,8 @@ impl PublishBatchCommand {
         for package_root in to_be_published {
             let res = PublishCommand {}.publish(workspace, dry_run, verbose,
                                                 &package_root, None, None,
-                                                version_suffix, None, release_tags, Some(&target_platform.to_string()));
+                                                version_suffix, None, release_tags, Some(&target_platform.to_string()),
+                                                visibility);
             if let Ok(id) = res {
                 published.push(id);
             }
@@ -184,6 +187,13 @@ pub fn get_cli() -> clap::Command {
             .action(ArgAction::Append)
             .num_args(1..)
         )
+        .arg(Arg::new("visibility")
+            .long("visibility")
+            .value_parser(clap::builder::PossibleValuesParser::new(["public", "private"]))
+            .default_value("public")
+            .help("Visibility applied to packages created by this run. Existing packages keep their current visibility (manage from the Nodos Store dashboard).")
+            .required(false)
+        )
 }
 
 impl Command for PublishBatchCommand {
@@ -201,6 +211,9 @@ impl Command for PublishBatchCommand {
         let target_platform = args.get_one::<String>("target_platform");
         let publish_all = args.get_one::<bool>("publish_all").unwrap();
         let packages: Vec<&String> = args.get_many::<String>("packages").unwrap_or_default().collect();
+        let visibility = nodos_store_client::PackageVisibility::from_str(
+            args.get_one::<String>("visibility").map(String::as_str).unwrap_or("public"),
+        );
         self.run_publish_batch(
             workspace,
             *dry_run,
@@ -211,6 +224,7 @@ impl Command for PublishBatchCommand {
             target_platform,
             *publish_all,
             packages,
+            visibility,
         )
     }
 
