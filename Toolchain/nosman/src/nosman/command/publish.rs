@@ -114,6 +114,35 @@ impl PublishCommand {
         name.chars().all(|c| c == '.' || c == '_' || c.is_numeric() || c.is_ascii_lowercase())
     }
 
+    /// Resolve the changelog for a release: an explicit `--changelog` value
+    /// wins; otherwise a `CHANGELOG.md` in the package directory is used when
+    /// present. Returns `None` when neither is available, leaving the Nodos
+    /// Store to generate a changelog from the artifact diff.
+    fn resolve_changelog(changelog_arg: Option<String>, abs_path: &PathBuf) -> Option<String> {
+        if let Some(text) = changelog_arg {
+            println!("Using changelog from --changelog argument.");
+            return Some(text);
+        }
+        if abs_path.is_dir() {
+            let changelog_path = abs_path.join("CHANGELOG.md");
+            if changelog_path.exists() {
+                match std::fs::read_to_string(&changelog_path) {
+                    Ok(contents) => {
+                        println!("Using changelog from {}.", changelog_path.display());
+                        return Some(contents);
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: failed to read {}: {}. The Nodos Store will generate a changelog instead.",
+                            changelog_path.display(), e
+                        );
+                    }
+                }
+            }
+        }
+        None
+    }
+
     fn get_plugin_api_version_from_binary(verbose: bool, package_type: &PackageType, manifest: &serde_json::Value, manifest_dir: &PathBuf, workspace: &Workspace) -> Result<Option<SemVer>, CommandError> {
         let binary_path = get_resolved_binary_path(package_type, manifest, manifest_dir);
         if binary_path.is_err() {
@@ -162,6 +191,7 @@ impl PublishCommand {
                    mut package_type: Option<PackageType>, release_tags: &Vec<String>,
                    opt_target_platform: Option<&String>,
                    visibility: nodos_store_client::PackageVisibility,
+                   changelog_arg: Option<String>,
     ) -> Result<PackageIdentifier, CommandError> {
 
         let target_platform = match opt_target_platform {
@@ -412,6 +442,7 @@ impl PublishCommand {
                 name, version, target_platform
             );
         } else {
+            let changelog = Self::resolve_changelog(changelog_arg, &abs_path);
             let api_version = api_version_opt.as_ref().map(|v| nodos_store_client::ApiVersion {
                 major: v.major,
                 minor: v.minor,
@@ -443,6 +474,7 @@ impl PublishCommand {
                     &target_platform.to_string(),
                     artifact_data,
                     visibility,
+                    changelog,
                 )
                 .map_err(|e| Runtime { message: e.to_string() })?;
         }
@@ -456,11 +488,12 @@ impl PublishCommand {
                        package_type: Option<PackageType>, release_tags: &Vec<String>,
                        opt_target_platform: Option<&String>,
                        visibility: nodos_store_client::PackageVisibility,
+                       changelog: Option<String>,
     ) -> CommandResult {
         let res = self.publish(workspace, dry_run, verbose,
                                path, name, version,
                                version_suffix, package_type, release_tags, opt_target_platform,
-                               visibility);
+                               visibility, changelog);
         if res.is_err() {
             return Err(res.err().unwrap());
         }
@@ -529,6 +562,11 @@ pub fn get_cli() -> clap::Command {
             .help("Target architecture and operating system of the package to be published. If not provided, the current platform will be used.")
             .required(false)
         )
+        .arg(Arg::new("changelog")
+            .long("changelog")
+            .help("Changelog / release notes for this version. If omitted, a CHANGELOG.md file in the package directory is used when present; otherwise the Nodos Store generates a changelog from the artifact diff.")
+            .required(false)
+        )
         .arg(Arg::new("visibility")
             .long("visibility")
             .value_parser(clap::builder::PossibleValuesParser::new(["public", "private"]))
@@ -561,6 +599,7 @@ impl Command for PublishCommand {
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
         let target_platform: Option<&String> = args.get_one::<String>("target_platform");
         let visibility = parse_visibility(args.get_one::<String>("visibility").map(String::as_str).unwrap_or("public"));
+        let changelog = args.get_one::<String>("changelog").cloned();
         self.run_publish(
             workspace,
             *dry_run,
@@ -573,6 +612,7 @@ impl Command for PublishCommand {
             &release_tags,
             target_platform,
             visibility,
+            changelog,
         )
     }
 

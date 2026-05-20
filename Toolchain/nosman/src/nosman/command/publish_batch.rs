@@ -105,10 +105,12 @@ impl PublishBatchCommand {
         let mut published = Vec::new();
         let mut rollback = false;
         for package_root in to_be_published {
+            // No `--changelog` for batch publishes; `publish` auto-picks each
+            // package's CHANGELOG.md when present.
             let res = PublishCommand {}.publish(workspace, dry_run, verbose,
                                                 &package_root, None, None,
                                                 version_suffix, None, release_tags, Some(&target_platform.to_string()),
-                                                visibility);
+                                                visibility, None);
             if let Ok(id) = res {
                 published.push(id);
             }
