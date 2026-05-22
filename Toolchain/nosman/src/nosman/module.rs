@@ -176,8 +176,13 @@ pub fn get_resolved_binary_path(package_type: &PackageType, manifest: &serde_jso
 pub fn load_module(verbose: bool, package_type: &PackageType, manifest: &serde_json::Value, manifest_file_parent: PathBuf, workspace: &Workspace) -> Result<Library, CommandError> {
     let binary_path = get_resolved_binary_path(package_type, manifest, &manifest_file_parent)?;
     let module_dir = manifest_file_parent;
-    let binary_path = binary_path.into_os_string();
     let mut additional_search_paths: Vec<PathBuf> = Vec::new();
+    // Search the binary's own directory, so plugins that ship native
+    // dependencies (e.g. a bundled SDK runtime DLL) next to their binary load.
+    if let Some(binary_dir) = binary_path.parent() {
+        additional_search_paths.push(binary_dir.to_path_buf());
+    }
+    let binary_path = binary_path.into_os_string();
     for path_str in manifest["additional_search_paths"].as_array().unwrap_or(&vec![]).iter() {
         let path = module_dir.join(path_str.as_str().unwrap());
         additional_search_paths.push(path);
