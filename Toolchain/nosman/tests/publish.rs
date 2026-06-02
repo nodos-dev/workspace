@@ -38,6 +38,7 @@ fn publish_dry_run_without_workspace_for_modern_plugin() {
             &vec![], None,
             nodos_store_client::PackageVisibility::Public,
             None,
+            false, false, false,
         )
         .expect("dry-run publish should succeed outside a workspace for a 1.4+ plugin");
 }
@@ -57,6 +58,7 @@ fn publish_legacy_plugin_without_workspace_errors() {
         &vec![], None,
         nodos_store_client::PackageVisibility::Public,
         None,
+        false, false, false,
     );
     let err = res.expect_err("legacy plugin publish without workspace should fail");
     let msg = format!("{}", err);

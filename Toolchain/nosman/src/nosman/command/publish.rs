@@ -19,7 +19,7 @@ use zip::write::{SimpleFileOptions};
 use globwalk::{GlobWalkerBuilder};
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
-use crate::nosman::{common, constants};
+use crate::nosman::{common, constants, git};
 use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::module::{get_resolved_binary_path, load_module};
 use crate::nosman::package::PackageIdentifier;
@@ -50,11 +50,55 @@ impl GlobsOrPlatformSpecificGlobs {
     }
 }
 
+fn default_true() -> bool { true }
+
+/// `.nospub` `changelog` block. When publishing without an explicit
+/// `--changelog` or `CHANGELOG.md`, nosman derives release notes from the git
+/// commit log of this package since its previous release tag.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ChangelogOptions {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Glob used to find the previous release tag (passed to `git describe
+    /// --match`). The tokens `{name}` and `{target}` are substituted with the
+    /// package name and target platform. Defaults to
+    /// `release-{name}-*-{target}`.
+    #[serde(default)]
+    pub previous_tag_glob: Option<String>,
+}
+
+impl Default for ChangelogOptions {
+    fn default() -> Self {
+        ChangelogOptions { enabled: true, previous_tag_glob: None }
+    }
+}
+
+/// `.nospub` `tag` block. After a successful publish nosman creates (and by
+/// default pushes) a `release-<name>-<version>-<target>` git tag so the next
+/// publish has a baseline for changelog generation.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TagOptions {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub push: bool,
+}
+
+impl Default for TagOptions {
+    fn default() -> Self {
+        TagOptions { enabled: true, push: true }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PublishOptionsFileContent {
     #[serde(alias = "globs")]
     pub release_globs: GlobsOrPlatformSpecificGlobs,
     pub target_platforms: Option<Vec<String>>,
+    #[serde(default)]
+    pub changelog: Option<ChangelogOptions>,
+    #[serde(default)]
+    pub tag: Option<TagOptions>,
 }
 
 impl PublishOptionsFileContent {
@@ -75,13 +119,15 @@ impl PublishOptionsFileContent {
         (nospub, found)
     }
     pub fn empty() -> PublishOptionsFileContent {
-        PublishOptionsFileContent { release_globs: GlobsOrPlatformSpecificGlobs::Globs(vec![]), target_platforms: None }
+        PublishOptionsFileContent { release_globs: GlobsOrPlatformSpecificGlobs::Globs(vec![]), target_platforms: None, changelog: None, tag: None }
     }
 }
 
 pub struct PublishOptions {
     pub(crate) release_globs: Vec<String>,
     pub(crate) target_platforms: Option<Vec<String>>,
+    pub(crate) changelog: ChangelogOptions,
+    pub(crate) tag: TagOptions,
 }
 
 impl PublishOptions {
@@ -93,16 +139,26 @@ impl PublishOptions {
         let mut options = PublishOptions::empty();
         options.release_globs = GlobsOrPlatformSpecificGlobs::get_resolved_globs(&nospub.release_globs, &get_host_platform());
         options.target_platforms = nospub.target_platforms;
+        options.changelog = nospub.changelog.unwrap_or_default();
+        options.tag = nospub.tag.unwrap_or_default();
         (options, true)
     }
     pub fn empty() -> PublishOptions {
-        PublishOptions { release_globs: vec![], target_platforms: None }
+        PublishOptions { release_globs: vec![], target_platforms: None, changelog: ChangelogOptions::default(), tag: TagOptions::default() }
     }
     pub fn all() -> PublishOptions {
         let mut options = PublishOptions::empty();
         options.release_globs = vec!["**".to_string()];
         options
     }
+}
+
+/// Result of a successful publish: the published package identifier and the
+/// git release tag created for it (if any), so callers can roll the tag back.
+#[derive(Debug)]
+pub struct PublishOutcome {
+    pub id: PackageIdentifier,
+    pub created_tag: Option<String>,
 }
 
 pub struct PublishCommand {
@@ -114,11 +170,13 @@ impl PublishCommand {
         name.chars().all(|c| c == '.' || c == '_' || c.is_numeric() || c.is_ascii_lowercase())
     }
 
-    /// Resolve the changelog for a release: an explicit `--changelog` value
-    /// wins; otherwise a `CHANGELOG.md` in the package directory is used when
-    /// present. Returns `None` when neither is available, leaving the Nodos
+    /// Resolve the changelog for a release. Priority: an explicit `--changelog`
+    /// value, then a `CHANGELOG.md` in the package directory, then a changelog
+    /// generated from the git commit log of this package since its previous
+    /// release tag. Returns `None` when none are available, leaving the Nodos
     /// Store to generate a changelog from the artifact diff.
-    fn resolve_changelog(changelog_arg: Option<String>, abs_path: &PathBuf) -> Option<String> {
+    fn resolve_changelog(changelog_arg: Option<String>, abs_path: &PathBuf, name: &str,
+                         target_platform: &Platform, cfg: &ChangelogOptions) -> Option<String> {
         if let Some(text) = changelog_arg {
             println!("Using changelog from --changelog argument.");
             return Some(text);
@@ -133,14 +191,95 @@ impl PublishCommand {
                     }
                     Err(e) => {
                         eprintln!(
-                            "Warning: failed to read {}: {}. The Nodos Store will generate a changelog instead.",
+                            "Warning: failed to read {}: {}. Falling back to git/artifact changelog.",
                             changelog_path.display(), e
                         );
                     }
                 }
             }
         }
-        None
+        Self::generate_git_changelog(abs_path, name, target_platform, cfg)
+    }
+
+    /// Best-effort fetch of tags (and full history when the clone is shallow)
+    /// so changelog baseline detection and release-tag de-duplication work even
+    /// under CI's shallow `--depth 1` checkouts. Failures are warnings only.
+    pub fn ensure_tags_fetched(abs_path: &PathBuf, verbose: bool) {
+        if !git::is_inside_work_tree(abs_path) {
+            return;
+        }
+        let unshallow = git::is_shallow(abs_path);
+        match git::fetch_tags(abs_path, unshallow) {
+            Ok(()) => {
+                if verbose {
+                    println!("Fetched git tags{}.", if unshallow { " and unshallowed history" } else { "" });
+                }
+            }
+            Err(e) => eprintln!("{}", format!("Warning: could not fetch git tags ({}); changelog/tagging may be incomplete.", e).yellow()),
+        }
+    }
+
+    /// Build a changelog from the git commit log of this package since its
+    /// previous release tag. Returns `None` when generation is not possible
+    /// (disabled, not a git repo, no previous tag, or no new commits), in which
+    /// case the Nodos Store falls back to the artifact diff.
+    fn generate_git_changelog(abs_path: &PathBuf, name: &str, target_platform: &Platform,
+                              cfg: &ChangelogOptions) -> Option<String> {
+        if !cfg.enabled {
+            return None;
+        }
+        if !git::is_inside_work_tree(abs_path) {
+            return None;
+        }
+        let glob = cfg.previous_tag_glob.clone()
+            .map(|g| g.replace("{name}", name).replace("{target}", &target_platform.to_string()))
+            .unwrap_or_else(|| format!("release-{}-*-{}", name, target_platform));
+        let baseline = git::describe_latest_tag(abs_path, &glob)?;
+        let range = format!("{}..HEAD", baseline);
+        let subjects = git::log_subjects(abs_path, &range, abs_path);
+        if subjects.is_empty() {
+            return None;
+        }
+        println!("Using git-generated changelog ({} commit(s) since {}).", subjects.len(), baseline);
+        let mut out = format!("## Changes since {}\n\n", baseline);
+        for s in subjects {
+            out.push_str(&s);
+            out.push('\n');
+        }
+        Some(out)
+    }
+
+    /// Tag the current HEAD as `release-<name>-<version>-<target>` and, when
+    /// `push` is set, push it to `origin`. Returns the created tag name (for
+    /// rollback), or `None` when nothing was created. A push failure is a
+    /// warning only — the release has already been published.
+    fn create_release_tag(abs_path: &PathBuf, name: &str, version: &str,
+                          target_platform: &Platform, push: bool, verbose: bool) -> Option<String> {
+        if !git::is_inside_work_tree(abs_path) {
+            if verbose {
+                println!("Not inside a git work tree; skipping release tag.");
+            }
+            return None;
+        }
+        let tag = format!("release-{}-{}-{}", name, version, target_platform);
+        if git::tag_exists(abs_path, &tag) {
+            println!("{}", format!("Git tag {} already exists; leaving it as is.", tag).yellow());
+            return None;
+        }
+        match git::create_annotated_tag(abs_path, &tag, &format!("{} {}", name, version)) {
+            Ok(()) => println!("{}", format!("Created git tag {}", tag).green()),
+            Err(e) => {
+                eprintln!("{}", format!("Warning: failed to create git tag {}: {}", tag, e).yellow());
+                return None;
+            }
+        }
+        if push {
+            match git::push_tag(abs_path, &tag) {
+                Ok(()) => println!("{}", format!("Pushed git tag {}", tag).green()),
+                Err(e) => eprintln!("{}", format!("Warning: failed to push git tag {} (release already published): {}", tag, e).yellow()),
+            }
+        }
+        Some(tag)
     }
 
     fn get_plugin_api_version_from_binary(verbose: bool, package_type: &PackageType, manifest: &serde_json::Value, manifest_dir: &PathBuf, workspace: &Workspace) -> Result<Option<SemVer>, CommandError> {
@@ -192,7 +331,8 @@ impl PublishCommand {
                    opt_target_platform: Option<&String>,
                    visibility: nodos_store_client::PackageVisibility,
                    changelog_arg: Option<String>,
-    ) -> Result<PackageIdentifier, CommandError> {
+                   create_tag: bool, push_tag: bool, fetch_tags: bool,
+    ) -> Result<PublishOutcome, CommandError> {
 
         let target_platform = match opt_target_platform {
             Some(platform_str) => Platform::from_str(platform_str).expect("Invalid target platform"),
@@ -436,13 +576,20 @@ impl PublishCommand {
 
         println!("Publishing {}-{} to Nodos Store", name, version);
 
+        let mut created_tag = None;
         if dry_run {
             println!(
                 "Would publish {} {} for {}",
                 name, version, target_platform
             );
+            if create_tag && publish_options.tag.enabled {
+                println!("Would create git tag release-{}-{}-{}", name, version, target_platform);
+            }
         } else {
-            let changelog = Self::resolve_changelog(changelog_arg, &abs_path);
+            if fetch_tags {
+                Self::ensure_tags_fetched(&abs_path, verbose);
+            }
+            let changelog = Self::resolve_changelog(changelog_arg, &abs_path, &name, &target_platform, &publish_options.changelog);
             let api_version = api_version_opt.as_ref().map(|v| nodos_store_client::ApiVersion {
                 major: v.major,
                 minor: v.minor,
@@ -477,9 +624,14 @@ impl PublishCommand {
                     changelog,
                 )
                 .map_err(|e| Runtime { message: e.to_string() })?;
+
+            if create_tag && publish_options.tag.enabled {
+                created_tag = Self::create_release_tag(&abs_path, &name, &version, &target_platform,
+                                                       push_tag && publish_options.tag.push, verbose);
+            }
         }
         println!("{}", format!("Release {}-{} created successfully", name, version).green());
-        Ok(PackageIdentifier { name, version })
+        Ok(PublishOutcome { id: PackageIdentifier { name, version }, created_tag })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -489,11 +641,12 @@ impl PublishCommand {
                        opt_target_platform: Option<&String>,
                        visibility: nodos_store_client::PackageVisibility,
                        changelog: Option<String>,
+                       create_tag: bool, push_tag: bool, fetch_tags: bool,
     ) -> CommandResult {
         let res = self.publish(workspace, dry_run, verbose,
                                path, name, version,
                                version_suffix, package_type, release_tags, opt_target_platform,
-                               visibility, changelog);
+                               visibility, changelog, create_tag, push_tag, fetch_tags);
         if res.is_err() {
             return Err(res.err().unwrap());
         }
@@ -574,6 +727,27 @@ pub fn get_cli() -> clap::Command {
             .help("Package visibility on first publish. 'public' lets anyone download; 'private' restricts downloads to namespace members and explicitly granted accounts. Ignored when the package already exists on the store (manage existing-package visibility from the Nodos Store dashboard).")
             .required(false)
         )
+        .arg(Arg::new("no_tag")
+            .action(ArgAction::SetTrue)
+            .long("no-tag")
+            .help("Do not create a release-<name>-<version>-<target> git tag after a successful publish.")
+            .num_args(0)
+            .required(false)
+        )
+        .arg(Arg::new("no_push_tag")
+            .action(ArgAction::SetTrue)
+            .long("no-push-tag")
+            .help("Create the release git tag locally but do not push it to the remote.")
+            .num_args(0)
+            .required(false)
+        )
+        .arg(Arg::new("no_fetch_tags")
+            .action(ArgAction::SetTrue)
+            .long("no-fetch-tags")
+            .help("Do not fetch tags / unshallow the repo before generating the changelog. By default nosman fetches tags (and unshallows a shallow clone) so changelog generation works under CI's shallow checkouts.")
+            .num_args(0)
+            .required(false)
+        )
 }
 
 fn parse_visibility(value: &str) -> nodos_store_client::PackageVisibility {
@@ -600,6 +774,9 @@ impl Command for PublishCommand {
         let target_platform: Option<&String> = args.get_one::<String>("target_platform");
         let visibility = parse_visibility(args.get_one::<String>("visibility").map(String::as_str).unwrap_or("public"));
         let changelog = args.get_one::<String>("changelog").cloned();
+        let create_tag = !*args.get_one::<bool>("no_tag").unwrap();
+        let push_tag = !*args.get_one::<bool>("no_push_tag").unwrap();
+        let fetch_tags = !*args.get_one::<bool>("no_fetch_tags").unwrap();
         self.run_publish(
             workspace,
             *dry_run,
@@ -613,6 +790,9 @@ impl Command for PublishCommand {
             target_platform,
             visibility,
             changelog,
+            create_tag,
+            push_tag,
+            fetch_tags,
         )
     }
 

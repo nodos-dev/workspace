@@ -4,7 +4,7 @@ use colored::Colorize;
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument};
 use crate::nosman::command::publish::{PublishCommand, PublishOptions};
-use crate::nosman::constants;
+use crate::nosman::{constants, git};
 
 use crate::nosman::command::unpublish::UnpublishCommand;
 use crate::nosman::index::SemVer;
@@ -21,6 +21,7 @@ impl PublishBatchCommand {
                          version_suffix: &str, release_tags: &Vec<String>, opt_target_platform: Option<&String>,
                          publish_all: bool, packages: Vec<&String>,
                          visibility: nodos_store_client::PackageVisibility,
+                         create_tag: bool, push_tag: bool, fetch_tags: bool,
     ) -> CommandResult {
         if !directory.exists() {
             return Err(InvalidArgument { message: format!("Repo {} does not exist", directory.display()) });
@@ -102,17 +103,22 @@ impl PublishBatchCommand {
             println!("{}", "No packages need publishing".yellow());
             return Ok(());
         }
+        // Fetch tags / unshallow once for the whole repo here, so each
+        // per-package publish below can skip it (fetch_tags = false).
+        if fetch_tags && !dry_run {
+            PublishCommand::ensure_tags_fetched(&directory, verbose);
+        }
         let mut published = Vec::new();
         let mut rollback = false;
         for package_root in to_be_published {
             // No `--changelog` for batch publishes; `publish` auto-picks each
-            // package's CHANGELOG.md when present.
+            // package's CHANGELOG.md or git commit log when present.
             let res = PublishCommand {}.publish(workspace, dry_run, verbose,
                                                 &package_root, None, None,
                                                 version_suffix, None, release_tags, Some(&target_platform.to_string()),
-                                                visibility, None);
-            if let Ok(id) = res {
-                published.push(id);
+                                                visibility, None, create_tag, push_tag, false);
+            if let Ok(outcome) = res {
+                published.push(outcome);
             }
             else {
                 println!("{}", format!("Failed to publish package at {:?}: {}", package_root, res.err().unwrap()).red());
@@ -122,8 +128,12 @@ impl PublishBatchCommand {
         }
         if rollback {
             println!("{}", "Rolling back published packages".red());
-            for id in published {
-                UnpublishCommand {}.run_unpublish(workspace, dry_run, false, &id.name, Option::from(&id.version))?
+            for outcome in published {
+                UnpublishCommand {}.run_unpublish(workspace, dry_run, false, &outcome.id.name, Option::from(&outcome.id.version))?;
+                if let Some(tag) = &outcome.created_tag {
+                    println!("{}", format!("Deleting git tag {}", tag).red());
+                    git::delete_tag(&directory, tag, push_tag);
+                }
             }
             return Err(InvalidArgument { message: "Failed to publish all packages".to_string() });
         }
@@ -196,6 +206,27 @@ pub fn get_cli() -> clap::Command {
             .help("Visibility applied to packages created by this run. Existing packages keep their current visibility (manage from the Nodos Store dashboard).")
             .required(false)
         )
+        .arg(Arg::new("no_tag")
+            .action(ArgAction::SetTrue)
+            .long("no-tag")
+            .help("Do not create release-<name>-<version>-<target> git tags after successful publishes.")
+            .num_args(0)
+            .required(false)
+        )
+        .arg(Arg::new("no_push_tag")
+            .action(ArgAction::SetTrue)
+            .long("no-push-tag")
+            .help("Create release git tags locally but do not push them to the remote.")
+            .num_args(0)
+            .required(false)
+        )
+        .arg(Arg::new("no_fetch_tags")
+            .action(ArgAction::SetTrue)
+            .long("no-fetch-tags")
+            .help("Do not fetch tags / unshallow the repo before generating changelogs. By default nosman fetches tags (and unshallows a shallow clone) so changelog generation works under CI's shallow checkouts.")
+            .num_args(0)
+            .required(false)
+        )
 }
 
 impl Command for PublishBatchCommand {
@@ -216,6 +247,9 @@ impl Command for PublishBatchCommand {
         let visibility = nodos_store_client::PackageVisibility::from_str(
             args.get_one::<String>("visibility").map(String::as_str).unwrap_or("public"),
         );
+        let create_tag = !*args.get_one::<bool>("no_tag").unwrap();
+        let push_tag = !*args.get_one::<bool>("no_push_tag").unwrap();
+        let fetch_tags = !*args.get_one::<bool>("no_fetch_tags").unwrap();
         self.run_publish_batch(
             workspace,
             *dry_run,
@@ -227,6 +261,9 @@ impl Command for PublishBatchCommand {
             *publish_all,
             packages,
             visibility,
+            create_tag,
+            push_tag,
+            fetch_tags,
         )
     }
 

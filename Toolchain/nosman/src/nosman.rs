@@ -12,3 +12,4 @@ pub mod cli;
 pub mod package;
 mod plugin;
 pub mod lang_tool;
+pub mod git;
