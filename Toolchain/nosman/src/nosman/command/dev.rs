@@ -213,7 +213,7 @@ impl DevPullCommand {
             // Update progress counter
             let mut count = completed_count.lock().unwrap();
             *count += 1;
-            pb.set_message(format!("Pulling {} ({}/{})...", path.display(), *count, total_count));
+            pb.set_message(format!("({}/{}) Pulling {}", *count, total_count, path.display()));
         });
         
         pb.finish_and_clear();
