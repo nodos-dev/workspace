@@ -3,6 +3,7 @@ pub mod create;
 mod deinit;
 mod depend;
 pub mod dev;
+pub mod engine;
 mod extension;
 pub mod get;
 pub mod info;
@@ -94,6 +95,10 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(dev::DevBuildCommand {}),
         Box::new(dev::DevInitCommand {}),
         Box::new(launch::LaunchCommand {}),
+        Box::new(engine::EngineLaunchCommand {}),
+        Box::new(engine::EngineStopCommand {}),
+        Box::new(engine::EngineStatusCommand {}),
+        Box::new(engine::EngineRestartCommand {}),
         Box::new(extension::Extension {}),
         Box::new(depend::DependCommand {}),
         Box::new(test::TestCommand {}),
@@ -129,6 +134,7 @@ pub fn register_cli(app: clap::Command) -> clap::Command {
         .subcommand(node::get_cli())
         .subcommand(depend::get_cli())
         .subcommand(launch::get_cli())
+        .subcommand(engine::get_cli())
         .subcommand(dev::get_cli())
         .subcommand(test::get_cli())
         .subcommand(auth::get_cli())

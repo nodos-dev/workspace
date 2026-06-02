@@ -86,7 +86,7 @@ impl LaunchCommand {
 
 pub fn get_cli() -> clap::Command {
     clap::Command::new("launch")
-        .about("Launch Nodos")
+        .about("Launch Nodos (alias of 'engine launch')")
 }
 
 impl Command for LaunchCommand {
