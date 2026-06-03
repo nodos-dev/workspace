@@ -1,7 +1,16 @@
 [package]
 name = "nosman"
-version = "0.14.0"
+version = "0.14.1"
 edition = "2021"
+description = "Nodos Package/Module Manager: a command-line tool to install, upgrade, configure, and remove modules from a Nodos system."
+license = "MIT"
+repository = "https://github.com/nodos-dev/workspace"
+homepage = "https://nodos.dev"
+readme = "README.md"
+keywords = ["nodos", "package-manager", "cli", "module", "package"]
+categories = ["command-line-utilities", "development-tools"]
+# data/cmake-toolchain is gitignored (vendored by build.rs); `include` ships it.
+include = ["src/**/*", "data/**/*", "examples/**/*", "build.rs", "Cargo.toml", "README.md", "LICENSE"]
 
 [profile.release]
 opt-level = 'z'     # Optimize for size

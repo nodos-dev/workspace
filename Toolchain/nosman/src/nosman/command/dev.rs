@@ -108,7 +108,9 @@ pub fn get_cli() -> clap::Command {
         )
 }
 
-static CMAKE_TOOLCHAIN_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../CMake");
+// Embeds the vendored copy under data/ so it ships in published crates.
+// build.rs re-syncs this from the canonical ../CMake whenever that source is present.
+static CMAKE_TOOLCHAIN_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/data/cmake-toolchain");
 
 /// Recursively scans directories for git repositories
 fn find_git_repositories(dirs: Vec<PathBuf>) -> Result<Vec<PathBuf>, CommandError> {
