@@ -399,7 +399,7 @@ impl DevStatusCommand {
         let git_dirs = find_git_repositories(dirs)?;
         pb.set_message("Scanning...");
         // Mutex locked mutable output map
-        let output_map_locked = Mutex::new(HashMap::<PathBuf, (String, String, bool)>::new());
+        let output_map_locked = Mutex::new(HashMap::<PathBuf, (String, String, u32, bool)>::new());
         git_dirs.par_iter().for_each(|path| {
             // Get current branch
             let branch = std::process::Command::new("git")
@@ -423,26 +423,47 @@ impl DevStatusCommand {
                 .output()
                 .expect("Failed to run git status");
             let status_str = String::from_utf8_lossy(&status.stdout).to_string();
-            let has_changes = !status_str.trim().is_empty();
+
+            // Count commits ahead of upstream (unpushed). Empty if no upstream is set.
+            let ahead = std::process::Command::new("git")
+                .arg("rev-list")
+                .arg("--count")
+                .arg("@{upstream}..HEAD")
+                .current_dir(&path)
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<u32>().ok())
+                .unwrap_or(0);
+
+            let has_changes = !status_str.trim().is_empty() || ahead > 0;
 
             let mut output_map = output_map_locked.lock().unwrap();
-            output_map.insert(path.clone(), (branch_name, status_str, has_changes));
+            output_map.insert(path.clone(), (branch_name, status_str, ahead, has_changes));
         });
         pb.finish_and_clear();
 
         // Sort: unchanged repos first, then changed; lexicographic within each group
         let mut repos: Vec<_> = output_map_locked.into_inner().unwrap().into_iter().collect();
-        repos.sort_by(|(a_path, (_, _, a_changed)), (b_path, (_, _, b_changed))| {
+        repos.sort_by(|(a_path, (_, _, _, a_changed)), (b_path, (_, _, _, b_changed))| {
             a_changed.cmp(b_changed).then_with(|| a_path.cmp(b_path))
         });
 
-        for (path, (branch, status, has_changes)) in repos {
+        for (path, (branch, status, ahead, has_changes)) in repos {
             if has_changes {
                 println!(
                     "{} ({}):",
                     path.display().to_string().green().bold(),
                     branch.cyan()
                 );
+
+                if ahead > 0 {
+                    println!("{}", format!(
+                        "{} commit{} ahead of upstream",
+                        ahead,
+                        if ahead == 1 { "" } else { "s" }
+                    ).yellow());
+                }
 
                 for line in status.lines() {
                     let line = line.trim_end();
