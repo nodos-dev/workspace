@@ -354,10 +354,7 @@ impl PublishCommand {
         let mut api_version_opt: Option<SemVer> = None;
 
         let mut dependencies: Option<Vec<PackageIdentifier>> = None;
-        let mut category: Option<String> = None;
         let mut package_tags: Option<Vec<String>> = None;
-        let mut display_name: Option<String> = None;
-        let mut description: Option<String> = None;
         let mut node_class_names: Vec<String> = vec![];
 
         // If path is a directory, search for a manifest file
@@ -391,8 +388,8 @@ impl PublishCommand {
                 let manifest: serde_json::Value = res.unwrap();
                 name = Some(manifest["info"]["id"]["name"].as_str().unwrap_or_else(|| panic!("Package manifest file {:?} must contain info.id.name field!", manifest_file)).to_string());
                 version = Some(manifest["info"]["id"]["version"].as_str().unwrap_or_else(|| panic!("Package manifest file {:?} must contain info.id.version field!", manifest_file)).to_string());
-                display_name = manifest["info"]["display_name"].as_str().map(|s| s.to_string());
-                description = manifest["info"]["description"].as_str().map(|s| s.to_string());
+                // display_name/description/category are store-owned metadata and
+                // are intentionally not read from the manifest or sent on publish.
                 let dependencies_json = manifest["info"]["dependencies"].as_array();
                 if let Some(deps_json) = dependencies_json {
                     let mut deps = vec![];
@@ -403,7 +400,6 @@ impl PublishCommand {
                     }
                     dependencies = Some(deps);
                 }
-                category = manifest["info"]["category"].as_str().map(|s| s.to_string());
                 package_tags = manifest["info"]["tags"].as_array().map(|a| a.iter().map(|v| v.as_str().unwrap().to_string()).collect());
                 if package_type.is_plugin() {
                     let sdk_version = manifest["sdk_version"].as_str().map(|s| s.to_string());
@@ -447,9 +443,6 @@ impl PublishCommand {
         let name = name.unwrap();
         let version = version.unwrap() + version_suffix;
         let tag = format!("{}-{}-{}", name, version, target_platform);
-        let display_name = display_name.unwrap_or_else(|| name.clone());
-        let description = description.unwrap_or_else(|| format!("Package {}", name));
-        let category = category.unwrap_or_else(|| "General".to_string());
         let dependencies = dependencies.unwrap_or_default();
         let mut combined_tags = package_tags.unwrap_or_default();
         for release_tag in release_tags {
@@ -610,10 +603,7 @@ impl PublishCommand {
             workspace.authenticated_store_client_mut()?
                 .publish_release(
                     &name,
-                    &display_name,
-                    &description,
                     &package_type.to_string(),
-                    &category,
                     &version,
                     api_version.as_ref(),
                     deps,
