@@ -12,6 +12,7 @@ pub (crate) static MANIFEST_EXT_TO_PACKAGE_TYPE: phf::Map<&'static str, PackageT
     "noscfg" => PackageType::Plugin,
     "nossys" => PackageType::Subsystem,
     "nospackage" => PackageType::Generic,
+    "nosengine" => PackageType::Nodos,
 };
 
 pub fn get_package_manifest_file(folder: &PathBuf) -> Result<Option<(PackageType, PathBuf)>, String> {
