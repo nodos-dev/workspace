@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::PathBuf;
@@ -112,28 +113,41 @@ pub fn get_cli() -> clap::Command {
 // build.rs re-syncs this from the canonical ../CMake whenever that source is present.
 static CMAKE_TOOLCHAIN_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/data/cmake-toolchain");
 
+/// Canonicalizes a path, falling back to the original if it cannot be resolved.
+fn canonicalize_or_self(path: &PathBuf) -> PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| path.clone())
+}
+
 /// Recursively scans directories for git repositories
 fn find_git_repositories(dirs: Vec<PathBuf>) -> Result<Vec<PathBuf>, CommandError> {
     let mut git_dirs = Vec::new();
+    // Default scan dirs overlap (e.g. "." already contains "Engine"/"Module"), so the same
+    // repo can be reached through different paths ("./Engine/foo" vs "Engine/foo"). Dedup on the
+    // canonical path so each repo is reported once.
+    let mut seen = HashSet::new();
     for dir in dirs {
         let mut stack = Vec::new();
         stack.push(dir);
         while let Some(dir) = stack.pop() {
             if dir.join(".git").is_dir() {
-                git_dirs.push(dir);
+                if seen.insert(canonicalize_or_self(&dir)) {
+                    git_dirs.push(dir);
+                }
                 continue;
             }
             let read_dir = std::fs::read_dir(&dir).map_err(|e| CommandError::Runtime {
                 message: format!("Failed to read directory {}: {}", dir.display(), e)
             })?;
-            
+
             for entry in read_dir {
                 let entry = entry.map_err(|e| CommandError::Runtime {
                     message: format!("Failed to get directory entry: {}", e)
                 })?;
                 let path = entry.path();
                 if path.is_dir() && path.join(".git").is_dir() {
-                    git_dirs.push(path);
+                    if seen.insert(canonicalize_or_self(&path)) {
+                        git_dirs.push(path);
+                    }
                 } else if path.is_dir() {
                     stack.push(path);
                 }
