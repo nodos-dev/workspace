@@ -448,12 +448,15 @@ impl Workspace {
     }
 
     /// Downloads and extracts a store artifact into `target`.
+    ///
+    /// Uses the authenticated client so private artifacts the signed-in user is
+    /// entitled to resolve to a download instead of a not-found response.
     pub fn download_and_extract_artifact(
         &mut self,
         artifact_id: i64,
         target: &std::path::Path,
     ) -> CommandResult {
-        self.store_client()?
+        self.authenticated_store_client_mut()?
             .install_artifact(artifact_id, target)
             .map_err(|e| CommandError::Runtime {
                 message: format!("Failed to install artifact: {}", e),

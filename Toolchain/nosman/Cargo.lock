@@ -1491,9 +1491,9 @@ dependencies = [
 
 [[package]]
 name = "nodos-store-client"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8a02b048bf9fa5a6dbd10434d56736e30c45de32701d91346597150e3e52c6f"
+checksum = "ce53cab12f6ca23aac81a606cf51a6a72526aa142f3a68c2d3ed573ea32540da"
 dependencies = [
  "chrono",
  "flate2",
@@ -1519,7 +1519,7 @@ dependencies = [
 
 [[package]]
 name = "nosman"
-version = "0.14.4"
+version = "0.14.5"
 dependencies = [
  "anyhow",
  "bitflags",
