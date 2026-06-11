@@ -217,7 +217,7 @@ impl Workspace {
             let mut parsed_ws = match serde_json::from_reader(file) {
                 Ok(workspace) => workspace,
                 Err(e) => {
-                    println!("{}", format!("Failed to parse workspace file: {}. Rescanning...", e).red());
+                    eprintln!("{}", format!("Failed to parse workspace file: {}. Rescanning...", e).red());
                     workspace.rescan(RescanFlags::all()).unwrap_or_else(|e| panic!("Failed to rescan workspace: {}", e));
                     workspace.save().unwrap_or_else(|e| panic!("Failed to save workspace: {}", e));
                     workspace
@@ -227,7 +227,7 @@ impl Workspace {
             parsed_ws.runtime.status = WorkspaceStatus::Ready;
             workspace = parsed_ws;
         } else {
-            println!("{}", format!("Failed to open workspace file: {}", index_filepath.display()).red());
+            eprintln!("{}", format!("Failed to open workspace file: {}", index_filepath.display()).red());
             workspace.runtime.status = WorkspaceStatus::FailedToOpen;
         }
         workspace

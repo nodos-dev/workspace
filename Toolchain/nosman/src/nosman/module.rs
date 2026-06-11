@@ -18,7 +18,7 @@ use clap::ArgMatches;
 
 pub fn load_dylib_with_search_paths(verbose: bool, binary_path: &OsString, additional_search_paths: Vec<PathBuf>) -> Result<Library, CommandError> {
     if verbose {
-        println!("Loading dynamic library: {}", binary_path.to_str().unwrap());
+        eprintln!("Loading dynamic library: {}", binary_path.to_str().unwrap());
     }
     #[cfg(unix)]
     {
@@ -94,12 +94,12 @@ pub fn load_dylib_with_search_paths(verbose: bool, binary_path: &OsString, addit
         let mut dll_cookies = vec![];
         for lib_dir in additional_search_paths {
             if !lib_dir.exists() {
-                println!("{}", format!("Warning: DLL search path {} does not exist", lib_dir.display()).yellow().to_string());
+                eprintln!("{}", format!("Warning: DLL search path {} does not exist", lib_dir.display()).yellow().to_string());
                 continue;
             }
             let lib_dir_canonical = dunce::canonicalize(&lib_dir).unwrap_or_else(|e| panic!("Failed to canonicalize path {:?}: {}", lib_dir, e));
             if verbose {
-                println!("\tAdding DLL search path: {}", lib_dir_canonical.display());
+                eprintln!("\tAdding DLL search path: {}", lib_dir_canonical.display());
             }
             let wdir: Vec<u16> = lib_dir_canonical.as_os_str().encode_wide().chain(Some(0)).collect();
             let cookie = AddDllDirectory(wdir.as_ptr());
