@@ -58,8 +58,10 @@ struct WorkspaceRuntimeParams {
 pub struct Workspace {
     #[serde(skip_serializing, skip_deserializing)]
     pub root: PathBuf,
-    #[serde(alias = "installed_modules")]
-    pub packages: HashMap<String, HashMap<String, LocalPackageEntry>>,
+    // name -> version -> all on-disk entries. Keeps every entry; precedence is applied at
+    // lookup time, not here.
+    #[serde(alias = "installed_modules", deserialize_with = "deserialize_packages")]
+    pub packages: HashMap<String, HashMap<String, Vec<LocalPackageEntry>>>,
     #[serde(skip_serializing, skip_deserializing)]
     pub index_cache: Index,
     #[serde(skip_serializing, skip_deserializing)]
@@ -244,11 +246,16 @@ impl Workspace {
     pub fn get_nosman_index_filepath(&self) -> PathBuf {
         get_nosman_index_filepath_for(&self.root)
     }
+    /// Of the entries for one name+version, the development package wins, else the first.
+    fn preferred_entry<'a>(&self, entries: &'a [LocalPackageEntry]) -> Option<&'a LocalPackageEntry> {
+        entries
+            .iter()
+            .find(|e| e.is_development_package(self))
+            .or_else(|| entries.first())
+    }
     pub fn get_package(&self, name: &str, version: &str) -> Option<&LocalPackageEntry> {
-        match self.packages.get(name) {
-            Some(versions) => versions.get(version),
-            None => None,
-        }
+        let entries = self.packages.get(name)?.get(version)?;
+        self.preferred_entry(entries)
     }
 
     pub fn normalize_to_workspace<P: AsRef<Path>>(
@@ -286,7 +293,7 @@ impl Workspace {
     pub fn get_package_by_path(&self, path: PathBuf)-> Option<&LocalPackageEntry>{
         let normalized_path = self.normalize_to_workspace(path.clone()).unwrap();
         for version_map in self.packages.values() {
-            for entry in version_map.values() {
+            for entry in version_map.values().flatten() {
                 if entry.manifest_path == path || entry.manifest_path == normalized_path {
                     return Some(entry);
                 }
@@ -294,12 +301,11 @@ impl Workspace {
         }
         None
     }
+    /// One preferred entry per version for `name` (not every duplicate entry).
     pub fn get_packages(&self, name: &str) -> Vec<&LocalPackageEntry> {
         let mut res = Vec::new();
         if let Some(versions) = self.packages.get(name) {
-            for package in versions.values() {
-                res.push(package);
-            }
+            res.extend(versions.values().filter_map(|entries| self.preferred_entry(entries)));
         }
         res
     }
@@ -341,17 +347,17 @@ impl Workspace {
     pub fn get_latest_local_package_for_prefix(&self, name: &str, version_prefix: &SemVer) -> Option<&LocalPackageEntry> {
         let version_list = self.packages.get(name);
         let version_list = version_list?;
-        let mut versions: Vec<(&String, &LocalPackageEntry)> = version_list.iter().collect();
+        let mut versions: Vec<(&String, &Vec<LocalPackageEntry>)> = version_list.iter().collect();
         versions.sort_by(|a, b| a.0.cmp(b.0));
         versions.reverse();
-        for (version, package) in versions {
+        for (version, entries) in versions {
             let semver = SemVer::parse_from_str(version);
             if semver.is_none() {
                 continue;
             }
             let semver = semver?;
             if semver.matches_prefix(version_prefix) {
-                return Some(package);
+                return self.preferred_entry(entries);
             }
         }
         None
@@ -387,26 +393,50 @@ impl Workspace {
     }
     pub fn add(&mut self, package: LocalPackageEntry) {
         let versions = self.packages.entry(package.info.id.name.clone()).or_default();
-        versions.insert(package.info.id.version.clone(), package);
+        let entries = versions.entry(package.info.id.version.clone()).or_default();
+        // Replace only the entry for the same path; keep entries at other paths.
+        if let Some(existing) = entries.iter_mut().find(|e| e.manifest_path == package.manifest_path) {
+            *existing = package;
+        } else {
+            entries.push(package);
+        }
     }
     pub fn remove(&mut self, name: &str, version: &str) -> CommandResult {
-        let res = self.get_package(name, version);
-        if res.is_none() {
-            return Err(CommandError::InvalidArgument { message: format!("Package {} version {} is not installed", name, version) });
-        }
+        let entries = match self.packages.get(name).and_then(|v| v.get(version)) {
+            Some(entries) if !entries.is_empty() => entries.clone(),
+            _ => return Err(CommandError::InvalidArgument { message: format!("Package {} version {} is not installed", name, version) }),
+        };
         println!("Removing package {} version {}", name, version);
-        let package = res.unwrap();
-        fs::remove_dir_all(package.get_package_root())?;
+        // Delete fetched entries; never delete a development checkout.
+        let mut kept = Vec::new();
+        let mut deleted = 0;
+        for entry in entries {
+            if entry.is_development_package(self) {
+                println!("{}", format!("Keeping development package at {} (source not deleted)", entry.get_package_root().display()).yellow());
+                kept.push(entry);
+            } else {
+                fs::remove_dir_all(entry.get_package_root())?;
+                deleted += 1;
+            }
+        }
         if let Some(versions) = self.packages.get_mut(name) {
-            versions.remove(version);
+            if kept.is_empty() {
+                versions.remove(version);
+            } else {
+                versions.insert(version.to_string(), kept);
+            }
         }
         self.save()?;
-        println!("{}", format!("Module {} version {} removed successfully", name, version).as_str().green());
+        if deleted > 0 {
+            println!("{}", format!("Module {} version {} removed successfully", name, version).as_str().green());
+        } else {
+            println!("{}", format!("Module {} version {} kept; only a development package is present", name, version).as_str().yellow());
+        }
         Ok(())
     }
     pub fn remove_all(&mut self) -> CommandResult {
         for (_name, versions) in self.packages.iter() {
-            for (_version, module) in versions.iter() {
+            for module in versions.values().flatten() {
                 println!("Removing module {}", module.info.id);
                 fs::remove_dir_all(module.get_package_root())?;
             }
@@ -499,14 +529,16 @@ impl Workspace {
                 continue;
             }
             let package = res.unwrap();
-            let opt_found = self.get_package(&package.info.id.name, &package.info.id.version);
-            if let Some(found) = opt_found {
-                if flags.contains(ScanPackagesFlags::ForceReplaceInRegistry) {
-                    pb.println(format!("Updating package entry in registry: {}. {} <=> {}", package.info.id, path.display(), found.manifest_path.display()));
-                } else {
-                    pb.println(format!("Duplicate module found: {}. {} <=> {}, skipping.", package.info.id, path.display(), found.manifest_path.display()));
-                    continue;
-                }
+            let other_paths: Vec<String> = self.packages
+                .get(&package.info.id.name)
+                .and_then(|v| v.get(&package.info.id.version))
+                .map(|entries| entries.iter()
+                    .filter(|e| e.manifest_path != package.manifest_path)
+                    .map(|e| e.manifest_path.display().to_string())
+                    .collect())
+                .unwrap_or_default();
+            if !other_paths.is_empty() {
+                pb.println(format!("Multiple entries for {} found; keeping all (development package takes precedence): {} alongside {}", package.info.id, path.display(), other_paths.join(", ")));
             }
             self.add(package);
         }
@@ -575,7 +607,7 @@ impl Workspace {
     pub fn get_node_definitions(&self, node_class_name: &str, nodos_version: &Option<SemVer>) -> Vec<NodeDefinition> {
         let mut res = Vec::new();
         for versions in self.packages.values() {
-            for package in versions.values() {
+            for package in versions.values().flatten() {
                 let package_abs = self.absolutize_paths(package);
                 if package_abs.package_type == PackageType::Plugin {
                     if let Ok(plugin) = PluginEntry::new(package_abs) {
@@ -591,7 +623,11 @@ impl Workspace {
     pub fn get_latest_local_packages(&self) -> Vec<&LocalPackageEntry> {
         let mut versions_map = HashMap::new();
         for (package_name, versions) in &self.packages {
-            for (version, module) in versions {
+            for (version, entries) in versions {
+                let module = match self.preferred_entry(entries) {
+                    Some(m) => m,
+                    None => continue,
+                };
                 if !versions_map.contains_key(package_name) {
                     versions_map.insert(package_name.clone(), module);
                 } else {
@@ -627,7 +663,7 @@ impl Workspace {
     pub fn get_local_package_count(&self) -> usize {
         let mut count = 0;
         for (_name, versions) in self.packages.iter() {
-            count += versions.len();
+            count += versions.values().map(|entries| entries.len()).sum::<usize>();
         }
         count
     }
@@ -656,7 +692,7 @@ impl Workspace {
         // Collect all packages for parallel processing
         let all_packages: Vec<&LocalPackageEntry> = self.packages
             .values()
-            .flat_map(|versions| versions.values())
+            .flat_map(|versions| versions.values().flatten())
             .collect();
 
         // Use parallel iterator to check manifest files
@@ -720,11 +756,14 @@ impl Workspace {
                 // Remove packages from this folder first
                 let folder_relative = get_rel_path_based_on(folder, &ws.root);
                 ws.packages.retain(|_name, versions| {
-                    versions.retain(|_version, package| {
-                        let package_folder = package.manifest_path.parent()
-                            .map(|p| p.to_path_buf())
-                            .unwrap_or_default();
-                        package_folder != folder_relative
+                    versions.retain(|_version, entries| {
+                        entries.retain(|package| {
+                            let package_folder = package.manifest_path.parent()
+                                .map(|p| p.to_path_buf())
+                                .unwrap_or_default();
+                            package_folder != folder_relative
+                        });
+                        !entries.is_empty()
                     });
                     !versions.is_empty()
                 });
@@ -740,6 +779,39 @@ impl Workspace {
         
         Ok(AutoRescanResult::PartialRescanUpdatedManifests(updated_folders_result))
     }
+}
+
+/// Accepts both the current per-version list and the older single entry, so existing
+/// index files keep loading.
+fn deserialize_packages<'de, D>(
+    deserializer: D,
+) -> Result<HashMap<String, HashMap<String, Vec<LocalPackageEntry>>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        Many(Vec<LocalPackageEntry>),
+        One(Box<LocalPackageEntry>),
+    }
+    let raw: HashMap<String, HashMap<String, OneOrMany>> = HashMap::deserialize(deserializer)?;
+    Ok(raw
+        .into_iter()
+        .map(|(name, versions)| {
+            let versions = versions
+                .into_iter()
+                .map(|(version, entry)| {
+                    let entries = match entry {
+                        OneOrMany::Many(v) => v,
+                        OneOrMany::One(e) => vec![*e],
+                    };
+                    (version, entries)
+                })
+                .collect();
+            (name, versions)
+        })
+        .collect())
 }
 
 pub fn find_root_from(path: &Path) -> Option<PathBuf> {

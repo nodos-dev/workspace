@@ -97,7 +97,7 @@ fn auto_rescan_if_needed_missing_manifest() {
 
     let mut manifest_path = None;
     for (_name, versions) in &test.workspace.packages {
-        for (_version, package) in versions {
+        for package in versions.values().flatten() {
             let full_manifest_path = test.workspace.root.join(&package.manifest_path);
             if full_manifest_path.exists() {
                 manifest_path = Some(full_manifest_path);
@@ -145,7 +145,7 @@ fn auto_rescan_if_needed_updated_manifest() {
 
     let mut manifest_path = None;
     for (_name, versions) in &test.workspace.packages {
-        for (_version, package) in versions {
+        for package in versions.values().flatten() {
             let full_manifest_path = test.workspace.root.join(&package.manifest_path);
             if full_manifest_path.exists() {
                 manifest_path = Some(full_manifest_path);
