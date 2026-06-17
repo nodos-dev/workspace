@@ -48,7 +48,8 @@ impl DependCommand {
                     dep.version = store_package.1.version.clone();
                     println!("Found latest version {} for {}", dep.version, dep.name);
                 }
-            } else if let Ok(module) = workspace.get_latest_local_package_for_version(&dep_id.name, &dep_id.version) {
+            } else if workspace.is_installed_matching(&dep_id.name, &dep_id.version) {
+                let module = workspace.get_latest_local_package_for_version(&dep_id.name, &dep_id.version)?;
                 dep = module.info.id.clone();
             } else {
                 // Convert the `Option` from `parse_from_string` to a `Result` so we can use `map_err`

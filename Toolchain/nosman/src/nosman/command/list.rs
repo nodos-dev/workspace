@@ -33,9 +33,11 @@ impl ListCommand {
                 println!("{}", format!("Local versions of {}", package_name).green());
                 let mut local_versions = Vec::new();
                 for (name, ver_map) in &workspace.packages {
-                    for (version, module) in ver_map {
+                    for (version, entries) in ver_map {
                         if name == package_name {
-                            local_versions.push((name.clone(), version.clone(), module.clone()));
+                            for module in entries {
+                                local_versions.push((name.clone(), version.clone(), module.clone()));
+                            }
                         }
                     }
                 }
@@ -80,8 +82,10 @@ impl ListCommand {
                 println!("{}", "Local packages".green());
                 let mut installed_modules_alphabetical = Vec::new();
                 for (name, ver_map) in &workspace.packages {
-                    for (version, module) in ver_map {
-                        installed_modules_alphabetical.push((name.clone(), version.clone(), module.clone()));
+                    for (version, entries) in ver_map {
+                        for module in entries {
+                            installed_modules_alphabetical.push((name.clone(), version.clone(), module.clone()));
+                        }
                     }
                 }
                 installed_modules_alphabetical.sort_by(|a, b| a.0.cmp(&b.0));

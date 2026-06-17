@@ -408,8 +408,9 @@ impl PublishCommand {
                     if sdk_version.is_some(){
                         api_version_opt = sdk_version.as_ref().and_then(|s| SemVer::parse_from_str(s.as_str()));
 
-                        if let Some(local_package) = workspace.get_package(name.as_ref().unwrap(), version.as_ref().unwrap()).cloned() {  
-                            if let Ok(plugin) = PluginEntry::new(local_package) {  
+                        if workspace.is_installed(name.as_ref().unwrap(), version.as_ref().unwrap()) {
+                            let local_package = workspace.get_package(name.as_ref().unwrap(), version.as_ref().unwrap())?.clone();
+                            if let Ok(plugin) = PluginEntry::new(local_package) {
                                 plugin.get_node_definitions(true).iter().for_each(|node_def| {  
                                     node_class_names.push(node_def.class_name.clone());  
                                 });  

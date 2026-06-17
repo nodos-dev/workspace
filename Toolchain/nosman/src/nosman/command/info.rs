@@ -63,17 +63,9 @@ impl InfoCommand {
         } else if let Some(query) = package_query {
             // Using package name and version prefix
             if relaxed {
-                let res = ws.get_latest_local_package_for_version(query.name, query.version_prefix);
-                if let Err(msg) = res {
-                    return Err(CommandError::InvalidArgument { message: msg });
-                }
-                res.unwrap().clone()
+                ws.get_latest_local_package_for_version(query.name, query.version_prefix)?.clone()
             } else {
-                let res = ws.get_package(query.name, query.version_prefix);
-                if res.is_none() {
-                    return Err(CommandError::InvalidArgument { message: format!("Package {} version {} is not installed", query.name, query.version_prefix) });
-                }
-                res.unwrap().clone()
+                ws.get_package(query.name, query.version_prefix)?.clone()
             }
         } else {
             return Err(CommandError::InvalidArgument { 
