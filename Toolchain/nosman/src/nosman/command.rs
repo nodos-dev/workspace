@@ -94,6 +94,7 @@ pub fn commands() -> Vec<Box<dyn Command>> {
         Box::new(dev::DevStatusCommand {}),
         Box::new(dev::DevBuildCommand {}),
         Box::new(dev::DevInitCommand {}),
+        Box::new(dev::DevSetupCommand {}),
         Box::new(launch::LaunchCommand {}),
         Box::new(engine::EngineLaunchCommand {}),
         Box::new(engine::EngineStopCommand {}),

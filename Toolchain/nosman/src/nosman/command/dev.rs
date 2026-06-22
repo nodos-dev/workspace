@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
+use inquire::MultiSelect;
 use include_dir::{include_dir, Dir};
 use indicatif::ProgressBar;
 use rayon::prelude::*;
@@ -105,9 +106,35 @@ pub fn get_cli() -> clap::Command {
         )
         .subcommand(clap::Command::new("status")
             .about("Shows the status of the git repositories under the workspace")
+            .arg(git_dir_arg.clone())
+        )
+        .subcommand(clap::Command::new("setup")
+            .about("Clones core Nodos repositories from the nodos-dev org (recursively), skipping any already present under the workspace")
             .arg(git_dir_arg)
+            .arg(Arg::new("ssh")
+                .long("ssh")
+                .action(ArgAction::SetTrue)
+                .help("Clone over SSH (git@github.com) instead of HTTPS"))
+            .arg(Arg::new("all")
+                .long("all")
+                .short('a')
+                .action(ArgAction::SetTrue)
+                .help("Clone all missing repositories without prompting"))
         )
 }
+
+/// Core repositories the `dev setup` command can clone, as (repo name, destination folder).
+/// The repo is cloned from https://github.com/nodos-dev/<name> into <folder>/<name>.
+const SETUP_REPOS: &[(&str, &str)] = &[
+    ("nodos", "Engine"),
+    ("sys-settings", "Module"),
+    ("sys-device", "Module"),
+    ("transfer", "Module"),
+    ("shader-compiler", "Module"),
+    ("plugins", "Module"),
+    ("mediaio", "Module"),
+    ("audio", "Module"),
+];
 
 // Embeds the vendored copy under data/ so it ships in published crates.
 // build.rs re-syncs this from the canonical ../CMake whenever that source is present.
@@ -662,6 +689,192 @@ impl Command for DevInitCommand {
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let toolchain = args.get_one::<String>("toolchain").unwrap();
         self.run_init(workspace, toolchain)
+    }
+
+    fn needs_workspace(&self) -> bool {
+        false
+    }
+}
+
+/// Returns the `origin` remote URL of a git repository, or `None` if it has none.
+fn git_origin_url(repo: &PathBuf) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .arg("remote")
+        .arg("get-url")
+        .arg("origin")
+        .output()
+        .ok()?;
+    if output.status.success() {
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        None
+    }
+}
+
+pub struct DevSetupCommand {}
+
+impl DevSetupCommand {
+    fn run_setup(&self, dirs: Vec<PathBuf>, ssh: bool, clone_all: bool) -> CommandResult {
+        // Recursively scan the workspace for git repositories and collect their origin URLs so we
+        // can tell which of the core repos are already present (under any folder, any name).
+        let pb = ProgressBar::new_spinner();
+        pb.enable_steady_tick(Duration::from_millis(100));
+        pb.set_message("Scanning for existing repositories...");
+        let scanned = find_git_repositories(dirs)?;
+        let existing_urls: Vec<String> = scanned
+            .iter()
+            .filter_map(git_origin_url)
+            .map(|u| u.to_lowercase())
+            .collect();
+        pb.finish_and_clear();
+
+        // A repo counts as already present if some scanned repo points at nodos-dev/<name>, or if
+        // its default destination folder already exists on disk.
+        let is_present = |name: &str, dest_dir: &str| -> bool {
+            let needle = format!("nodos-dev/{}", name.to_lowercase());
+            let by_remote = existing_urls.iter().any(|u| {
+                u.ends_with(&needle)
+                    || u.contains(&format!("{}.git", needle))
+                    || u.contains(&format!("{}/", needle))
+            });
+            by_remote || PathBuf::from(dest_dir).join(name).exists()
+        };
+
+        let mut present: Vec<(&str, &str)> = Vec::new();
+        let mut missing: Vec<(&str, &str)> = Vec::new();
+        for (name, dest_dir) in SETUP_REPOS {
+            if is_present(name, dest_dir) {
+                present.push((name, dest_dir));
+            } else {
+                missing.push((name, dest_dir));
+            }
+        }
+
+        for (name, dest_dir) in &present {
+            println!(
+                "{}",
+                format!("{} → {}/{} (already present, skipping)", name, dest_dir, name).dimmed()
+            );
+        }
+
+        if missing.is_empty() {
+            println!("{}", "All core repositories are already present.".green());
+            return Ok(());
+        }
+
+        // Choose which of the missing repos to clone.
+        let labels: Vec<String> = missing
+            .iter()
+            .map(|(name, dest_dir)| format!("{} → {}/{}", name, dest_dir, name))
+            .collect();
+
+        let to_clone: Vec<(&str, &str)> = if clone_all {
+            missing.clone()
+        } else {
+            let default: Vec<usize> = (0..labels.len()).collect();
+            let selection = MultiSelect::new("Select repositories to clone:", labels.clone())
+                .with_default(&default)
+                .prompt();
+            match selection {
+                Ok(selected) => selected
+                    .iter()
+                    .filter_map(|label| labels.iter().position(|l| l == label))
+                    .map(|idx| missing[idx])
+                    .collect(),
+                Err(e) => {
+                    return Err(CommandError::Runtime {
+                        message: format!("Failed to select repositories: {}", e),
+                    });
+                }
+            }
+        };
+
+        if to_clone.is_empty() {
+            println!("Nothing selected. Nothing to do.");
+            return Ok(());
+        }
+
+        let base = if ssh {
+            "git@github.com:nodos-dev/"
+        } else {
+            "https://github.com/nodos-dev/"
+        };
+
+        let total_count = to_clone.len();
+        let pb = ProgressBar::new_spinner();
+        pb.enable_steady_tick(Duration::from_millis(100));
+        pb.set_message(format!("Cloning (0/{})...", total_count));
+        let completed_count = Mutex::new(0usize);
+
+        // Clone repositories in parallel. git output is captured (not inherited) so concurrent
+        // clones don't interleave on the terminal; failures are reported together afterwards.
+        let failures = Mutex::new(Vec::<String>::new());
+        to_clone.par_iter().for_each(|(name, dest_dir)| {
+            let dest = PathBuf::from(dest_dir).join(name);
+            if dest.exists() {
+                pb.println(format!("{} already exists, skipping.", dest.display()).yellow().to_string());
+            } else if let Err(e) = fs::create_dir_all(dest_dir) {
+                failures.lock().unwrap().push(format!("Failed to create {}: {}", dest_dir, e));
+            } else {
+                let url = format!("{}{}.git", base, name);
+                pb.println(format!("{} {} → {}", "Cloning".green().bold(), url.cyan(), dest.display()));
+                let output = std::process::Command::new("git")
+                    .arg("clone")
+                    .arg("--recursive")
+                    .arg(&url)
+                    .arg(&dest)
+                    .output();
+                match output {
+                    Ok(o) if o.status.success() => {}
+                    Ok(o) => failures.lock().unwrap().push(format!(
+                        "git clone {} exited with status {}: {}",
+                        url,
+                        o.status,
+                        String::from_utf8_lossy(&o.stderr).trim()
+                    )),
+                    Err(e) => failures.lock().unwrap().push(format!("Failed to run git clone {}: {}", url, e)),
+                }
+            }
+            let mut count = completed_count.lock().unwrap();
+            *count += 1;
+            pb.set_message(format!("({}/{}) cloning...", *count, total_count));
+        });
+        pb.finish_and_clear();
+
+        let failures = failures.into_inner().unwrap();
+        if failures.is_empty() {
+            println!("{}", "Done.".green().bold());
+            Ok(())
+        } else {
+            for f in &failures {
+                eprintln!("{}", f.red());
+            }
+            Err(CommandError::Runtime {
+                message: format!("{} repository/repositories failed to clone.", failures.len()),
+            })
+        }
+    }
+}
+
+impl Command for DevSetupCommand {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+        if let Some(subcommand) = args.subcommand_matches("dev") {
+            return subcommand.subcommand_matches("setup");
+        }
+        None
+    }
+
+    fn run(&self, _workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+        let dirs: Vec<PathBuf> = args
+            .get_many::<String>("dir")
+            .unwrap_or_default()
+            .map(PathBuf::from)
+            .collect();
+        let ssh = args.get_flag("ssh");
+        let clone_all = args.get_flag("all");
+        self.run_setup(dirs, ssh, clone_all)
     }
 
     fn needs_workspace(&self) -> bool {
