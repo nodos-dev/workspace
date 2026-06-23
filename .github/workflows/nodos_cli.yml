@@ -113,10 +113,8 @@ jobs:
       - name: Update Git Credentials
         shell: bash
         run: |
-            if [ "${{ matrix.entry.runner[0] }}" == "Linux" ]; then
-              export GPG_TTY=$(tty)
-            fi
-            git credential-manager github login --username ${{ env.GH_USERNAME }} --token ${{ secrets.CI_TOKEN }} --force
+            echo "${{ secrets.CI_TOKEN }}" | gh auth login --with-token
+            gh auth setup-git
 
       - name: Clean Build
         shell: pwsh
