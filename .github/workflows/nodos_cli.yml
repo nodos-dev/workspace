@@ -29,6 +29,11 @@ on:
         required: true
         default: true
         type: boolean
+      macos:
+        description: 'Run for macOS (Apple Silicon)'
+        required: false
+        default: true
+        type: boolean
       linux_arm:
         description: 'Cross-compile for Linux ARM (aarch64)'
         required: false
@@ -67,13 +72,14 @@ jobs:
           runner_list=$(python3 -c "$(wget -q -O - https://raw.githubusercontent.com/nodos-dev/actions/refs/heads/main/scripts/prep_runner_list.py)" \
             --workflow-input-linux ${{ inputs.linux }} \
             --workflow-input-windows ${{ inputs.windows }} \
+            --workflow-input-macos ${{ inputs.macos }} \
             --sign ${{ inputs.sign }} \
             --ref-name ${{ github.ref_name }} \
             --event-name ${{ github.event_name }} \
-            --push-event-defaults '{"linux": true, "windows": true, "sign": false}')
+            --push-event-defaults '{"linux": true, "windows": true, "macos": true, "sign": false}')
           echo Runners: $runner_list
 
-          # Build matrix entries: [{runner: [...], rust_target: ""}] for native,
+          # Build matrix entries: [{runner: [...], rust_target: ""}] for native (incl. macOS),
           # plus [{runner: <linux-runner>, rust_target: "aarch64-unknown-linux-gnu"}] for cross.
           build_matrix=$(python3 -c "
           import json, sys
@@ -199,6 +205,13 @@ jobs:
             if [[ "$arch" == "amd64" || "$arch" == "x86_64" ]]; then
               arch="x86_64"
             elif [[ "$arch" == "arm64" ]]; then
+              arch="aarch64"
+            fi
+          elif [[ "${{ matrix.entry.runner[0] }}" == "macOS" ]]; then
+            platform="macos"
+            platform_exe_suffix=""
+            arch=$(uname -m)
+            if [[ "$arch" == "arm64" ]]; then
               arch="aarch64"
             fi
           else
