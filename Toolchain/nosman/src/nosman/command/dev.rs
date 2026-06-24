@@ -713,6 +713,22 @@ fn git_origin_url(repo: &PathBuf) -> Option<String> {
     }
 }
 
+/// Whether the invoker can access `url`. `git ls-remote` authenticates and lists refs
+/// without fetching objects, so a non-zero exit means the repo is private to someone
+/// else, doesn't exist, or credentials are missing. Credential and SSH prompts are
+/// disabled so the probe fails fast instead of blocking on input.
+fn has_repo_access(url: &str) -> bool {
+    std::process::Command::new("git")
+        .arg("ls-remote")
+        .arg("--heads")
+        .arg(url)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 pub struct DevSetupCommand {}
 
 impl DevSetupCommand {
@@ -764,6 +780,36 @@ impl DevSetupCommand {
             return Ok(());
         }
 
+        let base = if ssh {
+            "git@github.com:nodos-dev/"
+        } else {
+            "https://github.com/nodos-dev/"
+        };
+
+        // Some core repos are private; the invoker may not be a member. Probe access and drop the
+        // ones they can't reach so the prompt only lists repos that would actually clone.
+        let pb = ProgressBar::new_spinner();
+        pb.enable_steady_tick(Duration::from_millis(100));
+        pb.set_message("Checking repository access...");
+        let (accessible, inaccessible): (Vec<(&str, &str)>, Vec<(&str, &str)>) = missing
+            .par_iter()
+            .map(|t| *t)
+            .partition(|(name, _)| has_repo_access(&format!("{}{}.git", base, name)));
+        pb.finish_and_clear();
+
+        for (name, dest_dir) in &inaccessible {
+            println!(
+                "{}",
+                format!("{} → {}/{} (no access, skipping)", name, dest_dir, name).dimmed()
+            );
+        }
+
+        let missing = accessible;
+        if missing.is_empty() {
+            println!("{}", "No accessible repositories left to clone.".yellow());
+            return Ok(());
+        }
+
         // Choose which of the missing repos to clone.
         let labels: Vec<String> = missing
             .iter()
@@ -795,12 +841,6 @@ impl DevSetupCommand {
             println!("Nothing selected. Nothing to do.");
             return Ok(());
         }
-
-        let base = if ssh {
-            "git@github.com:nodos-dev/"
-        } else {
-            "https://github.com/nodos-dev/"
-        };
 
         let total_count = to_clone.len();
         let pb = ProgressBar::new_spinner();
