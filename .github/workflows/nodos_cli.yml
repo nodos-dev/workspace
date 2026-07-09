@@ -74,7 +74,7 @@ jobs:
         id: prepare-step
         shell: bash
         run: |
-          runner_list=$(python3 -c "$(wget -q -O - https://raw.githubusercontent.com/nodos-dev/actions/refs/heads/main/scripts/prep_runner_list.py)" \
+          runner_list=$(python3 -c "$(wget -q -O - https://raw.githubusercontent.com/nodos-dev/actions/refs/heads/jetson-runner/scripts/prep_runner_list.py)" \
             --workflow-input-linux ${{ inputs.linux }} \
             --workflow-input-windows ${{ inputs.windows }} \
             --workflow-input-macos ${{ inputs.macos }} \
