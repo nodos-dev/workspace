@@ -39,8 +39,8 @@ on:
         required: false
         default: true
         type: boolean
-      linux_arm:
-        description: 'Cross-compile for Linux ARM (aarch64)'
+      jetson:
+        description: 'Cross-compile for NVIDIA Jetson Linux ARM (aarch64)'
         required: false
         default: true
         type: boolean
@@ -78,10 +78,11 @@ jobs:
             --workflow-input-linux ${{ inputs.linux }} \
             --workflow-input-windows ${{ inputs.windows }} \
             --workflow-input-macos ${{ inputs.macos }} \
+            --workflow-input-jetson ${{ inputs.jetson }} \
             --sign ${{ inputs.sign }} \
             --ref-name ${{ github.ref_name }} \
             --event-name ${{ github.event_name }} \
-            --push-event-defaults '{"linux": true, "windows": true, "macos": true, "sign": false}')
+            --push-event-defaults '{"linux": true, "windows": true, "macos": true, "jetson": true, "sign": false}')
           echo Runners: $runner_list
 
           # Build matrix entries: [{runner: [...], rust_target: ""}] for native (incl. macOS),
@@ -89,15 +90,15 @@ jobs:
           build_matrix=$(python3 -c "
           import json, sys
           runners = $runner_list
-          linux_arm_input = '${{ inputs.linux_arm }}'.lower()
-          linux_arm = linux_arm_input == 'true' or linux_arm_input == ''
+          jetson_input = '${{ inputs.jetson }}'.lower()
+          jetson = jetson_input == 'true' or jetson_input == ''
           matrix = []
           linux_runner = None
           for r in runners:
               matrix.append({'runner': r, 'rust_target': ''})
               if r[0] == 'Linux':
                   linux_runner = r
-          if linux_arm and linux_runner:
+          if jetson and linux_runner:
               matrix.append({'runner': linux_runner, 'rust_target': 'aarch64-unknown-linux-musl'})
           print(json.dumps(matrix))
           ")
