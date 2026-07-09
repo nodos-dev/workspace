@@ -136,7 +136,9 @@ jobs:
             git clone --depth 1 "https://github.com/${{ github.repository }}.git" --recurse-submodules --shallow-submodules "./nodos-cli-${{ github.ref_name }}"
           fi
           cd "./nodos-cli-${{ github.ref_name }}"
-          git fetch origin
+          # `git clone --depth 1` implies --single-branch, so the persistent clone only tracks the
+          # default branch. Fetch the exact commit being built so checkout works on any branch.
+          git fetch --force --depth 1 origin "${{ github.sha }}"
           git fetch --tags --force
           git reset --hard
           git clean -ffd
