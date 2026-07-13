@@ -375,13 +375,15 @@ impl Workspace {
     pub fn get_latest_local_package_for_prefix(&self, name: &str, version_prefix: &SemVer) -> Result<&LocalPackageEntry, CommandError> {
         let not_found = || CommandError::InvalidArgument { message: format!("No installed version matching prefix '{}' for package {}", version_prefix, name) };
         let version_list = self.packages.get(name).ok_or_else(not_found)?;
-        let mut versions: Vec<(&String, &Vec<LocalPackageEntry>)> = version_list.iter().collect();
-        versions.sort_by(|a, b| a.0.cmp(b.0));
-        versions.reverse();
-        for (version, entries) in versions {
-            let Some(semver) = SemVer::parse_from_str(version) else {
-                continue;
-            };
+        // Sort by parsed SemVer, not the raw string: lexicographic string order
+        // ranks "2.0.0.b1179" above "2.0.0" (longer string, same prefix), which
+        // would prefer a stale pre-release build over the real release.
+        let mut versions: Vec<(SemVer, &Vec<LocalPackageEntry>)> = version_list
+            .iter()
+            .filter_map(|(version, entries)| Some((SemVer::parse_from_str(version)?, entries)))
+            .collect();
+        versions.sort_by(|a, b| b.0.cmp(&a.0));
+        for (semver, entries) in versions {
             if semver.matches_prefix(version_prefix) {
                 return self.single_entry(entries);
             }

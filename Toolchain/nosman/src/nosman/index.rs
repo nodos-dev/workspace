@@ -104,15 +104,24 @@ impl std::cmp::Ord for SemVer {
         if self.patch > other.patch {
             return std::cmp::Ordering::Greater;
         }
-        if let Some(build_number) = self.build_number {
-            if let Some(other_build_number) = other.build_number {
-                if build_number < other_build_number {
+        // A plain release (no build number) outranks a build/pre-release of the
+        // same major.minor.patch (e.g. "2.0.0" > "2.0.0.b1179"), matching semver
+        // convention. Without this, PartialEq/Eq (derived, field-by-field) call
+        // these unequal while Ord called them Equal -- an inconsistency that let
+        // a stale downloaded pre-release tie with, and sometimes beat, a real
+        // local release in "give me the latest" lookups.
+        match (self.build_number, other.build_number) {
+            (Some(a), Some(b)) => {
+                if a < b {
                     return std::cmp::Ordering::Less;
                 }
-                if build_number > other_build_number {
+                if a > b {
                     return std::cmp::Ordering::Greater;
                 }
             }
+            (None, Some(_)) => return std::cmp::Ordering::Greater,
+            (Some(_), None) => return std::cmp::Ordering::Less,
+            (None, None) => {}
         }
         std::cmp::Ordering::Equal
     }
