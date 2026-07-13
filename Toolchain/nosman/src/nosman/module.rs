@@ -191,8 +191,8 @@ pub fn load_module(verbose: bool, package_type: &PackageType, manifest: &serde_j
     for dep in manifest["info"]["dependencies"].as_array().unwrap_or(&vec![]) {
         let dep_name = dep["name"].as_str().unwrap();
         let dep_version = dep["version"].as_str().unwrap();
-        let dep_res = workspace.get_latest_local_package_for_version(dep_name, dep_version);
-        if let Ok(installed_module) = dep_res {
+        if workspace.is_installed_matching(dep_name, dep_version) {
+            let installed_module = workspace.get_latest_local_package_for_version(dep_name, dep_version)?;
             let dep_manifest_file_path = workspace.root.join(&installed_module.manifest_path);
             let dep_manifest_file_contents = common::read_file_contents(&dep_manifest_file_path, "dependency manifest")?;
             let dep_manifest: serde_json::Value = serde_json::from_str(&dep_manifest_file_contents).unwrap_or_else(|e| panic!("Failed to parse dependency manifest file {}: {}", dep_manifest_file_path.display(), e));

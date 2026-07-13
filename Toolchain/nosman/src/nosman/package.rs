@@ -195,6 +195,35 @@ impl LocalPackageEntry {
     pub fn get_abs_manifest_path(&self, workspace: &Workspace) -> PathBuf {
         workspace.root.join(&self.manifest_path)
     }
+    /// True if this entry is a source checkout rather than a fetched entry: it lives in a
+    /// git working tree below the workspace root and outside the type's `Downloaded/` root.
+    /// A source plugin tracked only by the workspace-root repo (no nested `.git`) reads as
+    /// fetched.
+    pub fn is_development_package(&self, workspace: &Workspace) -> bool {
+        let manifest = self.get_abs_manifest_path(workspace);
+        // Walk stops before the workspace root so its own repo doesn't match everything.
+        let mut in_git_repo = false;
+        let mut cur = manifest.parent();
+        while let Some(dir) = cur {
+            if !dir.starts_with(&workspace.root) || dir == workspace.root {
+                break;
+            }
+            if dir.join(".git").exists() {
+                in_git_repo = true;
+                break;
+            }
+            cur = dir.parent();
+        }
+        if !in_git_repo {
+            return false;
+        }
+        let download_root = if self.package_type.is_plugin() {
+            workspace.root.join("Module").join("Downloaded")
+        } else {
+            workspace.root.join("Package").join("Downloaded")
+        };
+        !manifest.starts_with(&download_root)
+    }
     pub fn run_command(&self, workspace: &Workspace, command_name: &str, params: NosCommand) -> CommandResult {
         let lib = load_module_from_manifest(self, workspace)?;
         let fn_name = b"nosRunCommand\0";

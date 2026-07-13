@@ -20,7 +20,7 @@ fn install_no_deps() {
             InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
         )
         .unwrap_or_else(|_| panic!("Failed to install {}", package_name));
-    let versions = test.workspace.get_packages(package_name);
+    let versions = test.workspace.get_packages(package_name).unwrap();
     assert_eq!(versions.len(), 1);
 }
 
@@ -59,7 +59,7 @@ fn install_brings_dependencies() {
         test.workspace.get_local_package_count()
     );
     for requested in requested_modules {
-        let installed = test.workspace.get_packages(requested.name.as_str());
+        let installed = test.workspace.get_packages(requested.name.as_str()).unwrap();
         assert_eq!(installed.len(), 1);
         let installed = installed[0].info.clone();
         let requested_version = SemVer::parse_from_str(requested.version.as_str())
@@ -116,6 +116,6 @@ fn install_with_only_major_version() {
             InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
         )
         .unwrap_or_else(|_| panic!("Failed to install {}", package_name));
-    let versions = test.workspace.get_packages(package_name);
+    let versions = test.workspace.get_packages(package_name).unwrap();
     assert_eq!(versions.len(), 1);
 }

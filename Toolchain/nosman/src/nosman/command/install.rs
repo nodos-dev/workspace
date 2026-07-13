@@ -49,11 +49,13 @@ impl InstallCommand {
         if let Some(version) = version_opt {
             if !flags.contains(InstallFlags::InstallExactVersion) {
                 let version_prefix = SemVer::parse_from_str(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
-                if let Some(installed_package) = workspace.get_latest_local_package_for_prefix(package_name, &version_prefix) {
+                if workspace.has_local_match(package_name, &version_prefix) {
+                    let installed_package = workspace.get_latest_local_package_for_prefix(package_name, &version_prefix)?;
                     println!("{}", format!("Found an already installed compatible version for {} version {}: {}", package_name, version, installed_package.info.id.version).as_str().yellow());
                     return Ok(InstallOp::Skipped)
                 }
-            } else if let Some(existing) = workspace.get_package(package_name, version.as_str()) {
+            } else if workspace.is_installed(package_name, version.as_str()) {
+                let existing = workspace.get_package(package_name, version.as_str())?;
                 if existing.get_package_root().exists() {
                     println!("{}", format!("package {} version {} is already installed", package_name, version).as_str().yellow());
                     return Ok(InstallOp::Skipped);
@@ -144,7 +146,7 @@ impl InstallCommand {
             for dep in deps_to_install {
                 let dep_name = dep.name.clone();
                 let dep_version = dep.version.clone();
-                if workspace.get_package(&dep_name, &dep_version).is_none() {
+                if !workspace.is_installed(&dep_name, &dep_version) {
                     println!("Installing dependency {} {}", dep_name, dep_version);
                     self.run_install(workspace, &dep_name, Some(&dep_version), output_dir, prefix, dep_install_flags)?;
                 } else {
