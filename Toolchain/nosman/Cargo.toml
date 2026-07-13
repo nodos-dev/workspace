@@ -1,6 +1,6 @@
 [package]
 name = "nosman"
-version = "0.15.2"
+version = "0.16.0"
 edition = "2021"
 description = "Nodos Package/Module Manager: a command-line tool to install, upgrade, configure, and remove modules from a Nodos system."
 license = "MIT"
@@ -59,7 +59,7 @@ env_logger = "0.11.3"
 ctor = "0.6.2"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["libloaderapi"] }
+winapi = { version = "0.3", features = ["libloaderapi", "winuser", "wincon", "processenv", "winbase", "fileapi", "handleapi", "minwinbase", "winnt"] }
 
 [target.'cfg(unix)'.dependencies]
 flate2 = "1.0.34"
