@@ -4,7 +4,9 @@ use colored::Colorize;
 use sysinfo::{Pid, System};
 use crate::nosman;
 use crate::nosman::command::{Command, CommandResult};
-use crate::nosman::command::launch::{launch_nodos, list_engines};
+use crate::nosman::command::launch::{
+    launch_engine, launch_nodos, list_engines, select_engine,
+};
 use crate::nosman::workspace::Workspace;
 
 /// Base names (without platform extension) of the processes that make up a
@@ -133,6 +135,7 @@ pub fn get_cli() -> clap::Command {
                 .help("Print the status as JSON")))
         .subcommand(clap::Command::new("restart")
             .about("Stop the running Nodos instance (if any) and launch it again")
+            .arg(crate::nosman::command::launch::get_engine_arg())
             .arg(Arg::new("force")
                 .long("force")
                 .short('f')
@@ -293,6 +296,13 @@ impl Command for EngineRestartCommand {
     }
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+        // Resolve interactive selection before stopping the current instance so
+        // cancellation cannot turn a restart into a stop.
+        let engine = select_engine(
+            &workspace.root,
+            args.get_one::<String>("engine").map(String::as_str),
+            false,
+        )?;
         let force = args.get_flag("force");
         let stopped = stop_processes(&workspace.root, force);
 
@@ -310,7 +320,7 @@ impl Command for EngineRestartCommand {
             }
         }
 
-        launch_nodos(&workspace.root, true, None, false)
+        launch_engine(engine, true)
     }
 
     fn needs_workspace(&self) -> bool {

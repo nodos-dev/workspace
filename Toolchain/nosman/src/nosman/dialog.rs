@@ -1,7 +1,5 @@
-//! Native single-choice list dialog. No GUI library is linked into nosman:
-//! each platform's GUI facility is loaded at runtime (user32 dialog templates
-//! on Windows, dlopen'd GTK 3 on Linux, dlopen'd AppKit on macOS), so nosman
-//! keeps working on headless machines where the dialog is simply unavailable.
+//! Native single-choice list dialog using user32 on Windows, GTK 3 on Linux,
+//! and the built-in `osascript` command on macOS.
 
 /// Show a modal single-choice list dialog. Returns the index of the chosen
 /// item, or None if the user cancelled or no GUI is available on this machine.
@@ -138,6 +136,7 @@ mod imp {
     const GTK_RESPONSE_OK: c_int = -5;
     const GTK_RESPONSE_CANCEL: c_int = -6;
     const GTK_ALIGN_START: c_int = 1;
+    const GTK_POLICY_AUTOMATIC: c_int = 1;
 
     pub fn select_from_list(title: &str, prompt: &str, items: &[String]) -> Option<usize> {
         let title = CString::new(title).ok()?;
@@ -183,6 +182,12 @@ mod imp {
                 gtk.get(b"gtk_list_box_get_selected_row\0").ok()?;
             let gtk_list_box_row_get_index: Symbol<unsafe extern "C" fn(*mut c_void) -> c_int> =
                 gtk.get(b"gtk_list_box_row_get_index\0").ok()?;
+            let gtk_scrolled_window_new: Symbol<unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void> =
+                gtk.get(b"gtk_scrolled_window_new\0").ok()?;
+            let gtk_scrolled_window_set_policy: Symbol<unsafe extern "C" fn(*mut c_void, c_int, c_int)> =
+                gtk.get(b"gtk_scrolled_window_set_policy\0").ok()?;
+            let gtk_widget_set_size_request: Symbol<unsafe extern "C" fn(*mut c_void, c_int, c_int)> =
+                gtk.get(b"gtk_widget_set_size_request\0").ok()?;
             let gtk_widget_show_all: Symbol<unsafe extern "C" fn(*mut c_void)> =
                 gtk.get(b"gtk_widget_show_all\0").ok()?;
             let gtk_dialog_run: Symbol<unsafe extern "C" fn(*mut c_void) -> c_int> =
@@ -216,7 +221,12 @@ mod imp {
                 gtk_list_box_insert(list, label, -1);
             }
             gtk_list_box_select_row(list, gtk_list_box_get_row_at_index(list, 0));
-            gtk_container_add(content, list);
+            let scrolled = gtk_scrolled_window_new(null_mut(), null_mut());
+            gtk_scrolled_window_set_policy(scrolled, GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+            let visible_rows = items.len().clamp(4, 11) as c_int;
+            gtk_widget_set_size_request(scrolled, 360, visible_rows * 32);
+            gtk_container_add(scrolled, list);
+            gtk_container_add(content, scrolled);
             gtk_widget_show_all(dialog);
             let response = gtk_dialog_run(dialog);
             let selected = if response == GTK_RESPONSE_OK {
@@ -241,105 +251,36 @@ mod imp {
 
 #[cfg(target_os = "macos")]
 mod imp {
-    use std::ffi::CString;
-    use std::os::raw::{c_char, c_void};
-    use libloading::{Library, Symbol};
+    use std::process::Command;
 
-    #[repr(C)]
-    struct CGRect {
-        x: f64,
-        y: f64,
-        width: f64,
-        height: f64,
-    }
-
-    const NS_ALERT_FIRST_BUTTON: isize = 1000;
-    const NS_ACTIVATION_POLICY_ACCESSORY: isize = 1;
+    const SCRIPT: &str = r#"
+function run(argv) {
+    const app = Application.currentApplication();
+    app.includeStandardAdditions = true;
+    const choices = argv.slice(2);
+    const picked = app.chooseFromList(choices, {
+        withTitle: argv[0], withPrompt: argv[1], defaultItems: [choices[0]],
+        okButtonName: "Launch", cancelButtonName: "Cancel"
+    });
+    return picked ? picked[0] : "";
+}
+"#;
 
     pub fn select_from_list(title: &str, prompt: &str, items: &[String]) -> Option<usize> {
-        unsafe {
-            // The window server is a runtime dependency: in an SSH session there
-            // is no GUI session and CGSessionCopyCurrentDictionary returns null.
-            let core_graphics = Library::new("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics").ok()?;
-            let copy_session: Symbol<unsafe extern "C" fn() -> *mut c_void> =
-                core_graphics.get(b"CGSessionCopyCurrentDictionary\0").ok()?;
-            let core_foundation = Library::new("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation").ok()?;
-            let cf_release: Symbol<unsafe extern "C" fn(*mut c_void)> =
-                core_foundation.get(b"CFRelease\0").ok()?;
-            let session = copy_session();
-            if session.is_null() {
-                return None;
-            }
-            cf_release(session);
-
-            // Loading AppKit registers the NS* classes with the Objective-C
-            // runtime; everything below goes through objc_msgSend.
-            let _appkit = Library::new("/System/Library/Frameworks/AppKit.framework/AppKit").ok()?;
-            let objc = Library::new("/usr/lib/libobjc.A.dylib").ok()?;
-            let objc_get_class: Symbol<unsafe extern "C" fn(*const c_char) -> *mut c_void> =
-                objc.get(b"objc_getClass\0").ok()?;
-            let sel_register_name: Symbol<unsafe extern "C" fn(*const c_char) -> *mut c_void> =
-                objc.get(b"sel_registerName\0").ok()?;
-            let msg_send = *objc.get::<unsafe extern "C" fn()>(b"objc_msgSend\0").ok()?;
-
-            // objc_msgSend must be cast to the signature of each message it sends.
-            let msg0: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
-                std::mem::transmute(msg_send);
-            let msg_id: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) -> *mut c_void =
-                std::mem::transmute(msg_send);
-            let msg_utf8: unsafe extern "C" fn(*mut c_void, *mut c_void, *const c_char) -> *mut c_void =
-                std::mem::transmute(msg_send);
-            let msg_ret_isize: unsafe extern "C" fn(*mut c_void, *mut c_void) -> isize =
-                std::mem::transmute(msg_send);
-            let msg_isize: unsafe extern "C" fn(*mut c_void, *mut c_void, isize) -> i8 =
-                std::mem::transmute(msg_send);
-            let msg_bool: unsafe extern "C" fn(*mut c_void, *mut c_void, i8) -> *mut c_void =
-                std::mem::transmute(msg_send);
-            let msg_rect_bool: unsafe extern "C" fn(*mut c_void, *mut c_void, CGRect, i8) -> *mut c_void =
-                std::mem::transmute(msg_send);
-
-            let class = |name: &str| {
-                let name = CString::new(name).unwrap();
-                objc_get_class(name.as_ptr())
-            };
-            let sel = |name: &str| {
-                let name = CString::new(name).unwrap();
-                sel_register_name(name.as_ptr())
-            };
-            let ns_string = |text: &str| {
-                let text = CString::new(text).unwrap_or_default();
-                msg_utf8(class("NSString"), sel("stringWithUTF8String:"), text.as_ptr())
-            };
-
-            let pool = msg0(msg0(class("NSAutoreleasePool"), sel("alloc")), sel("init"));
-            let app = msg0(class("NSApplication"), sel("sharedApplication"));
-            msg_isize(app, sel("setActivationPolicy:"), NS_ACTIVATION_POLICY_ACCESSORY);
-            msg_bool(app, sel("activateIgnoringOtherApps:"), 1);
-
-            let alert = msg0(msg0(class("NSAlert"), sel("alloc")), sel("init"));
-            msg_id(alert, sel("setMessageText:"), ns_string(prompt));
-            msg_id(alert, sel("addButtonWithTitle:"), ns_string("Launch"));
-            msg_id(alert, sel("addButtonWithTitle:"), ns_string("Cancel"));
-            let popup = msg_rect_bool(
-                msg0(class("NSPopUpButton"), sel("alloc")),
-                sel("initWithFrame:pullsDown:"),
-                CGRect { x: 0.0, y: 0.0, width: 280.0, height: 26.0 },
-                0,
-            );
-            for item in items {
-                msg_id(popup, sel("addItemWithTitle:"), ns_string(item));
-            }
-            msg_id(alert, sel("setAccessoryView:"), popup);
-            msg_id(msg0(alert, sel("window")), sel("setTitle:"), ns_string(title));
-            let response = msg_ret_isize(alert, sel("runModal"));
-            let selected = if response == NS_ALERT_FIRST_BUTTON {
-                Some(msg_ret_isize(popup, sel("indexOfSelectedItem")) as usize)
-            } else {
-                None
-            };
-            msg0(pool, sel("drain"));
-            selected
+        let output = Command::new("osascript")
+            .args(["-l", "JavaScript"])
+            .arg("-e")
+            .arg(SCRIPT)
+            .arg(title)
+            .arg(prompt)
+            .args(items)
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
         }
+        let selected = String::from_utf8(output.stdout).ok()?;
+        items.iter().position(|item| item == selected.trim())
     }
 }
 

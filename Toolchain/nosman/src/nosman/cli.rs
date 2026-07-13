@@ -4,32 +4,9 @@ use std::error::Error;
 use std::mem;
 use clap::{Arg, ArgAction, Command};
 use clap::builder::StyledStr;
-use sysinfo::System;
 use crate::nosman;
 use crate::nosman::command;
 use crate::nosman::workspace::Workspace;
-
-fn launched_from_file_explorer() -> bool {
-    let mut sys = System::new_all();
-    sys.refresh_all();
-    if let Ok(pid) = sysinfo::get_current_pid() {
-        if let Some(process) = sys.process(pid) {
-            if let Some(parent_pid) = process.parent() {
-                if let Some(parent_process) = sys.process(parent_pid) {
-                    #[cfg(target_os = "windows")]
-                    return parent_process.name().eq_ignore_ascii_case("explorer.exe");
-                    #[cfg(target_os = "macos")]
-                    return parent_process.name().eq_ignore_ascii_case("finder");
-                    #[cfg(target_os = "linux")]
-                    return ["nautilus", "dolphin", "nemo", "thunar"]
-                        .iter()
-                        .any(|&name| parent_process.name().eq_ignore_ascii_case(name));
-                }
-            }
-        }
-    }
-    false
-}
 
 /// A double-clicked console binary gets a console window from Windows. Hide
 /// and detach it so only the engine dialog is visible. Detaching leaves the
@@ -91,14 +68,11 @@ fn get_workspace_dir_from_cmd(cmd: &Command) -> std::path::PathBuf {
 pub fn run_cli() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() == 1 {
-        // Get parent process name. If it is a file explorer, open Nodos
-        if launched_from_file_explorer() {
-            detach_console();
-            let workspace_dir = std::env::current_exe().expect("Unable to access current executable path.")
-                .parent().expect("Unable to access parent directory of executable.").to_path_buf();
-            command::launch::launch_nodos(&workspace_dir, false, None, true)?;
-            return Ok(());
-        }
+        detach_console();
+        let workspace_dir = std::env::current_exe().expect("Unable to access current executable path.")
+            .parent().expect("Unable to access parent directory of executable.").to_path_buf();
+        command::launch::launch_nodos(&workspace_dir, false, None, true)?;
+        return Ok(());
     }
 
     let exe_path = std::env::current_exe().expect("Unable to get current executable path");
@@ -123,6 +97,7 @@ pub fn run_cli() -> Result<(), Box<dyn Error>> {
         .arg(Arg::new("help")
             .short('h')
             .long("help")
+            .num_args(0..=1)
             .help("Prints help information about a command")
         );
     cli = command::register_cli(cli);
