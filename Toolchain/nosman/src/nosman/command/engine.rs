@@ -4,7 +4,7 @@ use colored::Colorize;
 use sysinfo::{Pid, System};
 use crate::nosman;
 use crate::nosman::command::{Command, CommandResult};
-use crate::nosman::command::launch::launch_nodos;
+use crate::nosman::command::launch::{launch_nodos, list_engines};
 use crate::nosman::workspace::Workspace;
 
 /// Base names (without platform extension) of the processes that make up a
@@ -110,7 +110,14 @@ pub fn get_cli() -> clap::Command {
     clap::Command::new("engine")
         .about("Manage the local Nodos engine (launch/stop/status/restart)")
         .subcommand(clap::Command::new("launch")
-            .about("Launch Nodos"))
+            .about("Launch Nodos")
+            .arg(crate::nosman::command::launch::get_engine_arg()))
+        .subcommand(clap::Command::new("list")
+            .about("List the engines installed in this workspace")
+            .arg(Arg::new("json")
+                .long("json")
+                .action(ArgAction::SetTrue)
+                .help("Print the engine list as JSON")))
         .subcommand(clap::Command::new("stop")
             .about("Stop the running Nodos engine and editor for this workspace")
             .arg(Arg::new("force")
@@ -160,8 +167,42 @@ impl Command for EngineLaunchCommand {
         args.subcommand_matches("engine")?.subcommand_matches("launch")
     }
 
-    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, _args: &ArgMatches) -> CommandResult {
-        launch_nodos(&workspace.root, true)
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+        launch_nodos(&workspace.root, true, args.get_one::<String>("engine").map(|s| s.as_str()), false)
+    }
+
+    fn needs_workspace(&self) -> bool {
+        true
+    }
+}
+
+pub struct EngineListCommand {}
+
+impl Command for EngineListCommand {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+        args.subcommand_matches("engine")?.subcommand_matches("list")
+    }
+
+    fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+        let engines = list_engines(&workspace.root);
+        if args.get_flag("json") {
+            let entries: Vec<serde_json::Value> = engines.iter().map(|e| serde_json::json!({
+                "name": e.name,
+                "version": e.version,
+                "path": e.path,
+            })).collect();
+            println!("{}", serde_json::to_string_pretty(&entries).unwrap());
+            return Ok(());
+        }
+        if engines.is_empty() {
+            println!("{}", "No installed Nodos engine found in workspace.".yellow());
+            return Ok(());
+        }
+        println!("{}", "Installed engines:".green());
+        for e in &engines {
+            println!("  {} ({})", e.to_string().cyan(), e.path.display());
+        }
+        Ok(())
     }
 
     fn needs_workspace(&self) -> bool {
@@ -269,7 +310,7 @@ impl Command for EngineRestartCommand {
             }
         }
 
-        launch_nodos(&workspace.root, true)
+        launch_nodos(&workspace.root, true, None, false)
     }
 
     fn needs_workspace(&self) -> bool {
