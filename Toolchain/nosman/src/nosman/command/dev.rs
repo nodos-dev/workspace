@@ -12,7 +12,7 @@ use include_dir::{include_dir, Dir};
 use indicatif::ProgressBar;
 use rayon::prelude::*;
 use CommandError::InvalidArgument;
-use crate::nosman::common::copy_include_dir_recursive;
+use crate::nosman::common::{ask, copy_include_dir_recursive};
 use crate::nosman::command::{get_lang_tool_arg, Command, CommandError, CommandResult};
 use crate::nosman::lang_tool::LangTool;
 use crate::nosman::workspace::Workspace;
@@ -29,6 +29,10 @@ pub fn get_cli() -> clap::Command {
         .about("Helper commands for Nodos module development")
         .subcommand(clap::Command::new("pull")
             .about("Scans for git repositories and pulls their current branches")
+            .arg(git_dir_arg.clone())
+        )
+        .subcommand(clap::Command::new("push")
+            .about("Scans for git repositories with unpushed commits and pushes them to their upstream branches")
             .arg(git_dir_arg.clone())
         )
         .subcommand(clap::Command::new("gen")
@@ -429,6 +433,37 @@ impl Command for DevGenCommand {
     }
 }
 
+/// Current branch name of a git repository, or "unknown".
+fn git_current_branch(path: &PathBuf) -> String {
+    let branch = std::process::Command::new("git")
+        .arg("rev-parse")
+        .arg("--abbrev-ref")
+        .arg("HEAD")
+        .current_dir(path)
+        .output()
+        .expect("Failed to run git rev-parse --abbrev-ref HEAD");
+    if branch.status.success() {
+        String::from_utf8_lossy(&branch.stdout).trim().to_string()
+    } else {
+        "unknown".to_string()
+    }
+}
+
+/// Subject lines of commits ahead of upstream (unpushed), newest first.
+/// Empty if no upstream is set.
+fn git_ahead_commits(path: &PathBuf) -> Vec<String> {
+    std::process::Command::new("git")
+        .arg("log")
+        .arg("--format=%s")
+        .arg("@{upstream}..HEAD")
+        .current_dir(path)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).lines().map(|l| l.trim_end().to_string()).collect())
+        .unwrap_or_default()
+}
+
 pub struct DevStatusCommand {}
 
 impl DevStatusCommand {
@@ -440,21 +475,9 @@ impl DevStatusCommand {
         let git_dirs = find_git_repositories(dirs)?;
         pb.set_message("Scanning...");
         // Mutex locked mutable output map
-        let output_map_locked = Mutex::new(HashMap::<PathBuf, (String, String, u32, bool)>::new());
+        let output_map_locked = Mutex::new(HashMap::<PathBuf, (String, String, Vec<String>, bool)>::new());
         git_dirs.par_iter().for_each(|path| {
-            // Get current branch
-            let branch = std::process::Command::new("git")
-                .arg("rev-parse")
-                .arg("--abbrev-ref")
-                .arg("HEAD")
-                .current_dir(&path)
-                .output()
-                .expect("Failed to run git rev-parse --abbrev-ref HEAD");
-            let branch_name = if branch.status.success() {
-                String::from_utf8_lossy(&branch.stdout).trim().to_string()
-            } else {
-                "unknown".to_string()
-            };
+            let branch_name = git_current_branch(path);
 
             // Run git status
             let status = std::process::Command::new("git")
@@ -465,22 +488,12 @@ impl DevStatusCommand {
                 .expect("Failed to run git status");
             let status_str = String::from_utf8_lossy(&status.stdout).to_string();
 
-            // Count commits ahead of upstream (unpushed). Empty if no upstream is set.
-            let ahead = std::process::Command::new("git")
-                .arg("rev-list")
-                .arg("--count")
-                .arg("@{upstream}..HEAD")
-                .current_dir(&path)
-                .output()
-                .ok()
-                .filter(|o| o.status.success())
-                .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<u32>().ok())
-                .unwrap_or(0);
+            let ahead_commits = git_ahead_commits(path);
 
-            let has_changes = !status_str.trim().is_empty() || ahead > 0;
+            let has_changes = !status_str.trim().is_empty() || !ahead_commits.is_empty();
 
             let mut output_map = output_map_locked.lock().unwrap();
-            output_map.insert(path.clone(), (branch_name, status_str, ahead, has_changes));
+            output_map.insert(path.clone(), (branch_name, status_str, ahead_commits, has_changes));
         });
         pb.finish_and_clear();
 
@@ -490,7 +503,7 @@ impl DevStatusCommand {
             a_changed.cmp(b_changed).then_with(|| a_path.cmp(b_path))
         });
 
-        for (path, (branch, status, ahead, has_changes)) in repos {
+        for (path, (branch, status, ahead_commits, has_changes)) in repos {
             if has_changes {
                 println!(
                     "{} ({}):",
@@ -498,12 +511,15 @@ impl DevStatusCommand {
                     branch.cyan()
                 );
 
-                if ahead > 0 {
+                if !ahead_commits.is_empty() {
                     println!("{}", format!(
-                        "{} commit{} ahead of upstream",
-                        ahead,
-                        if ahead == 1 { "" } else { "s" }
+                        "{} commit{} ahead of upstream:",
+                        ahead_commits.len(),
+                        if ahead_commits.len() == 1 { "" } else { "s" }
                     ).yellow());
+                    for subject in &ahead_commits {
+                        println!("{}", format!("  {}", subject).yellow());
+                    }
                 }
 
                 for line in status.lines() {
@@ -536,6 +552,160 @@ impl Command for DevStatusCommand {
         let dirs: Vec<&String> = args.get_many::<String>("dir").unwrap_or_default().collect();
         let dirs: Vec<PathBuf> = dirs.iter().map(PathBuf::from).collect();
         self.run_status(dirs)
+    }
+
+    fn needs_workspace(&self) -> bool {
+        false
+    }
+}
+
+pub struct DevPushCommand {}
+
+impl DevPushCommand {
+    fn run_push(&self, dirs: Vec<PathBuf>) -> CommandResult {
+        // Scan for git repositories and collect the ones with unpushed commits
+        let pb = ProgressBar::new_spinner();
+        pb.enable_steady_tick(Duration::from_millis(100));
+        pb.set_message("Scanning for git repositories...");
+        let git_dirs = find_git_repositories(dirs)?;
+        pb.set_message("Scanning...");
+        let candidates_locked = Mutex::new(Vec::<(PathBuf, String, Vec<String>)>::new());
+        git_dirs.par_iter().for_each(|path| {
+            let ahead_commits = git_ahead_commits(path);
+            if !ahead_commits.is_empty() {
+                let branch_name = git_current_branch(path);
+                candidates_locked.lock().unwrap().push((path.clone(), branch_name, ahead_commits));
+            }
+        });
+        pb.finish_and_clear();
+
+        let mut candidates = candidates_locked.into_inner().unwrap();
+        candidates.sort_by(|a, b| a.0.cmp(&b.0));
+
+        if candidates.is_empty() {
+            println!("{}", "No repositories with unpushed commits.".green());
+            return Ok(());
+        }
+
+        for (path, branch, commits) in &candidates {
+            println!(
+                "{} ({}):",
+                path.display().to_string().green().bold(),
+                branch.cyan()
+            );
+            for subject in commits {
+                println!("{}", format!("  {}", subject).yellow());
+            }
+            println!();
+        }
+
+        // Choose which repositories to push.
+        let labels: Vec<String> = candidates
+            .iter()
+            .map(|(path, branch, commits)| format!(
+                "{} ({}): {} commit{} ahead",
+                path.display(),
+                branch,
+                commits.len(),
+                if commits.len() == 1 { "" } else { "s" }
+            ))
+            .collect();
+        let default: Vec<usize> = (0..labels.len()).collect();
+        let selection = MultiSelect::new("Select repositories to push:", labels.clone())
+            .with_default(&default)
+            .prompt();
+        let to_push: Vec<(PathBuf, String, Vec<String>)> = match selection {
+            Ok(selected) => selected
+                .iter()
+                .filter_map(|label| labels.iter().position(|l| l == label))
+                .map(|idx| candidates[idx].clone())
+                .collect(),
+            Err(e) => {
+                return Err(CommandError::Runtime {
+                    message: format!("Failed to select repositories: {}", e),
+                });
+            }
+        };
+
+        if to_push.is_empty() {
+            println!("Nothing selected. Nothing to do.");
+            return Ok(());
+        }
+
+        let question = format!(
+            "Push {} repositor{} to upstream?",
+            to_push.len(),
+            if to_push.len() == 1 { "y" } else { "ies" }
+        );
+        if !ask(&question, false, false) {
+            println!("Aborted. Nothing pushed.");
+            return Ok(());
+        }
+
+        let total_count = to_push.len();
+        let pb = ProgressBar::new_spinner();
+        pb.enable_steady_tick(Duration::from_millis(100));
+        pb.set_message(format!("Pushing (0/{})...", total_count));
+        let completed_count = Mutex::new(0usize);
+
+        // Push in parallel. git output is captured (not inherited) so concurrent pushes don't
+        // interleave on the terminal; failures are reported together afterwards.
+        let failures = Mutex::new(Vec::<String>::new());
+        to_push.par_iter().for_each(|(path, branch, _)| {
+            let output = std::process::Command::new("git")
+                .arg("push")
+                .current_dir(&path)
+                .output();
+            match output {
+                Ok(o) if o.status.success() => {
+                    pb.println(format!(
+                        "{} {} ({})",
+                        "Pushed".green().bold(),
+                        path.display(),
+                        branch.cyan()
+                    ));
+                }
+                Ok(o) => failures.lock().unwrap().push(format!(
+                    "git push in {} exited with status {}: {}",
+                    path.display(),
+                    o.status,
+                    String::from_utf8_lossy(&o.stderr).trim()
+                )),
+                Err(e) => failures.lock().unwrap().push(format!("Failed to run git push in {}: {}", path.display(), e)),
+            }
+            let mut count = completed_count.lock().unwrap();
+            *count += 1;
+            pb.set_message(format!("({}/{}) pushing...", *count, total_count));
+        });
+        pb.finish_and_clear();
+
+        let failures = failures.into_inner().unwrap();
+        if failures.is_empty() {
+            println!("{}", "Done.".green().bold());
+            Ok(())
+        } else {
+            for f in &failures {
+                eprintln!("{}", f.red());
+            }
+            Err(CommandError::Runtime {
+                message: format!("{} repository/repositories failed to push.", failures.len()),
+            })
+        }
+    }
+}
+
+impl Command for DevPushCommand {
+    fn matched_args<'a>(&self, _workspace: &Workspace, args: &'a ArgMatches) -> Option<&'a ArgMatches> {
+        if let Some(subcommand) = args.subcommand_matches("dev") {
+            return subcommand.subcommand_matches("push");
+        }
+        None
+    }
+
+    fn run(&self, _workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
+        let dirs: Vec<&String> = args.get_many::<String>("dir").unwrap_or_default().collect();
+        let dirs: Vec<PathBuf> = dirs.iter().map(PathBuf::from).collect();
+        self.run_push(dirs)
     }
 
     fn needs_workspace(&self) -> bool {
