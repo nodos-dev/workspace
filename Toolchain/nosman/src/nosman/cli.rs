@@ -71,7 +71,7 @@ pub fn run_cli() -> Result<(), Box<dyn Error>> {
         detach_console();
         let workspace_dir = std::env::current_exe().expect("Unable to access current executable path.")
             .parent().expect("Unable to access parent directory of executable.").to_path_buf();
-        command::launch::launch_nodos(&workspace_dir, false, None, true)?;
+        command::launch::launch_nodos(&workspace_dir, false, None, true, &[])?;
         return Ok(());
     }
 

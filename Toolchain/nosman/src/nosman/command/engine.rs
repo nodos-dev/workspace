@@ -5,7 +5,7 @@ use sysinfo::{Pid, System};
 use crate::nosman;
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::launch::{
-    launch_engine, launch_nodos, list_engines, select_engine,
+    get_engine_args, launch_engine, launch_nodos, list_engines, select_engine,
 };
 use crate::nosman::workspace::Workspace;
 
@@ -113,7 +113,8 @@ pub fn get_cli() -> clap::Command {
         .about("Manage the local Nodos engine (launch/stop/status/restart)")
         .subcommand(clap::Command::new("launch")
             .about("Launch Nodos")
-            .arg(crate::nosman::command::launch::get_engine_arg()))
+            .arg(crate::nosman::command::launch::get_engine_arg())
+            .arg(crate::nosman::command::launch::get_engine_args_arg()))
         .subcommand(clap::Command::new("list")
             .about("List the engines installed in this workspace")
             .arg(Arg::new("json")
@@ -140,7 +141,8 @@ pub fn get_cli() -> clap::Command {
                 .long("force")
                 .short('f')
                 .action(ArgAction::SetTrue)
-                .help("Forcefully kill the processes during the stop phase")))
+                .help("Forcefully kill the processes during the stop phase"))
+            .arg(crate::nosman::command::launch::get_engine_args_arg()))
 }
 
 /// Stop all discovered Nodos processes for the workspace. Returns how many were
@@ -171,7 +173,7 @@ impl Command for EngineLaunchCommand {
     }
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
-        launch_nodos(&workspace.root, true, args.get_one::<String>("engine").map(|s| s.as_str()), false)
+        launch_nodos(&workspace.root, true, args.get_one::<String>("engine").map(|s| s.as_str()), false, &get_engine_args(args))
     }
 
     fn needs_workspace(&self) -> bool {
@@ -320,7 +322,7 @@ impl Command for EngineRestartCommand {
             }
         }
 
-        launch_engine(engine, true)
+        launch_engine(engine, true, &get_engine_args(args))
     }
 
     fn needs_workspace(&self) -> bool {

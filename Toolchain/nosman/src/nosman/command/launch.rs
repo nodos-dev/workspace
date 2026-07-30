@@ -159,7 +159,8 @@ pub fn select_engine(
     Ok(engine)
 }
 
-pub fn launch_engine(engine: EngineInfo, hide_output: bool) -> CommandResult {
+/// `engine_args` are forwarded verbatim to nosLauncher.
+pub fn launch_engine(engine: EngineInfo, hide_output: bool, engine_args: &[String]) -> CommandResult {
     println!("{} {}", "Launching Nodos".green(), engine.to_string().cyan());
     let mut editor_cmd = std::process::Command::new(&engine.editor_path);
     editor_cmd.arg("--no-duplicate-instance")
@@ -167,6 +168,7 @@ pub fn launch_engine(engine: EngineInfo, hide_output: bool) -> CommandResult {
         .current_dir(engine.editor_path.parent().expect("Unable to get parent directory of nosEditor"));
     let mut engine_cmd = std::process::Command::new(&engine.launcher_path);
     engine_cmd.arg("--exit-silently-if-duplicate")
+        .args(engine_args)
         .current_dir(engine.launcher_path.parent().expect("Unable to get parent directory of nosLauncher"));
     if hide_output {
         editor_cmd.stdout(std::process::Stdio::null());
@@ -184,9 +186,10 @@ pub fn launch_nodos(
     hide_output: bool,
     engine_query: Option<&str>,
     use_dialog: bool,
+    engine_args: &[String],
 ) -> CommandResult {
     let engine = select_engine(workspace_dir, engine_query, use_dialog)?;
-    launch_engine(engine, hide_output)
+    launch_engine(engine, hide_output, engine_args)
 }
 
 pub fn get_engine_arg() -> Arg {
@@ -195,10 +198,27 @@ pub fn get_engine_arg() -> Arg {
         .required(false)
 }
 
+/// Everything after `--`, passed on to nosLauncher.
+pub fn get_engine_args_arg() -> Arg {
+    Arg::new("engine_args")
+        .help("Arguments after '--' are forwarded to the engine launcher")
+        .last(true)
+        .num_args(0..)
+        .allow_hyphen_values(true)
+}
+
+/// Trailing arguments collected by [`get_engine_args_arg`].
+pub fn get_engine_args(args: &ArgMatches) -> Vec<String> {
+    args.get_many::<String>("engine_args")
+        .map(|values| values.cloned().collect())
+        .unwrap_or_default()
+}
+
 pub fn get_cli() -> clap::Command {
     clap::Command::new("launch")
         .about("Launch Nodos (alias of 'engine launch')")
         .arg(get_engine_arg())
+        .arg(get_engine_args_arg())
 }
 
 impl Command for LaunchCommand {
@@ -207,7 +227,7 @@ impl Command for LaunchCommand {
     }
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
-        launch_nodos(&workspace.root, true, args.get_one::<String>("engine").map(|s| s.as_str()), false)
+        launch_nodos(&workspace.root, true, args.get_one::<String>("engine").map(|s| s.as_str()), false, &get_engine_args(args))
     }
 
     fn needs_workspace(&self) -> bool {
