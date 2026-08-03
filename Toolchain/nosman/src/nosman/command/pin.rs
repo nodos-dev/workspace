@@ -1,10 +1,9 @@
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use inquire::{MultiSelect, Select, Text};
-use crate::nosman::command::{get_nodos_version_from_args, Command, CommandResult};
+use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::constants;
-use crate::nosman::index::SemVer;
 use crate::nosman::workspace::{Workspace};
 
 pub struct PinCommand {
@@ -13,9 +12,9 @@ pub struct PinCommand {
 impl PinCommand {
 
     pub fn run_pin(&self, workspace: &Workspace, node_class_name: &String, pin_name: &String, remove: bool,
-               show_as: Option<&String>, can_show_as: Option<&String>, type_name: Option<&String>, nodos_version: Option<SemVer>) -> CommandResult {
+               show_as: Option<&String>, can_show_as: Option<&String>, type_name: Option<&String>) -> CommandResult {
         let mut node_def_obj;
-        let node_def_objs = workspace.get_node_definitions(node_class_name, &nodos_version);
+        let node_def_objs = workspace.get_node_definitions(node_class_name);
         if node_def_objs.len() == 0 {
             return Err(InvalidArgument { message: format!("Node class {} not found", node_class_name) });
         }
@@ -200,8 +199,7 @@ impl Command for PinCommand {
         let show_as = args.get_one::<String>("show_as");
         let can_show_as = args.get_one::<String>("can_show_as");
         let type_name = args.get_one::<String>("type_name");
-        let nodos_version = get_nodos_version_from_args(args)?;
-        self.run_pin(workspace, node_class_name, pin_name, *remove, show_as, can_show_as, type_name, nodos_version)
+        self.run_pin(workspace, node_class_name, pin_name, *remove, show_as, can_show_as, type_name)
     }
 
     fn needs_workspace(&self) -> bool {

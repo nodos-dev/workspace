@@ -1,14 +1,13 @@
 use std::{fmt, fs};
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::path::PathBuf;
 use inquire::Text;
 use colored::Colorize;
-use crate::nosman::common::{get_nodos_version, NODOS_1_4};
+use crate::nosman::common::NODOS_1_4;
 use crate::nosman::constants;
 use crate::nosman::index::SemVer;
 use crate::nosman::package::LocalPackageEntry;
-use crate::nosman::path::get_rel_path_based_on;
-use crate::nosman::workspace::Workspace;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct NodeDefinition {
@@ -38,40 +37,36 @@ impl PluginEntry {
         Ok(PluginEntry { package })
     }
 
-    pub fn get_node_definitions(&self, include_nodes_folder: bool) -> Vec<NodeDefinition> {
-        // Read module manifest file as JSON, and read node definition files
+    pub fn get_node_definitions(&self) -> Vec<NodeDefinition> {
+        let package_root = self.package.get_package_root();
         let manifest_json = self.package.read_manifest();
-        let node_defs_rel_paths_opt = manifest_json["node_definitions"].as_array();
-        let mut node_defs_rel_paths = vec![];
+        let mut node_defs_paths: Vec<PathBuf> = vec![];
         let mut node_definitions = vec![];
 
-        // If include_nodes_folder is true, add .nosnode files in Nodes folder.
-        if include_nodes_folder {
-            // Find .nosnode files under Nodes/ folder
-            let nodes_dir = self.package.get_package_root().join("Nodes");
-            if nodes_dir.exists() {
-                for entry in fs::read_dir(&nodes_dir).unwrap_or_else(|e| panic!("Failed to read Nodes directory {:?}: {}", nodes_dir, e)) {
-                    let entry = entry.unwrap();
-                    let path = entry.path();
-                    if path.is_file() && path.extension().map_or(false, |ext| ext == constants::NODE_DEFINITION_FILE_EXT) {
-                        let rel_path = get_rel_path_based_on(&path.canonicalize().unwrap(), &self.package.get_package_root());
-                        let rel_path_str = rel_path.to_string_lossy().to_string();
-                        node_defs_rel_paths.push(rel_path_str);
-                    }
+        // Nodos 1.4 and later pick up .nosnode files under Nodes/ without them being listed in the manifest.
+        let nodes_dir = package_root.join("Nodes");
+        if nodes_dir.exists() {
+            for entry in fs::read_dir(&nodes_dir).unwrap_or_else(|e| panic!("Failed to read Nodes directory {:?}: {}", nodes_dir, e)) {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                if path.is_file() && path.extension().map_or(false, |ext| ext == constants::NODE_DEFINITION_FILE_EXT) {
+                    node_defs_paths.push(path);
                 }
             }
         }
 
-        if node_defs_rel_paths_opt.is_some() {
-            node_defs_rel_paths.extend(
-                node_defs_rel_paths_opt.unwrap()
-                    .iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-            );
+        // Older versions only see the files listed in the manifest.
+        if let Some(rel_paths) = manifest_json["node_definitions"].as_array() {
+            for rel_path in rel_paths.iter().filter_map(|v| v.as_str()) {
+                node_defs_paths.push(package_root.join(rel_path));
+            }
         }
 
-        for node_defs_rel_path in node_defs_rel_paths {
-            let node_defs_path = self.package.get_package_root().join(node_defs_rel_path.as_str());
+        // The same file can be both under Nodes/ and listed in the manifest; keep it once.
+        let mut seen = HashSet::new();
+        node_defs_paths.retain(|path| seen.insert(dunce::canonicalize(path).unwrap_or_else(|_| path.clone())));
+
+        for node_defs_path in node_defs_paths {
             let node_defs_file_content = fs::read_to_string(&node_defs_path);
             if let Err(e) = node_defs_file_content {
                 eprintln!("{}", format!("Failed to read node definitions file ({}): {}", node_defs_path.display(), e).red());
@@ -103,14 +98,13 @@ impl PluginEntry {
 
     // Iterates over all node definitions and finds the one with the given class name.
     // Don't call this function multiple times if you have many nodes, as it will read and parse node definition files every time. Instead, call get_node_definitions once and find the node definition from the returned list.
-    pub fn get_node_definition(&self, class_name: &str, nodos_version: &Option<SemVer>) -> Option<NodeDefinition>{
-        let include_nodes_folder = nodos_version.as_ref().map_or(false, |v| v >= &NODOS_1_4);
-        let node_defs = self.get_node_definitions(include_nodes_folder);
+    pub fn get_node_definition(&self, class_name: &str) -> Option<NodeDefinition>{
+        let node_defs = self.get_node_definitions();
         return node_defs.into_iter().find(|def| def.class_name == class_name);
     }
 
-    pub fn remove_node_definition(&self, node_class_name: &String, nodos_version: Option<SemVer>) -> Result<(), String> {
-        let node_def = self.get_node_definition(node_class_name.as_str(), &nodos_version);
+    pub fn remove_node_definition(&self, node_class_name: &String) -> Result<(), String> {
+        let node_def = self.get_node_definition(node_class_name.as_str());
         if node_def.is_none() {
             return Err(format!("Node class {} not found in plugin {}", node_class_name, self.package));
         }
@@ -137,7 +131,8 @@ impl PluginEntry {
                 node_defs_rel_paths.retain(|path| {
                     let path_obj = self.package.get_package_root().join(PathBuf::from(path.as_str()
                         .unwrap_or_else(|| panic!("Failed to convert path to string: {}", path))));
-                    let path_obj = dunce::canonicalize(&path_obj).unwrap_or_else(|e| panic!("Failed to canonicalize path: {} {}", path_obj.display(), e));
+                    // A listed file may be gone already, so compare the path as written in that case.
+                    let path_obj = dunce::canonicalize(&path_obj).unwrap_or_else(|_| path_obj.clone());
                     path_obj != node_def_path
                 });
                 // Write back to manifest
@@ -153,7 +148,7 @@ impl PluginEntry {
         Ok(())
     }
 
-    pub fn add_node_definition(&self, workspace: &Workspace, node_class_name: &String, display_name: Option<String>, description: Option<String>, category: Option<String>,
+    pub fn add_node_definition(&self, node_class_name: &String, display_name: Option<String>, description: Option<String>, category: Option<String>,
                                hide_in_context_menu: bool, nodos_version: Option<SemVer>) -> Result<(), String> {
         println!("{}", format!("Adding a node '{}' to plugin: {}", node_class_name, self.package).green());
         let node_class_name = if node_class_name.starts_with(self.package.info.id.name.as_str()) {
@@ -162,7 +157,7 @@ impl PluginEntry {
         else {
             format!("{}.{}", self.package.info.id.name, node_class_name)
         };
-        let node_def = self.get_node_definition(&node_class_name, &nodos_version);
+        let node_def = self.get_node_definition(&node_class_name);
         if node_def.is_some() {
             return Err(format!("Node class {} already exists in plugin {}", node_class_name, self.package));
         }
@@ -187,19 +182,23 @@ impl PluginEntry {
                 .unwrap_or_else(|e| panic!("Failed to get category: {}", e))
         });
 
-        let selected_version = get_nodos_version(workspace, &nodos_version)?;
+        // The plugin's own manifest tells us which Nodos line it targets; nodos_version overrides it.
+        let is_1_4_or_later = match &nodos_version {
+            Some(version) => version >= &NODOS_1_4,
+            None => self.package.is_nodos_1_4_or_later(),
+        };
         let mut manifest_json = self.package.read_manifest();
         if manifest_json["node_definitions"].is_null() {
             manifest_json["node_definitions"] = serde_json::json!([]);
         }
         let node_defs_rel_paths = manifest_json["node_definitions"].as_array_mut().unwrap();
-        let update_manifest = selected_version < NODOS_1_4 || node_defs_rel_paths.len() > 0;
-        let node_def_file_ext = if selected_version < NODOS_1_4 {
-            constants::LEGACY_NODE_DEFINITION_FILE_EXT
-        } else {
+        // Nodos 1.4 finds .nosnode files under Nodes/ on its own; older versions need them listed.
+        let update_manifest = !is_1_4_or_later || node_defs_rel_paths.len() > 0;
+        let node_def_file_ext = if is_1_4_or_later {
             constants::NODE_DEFINITION_FILE_EXT
+        } else {
+            constants::LEGACY_NODE_DEFINITION_FILE_EXT
         };
-
 
         let out_node_defs_file = format!("Nodes/{}", node_class_name.strip_prefix(format!("{}.", &self.package.info.id.name).as_str()).unwrap_or_else(|| &node_class_name));
         println!("Node definition file: {}", out_node_defs_file);

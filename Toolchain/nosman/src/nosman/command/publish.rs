@@ -412,7 +412,7 @@ impl PublishCommand {
                             let local_package = workspace.get_package(name.as_ref().unwrap(), version.as_ref().unwrap())?.clone();
                             let local_package = workspace.absolutize_paths(&local_package);
                             if let Ok(plugin) = PluginEntry::new(local_package) {
-                                plugin.get_node_definitions(true).iter().for_each(|node_def| {  
+                                plugin.get_node_definitions().iter().for_each(|node_def| {
                                     node_class_names.push(node_def.class_name.clone());  
                                 });  
                             }  

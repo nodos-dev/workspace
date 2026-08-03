@@ -171,6 +171,12 @@ impl LocalPackageEntry {
     pub fn get_package_root(&self) -> PathBuf {
         self.manifest_path.parent().unwrap().to_path_buf()
     }
+    // Nodos 1.4 replaced the .noscfg/.nossys manifests with .nosplugin, so the file name tells us
+    // which Nodos line the package is written for.
+    pub fn is_nodos_1_4_or_later(&self) -> bool {
+        self.manifest_path.extension()
+            .map_or(false, |ext| ext == constants::PLUGIN_MANIFEST_FILE_EXT)
+    }
     pub fn read_manifest(&self) -> serde_json::Value {
         // Read module manifest file as JSON, and read node definition files
         let manifest_file = fs::File::open(&self.manifest_path)

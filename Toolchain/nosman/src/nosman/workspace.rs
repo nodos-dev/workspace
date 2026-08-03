@@ -627,14 +627,14 @@ impl Workspace {
             }
         }
     }
-    pub fn get_node_definitions(&self, node_class_name: &str, nodos_version: &Option<SemVer>) -> Vec<NodeDefinition> {
+    pub fn get_node_definitions(&self, node_class_name: &str) -> Vec<NodeDefinition> {
         let mut res = Vec::new();
         for versions in self.packages.values() {
             for package in versions.values().flatten() {
                 let package_abs = self.absolutize_paths(package);
                 if package_abs.package_type == PackageType::Plugin {
                     if let Ok(plugin) = PluginEntry::new(package_abs) {
-                        if let Some(found) = plugin.get_node_definition(node_class_name, nodos_version) {
+                        if let Some(found) = plugin.get_node_definition(node_class_name) {
                             res.push(found);
                         }
                     }

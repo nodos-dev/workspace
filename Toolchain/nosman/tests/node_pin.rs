@@ -42,6 +42,7 @@ fn test_node_add_remove(mut test: WorkspaceGen, version: SemVer) {
     };
 
     let node_class = "MyNode";
+    // No version passed on purpose: the plugin manifest has to be enough, like it is on the CLI.
     NodeCommand {}
         .run_node(
             &mut test.workspace,
@@ -52,7 +53,7 @@ fn test_node_add_remove(mut test: WorkspaceGen, version: SemVer) {
             Some("A test node".to_string()),
             Some("TestCategory".to_string()),
             false,
-            Some(version.clone()),
+            None,
         )
         .expect("Failed to add node");
     let plugin = test
@@ -68,10 +69,9 @@ fn test_node_add_remove(mut test: WorkspaceGen, version: SemVer) {
         assert!(!node_defs.is_empty());
         node_def_path = plugin.get_package_root().join(node_defs[0].as_str().unwrap());
     } else {
-        let defs = test.workspace.get_node_definitions(
-            &format!("{}.MyNode", module_name).to_string(),
-            &Some(version.clone()),
-        );
+        let defs = test
+            .workspace
+            .get_node_definitions(&format!("{}.MyNode", module_name).to_string());
         assert!(
             !defs.is_empty(),
             "No node definitions found for {}.{}",
@@ -80,6 +80,14 @@ fn test_node_add_remove(mut test: WorkspaceGen, version: SemVer) {
         );
         node_def_path = defs[0].defined_in.clone();
     }
+    let expected_ext = if version < NODOS_1_4 { "nosdef" } else { "nosnode" };
+    assert_eq!(
+        node_def_path.extension().and_then(|e| e.to_str()),
+        Some(expected_ext),
+        "Unexpected node definition file for Nodos {}: {}",
+        version,
+        node_def_path.display()
+    );
 
     assert!(node_def_path.exists());
     let json = read_node_def_json(&node_def_path);
@@ -98,7 +106,7 @@ fn test_node_add_remove(mut test: WorkspaceGen, version: SemVer) {
             None,
             None,
             false,
-            Some(version.clone()),
+            None,
         )
         .expect("Failed to remove node");
     assert!(!node_def_path.exists());
@@ -140,7 +148,7 @@ fn test_pin_add_remove(mut test: WorkspaceGen, version: SemVer) {
             Some("A node for pin test".to_string()),
             Some("PinCategory".to_string()),
             false,
-            Some(version.clone()),
+            None,
         )
         .expect("Failed to add node");
     let plugin = test
@@ -156,10 +164,9 @@ fn test_pin_add_remove(mut test: WorkspaceGen, version: SemVer) {
         assert!(!node_defs.is_empty());
         node_def_path = plugin.get_package_root().join(node_defs[0].as_str().unwrap());
     } else {
-        let defs = test.workspace.get_node_definitions(
-            &format!("{}.{}", module_name, node_class).to_string(),
-            &Some(version.clone()),
-        );
+        let defs = test
+            .workspace
+            .get_node_definitions(&format!("{}.{}", module_name, node_class).to_string());
         assert!(
             !defs.is_empty(),
             "No node definitions found for {}.{}",
@@ -177,7 +184,6 @@ fn test_pin_add_remove(mut test: WorkspaceGen, version: SemVer) {
             Some(&"INPUT_PIN".to_string()),
             Some(&"INPUT_PIN_ONLY".to_string()),
             Some(&"float".to_string()),
-            Some(version.clone()),
         )
         .expect("Failed to add pin");
     let json = read_node_def_json(&node_def_path);
@@ -192,7 +198,6 @@ fn test_pin_add_remove(mut test: WorkspaceGen, version: SemVer) {
             None,
             None,
             None,
-            Some(version.clone()),
         )
         .expect("Failed to remove pin");
     let json = read_node_def_json(&node_def_path);
@@ -218,4 +223,27 @@ fn pin_add_remove_1_3() {
 #[test]
 fn pin_add_remove_1_4() {
     test_pin_add_remove(workspace!(), SemVer::new(1, Some(4), None, None));
+}
+
+#[test]
+fn node_rejects_unsupported_nodos_version() {
+    let mut test = workspace!();
+    let err = NodeCommand {}
+        .run_node(
+            &mut test.workspace,
+            &"some.plugin".to_string(),
+            &"MyNode".to_string(),
+            false,
+            Some("MyNode".to_string()),
+            Some("A test node".to_string()),
+            Some("TestCategory".to_string()),
+            false,
+            Some(SemVer::new(1, Some(2), None, None)),
+        )
+        .expect_err("Nodos 1.2 should not be accepted");
+    assert!(
+        err.to_string().contains("Unsupported Nodos version"),
+        "Unexpected error: {}",
+        err
+    );
 }

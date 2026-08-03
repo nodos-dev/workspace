@@ -2,6 +2,7 @@ use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use crate::nosman::command::{get_nodos_version_from_args, Command, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument, Runtime};
+use crate::nosman::common::SUPPORTED_NODOS_VERSIONS;
 use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::plugin::PluginEntry;
 use crate::nosman::workspace::{Workspace};
@@ -12,6 +13,11 @@ impl NodeCommand {
     pub fn run_node(&self, workspace: &mut Workspace, plugin_name: &String, node_class_name: &String,
                 remove: bool, display_name: Option<String>, description: Option<String>,
                 category: Option<String>, hide_in_context_menu: bool, nodos_version: Option<SemVer>) -> CommandResult {
+        if let Some(version) = &nodos_version {
+            if !SUPPORTED_NODOS_VERSIONS.iter().any(|supported| *supported == version) {
+                return Err(InvalidArgument { message: format!("Unsupported Nodos version: {}", version) });
+            }
+        }
         let package = workspace.get_or_select_package(&plugin_name)?;
         if package.package_type != PackageType::Plugin {
             return Err(InvalidArgument { message: format!("Selected package {} is not a Nodos plugin. Only plugins can have nodes!", plugin_name) });
@@ -25,13 +31,13 @@ impl NodeCommand {
             else {
                 format!("{}.{}", plugin_name, node_class_name)
             };
-            plugin.remove_node_definition(&node_class_name, nodos_version).map_err(|e| {
+            plugin.remove_node_definition(&node_class_name).map_err(|e| {
                 Runtime { message: e.to_string() }
             })?;
             println!("{}", format!("Node class {} removed from plugin {}", node_class_name, plugin.package.info.id.name).yellow());
         }
         else {
-            plugin.add_node_definition(workspace, &node_class_name, display_name, description, category, hide_in_context_menu, nodos_version).map_err(|e| {
+            plugin.add_node_definition(&node_class_name, display_name, description, category, hide_in_context_menu, nodos_version).map_err(|e| {
                 Runtime { message: e.to_string() }
             })?;
             println!("{}", format!("Node class {} added to plugin {}", node_class_name, plugin.package.info.id.name).green());

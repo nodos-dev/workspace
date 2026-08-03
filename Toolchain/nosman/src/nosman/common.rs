@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
@@ -11,9 +10,7 @@ use indicatif::ProgressBar;
 use inquire::Confirm;
 use serde_json::Value;
 use crate::nosman::command::CommandError;
-use crate::nosman::command::sdk_info::get_engine_sdk_infos;
 use crate::nosman::index::SemVer;
-use crate::nosman::workspace::Workspace;
 
 pub type PromptHandler = dyn Fn(&str, bool, bool) -> bool + Send + Sync + 'static;
 static PROMPT_HANDLER: OnceLock<Mutex<Option<Box<PromptHandler>>>> = OnceLock::new();
@@ -235,39 +232,3 @@ pub static SUPPORTED_NODOS_VERSIONS: [&'static SemVer; 2] = [
 ];
 
 pub static DEFAULT_NODOS_VERSION_INDEX: usize = 0;
-
-pub fn is_nodos_version_supported(version: &SemVer) -> bool {
-    SUPPORTED_NODOS_VERSIONS.iter().any(|v| *v == version)
-}
-
-pub fn get_nodos_version(workspace: &Workspace, nodos_version: &Option<SemVer>) -> Result<SemVer, String> {
-    let mut selected_version = SUPPORTED_NODOS_VERSIONS[DEFAULT_NODOS_VERSION_INDEX].clone();
-    if let Some(nodos_ver) = nodos_version {
-        selected_version = nodos_ver.clone();
-        if !is_nodos_version_supported(&selected_version) {
-            return Err(format!("Unsupported Nodos version: {}", selected_version.to_string()));
-        }
-    } else if workspace.ready() {
-        let engines = get_engine_sdk_infos(workspace);
-        if let Ok(engines) = engines {
-            let mut major_minors = HashSet::<SemVer>::new();
-            for engine in engines {
-                if let Some(semver) = SemVer::parse_from_str(engine.version.as_str()) {
-                    major_minors.insert(semver);
-                }
-            }
-            if major_minors.len() > 1 {
-                // Multiple versions found, select the latest one:
-                let mut versions: Vec<SemVer> = major_minors.into_iter().collect();
-                versions.sort_by(|a, b| {
-                    a.cmp(&b) // Descending order
-                });
-                selected_version = versions[0].clone();
-            } else if major_minors.len() == 1 {
-                // Only one version found, use it
-                selected_version = major_minors.into_iter().next().unwrap();
-            }
-        }
-    }
-    Ok(selected_version)
-}
