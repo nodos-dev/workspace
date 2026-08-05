@@ -1,4 +1,5 @@
 mod auth;
+pub mod bundle;
 pub mod create;
 mod deinit;
 mod depend;
@@ -74,6 +75,7 @@ pub trait Command {
 pub fn commands() -> Vec<Box<dyn Command>> {
     vec![
         Box::new(init::InitCommand {}),
+        Box::new(bundle::BundleCommand {}),
         Box::new(install::InstallCommand {}),
         Box::new(info::InfoCommand {}),
         Box::new(remove::RemoveCommand {}),
@@ -120,6 +122,7 @@ pub fn get_lang_tool_arg() -> Arg {
 
 pub fn register_cli(app: clap::Command) -> clap::Command {
     app.subcommand(init::get_cli())
+        .subcommand(bundle::get_cli())
         .subcommand(deinit::get_cli())
         .subcommand(install::get_cli())
         .subcommand(remove::get_cli())

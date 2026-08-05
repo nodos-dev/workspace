@@ -500,6 +500,12 @@ impl Workspace {
         Ok(self.runtime.authenticated_store_client.as_mut().unwrap())
     }
 
+    /// The same client as [`Self::authenticated_store_client_mut`], handed out as a shared
+    /// reference so several downloads can run at once.
+    pub fn authenticated_store_client(&mut self) -> Result<&nodos_store_client::StoreClient, CommandError> {
+        self.authenticated_store_client_mut().map(|client| &*client)
+    }
+
     /// Downloads and extracts a store artifact into `target`.
     ///
     /// Uses the authenticated client so private artifacts the signed-in user is
@@ -586,6 +592,15 @@ impl Workspace {
         self.save()?;
         self.runtime.status = WorkspaceStatus::Ready;
         Ok(())
+    }
+    /// The type the store has for a package, in one call and without pulling in all of its
+    /// releases.
+    pub fn fetch_package_type(&mut self, package_name: &str) -> Result<PackageType, CommandError> {
+        let client = self.store_client()?;
+        let package = client.get_package(package_name).map_err(|e| CommandError::Runtime {
+            message: format!("Cannot read package {} from the Nodos Store: {}", package_name, e),
+        })?;
+        Ok(PackageType::from_str(&package.package_type))
     }
     pub fn fetch_package_releases(&mut self, package_name: &str) {
         let result = {

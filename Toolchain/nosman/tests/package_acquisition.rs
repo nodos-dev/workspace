@@ -102,6 +102,43 @@ fn install_skips_if_already_installed() {
 }
 
 #[test]
+fn install_many_brings_every_package() {
+    let mut test = workspace!();
+    let package_name = "nos.sys.vulkan";
+    let version = String::from("6.2.1.b612");
+    test.workspace.fetch_package_releases(package_name);
+    let requested: Vec<PackageIdentifier> = test
+        .workspace
+        .index_cache
+        .get_package(package_name, version.as_str())
+        .expect("Package not found in index")
+        .1
+        .dependencies
+        .clone()
+        .expect("No dependencies found");
+    assert!(requested.len() > 1, "This test needs several packages to install at once");
+
+    InstallCommand {}
+        .run_install_many(
+            &mut test.workspace,
+            &requested,
+            &Some(PathBuf::from(".")),
+            None,
+            InstallFlags::WithoutDependencies,
+        )
+        .unwrap_or_else(|e| panic!("Failed to install packages: {:?}", e));
+
+    assert_eq!(requested.len(), test.workspace.get_local_package_count());
+    for package in &requested {
+        let installed = test
+            .workspace
+            .get_packages(package.name.as_str())
+            .unwrap_or_else(|_| panic!("{} was not installed", package.name));
+        assert_eq!(installed.len(), 1);
+    }
+}
+
+#[test]
 fn install_with_only_major_version() {
     let mut test = workspace!();
     let package_name = "nos.sys.vulkan";
