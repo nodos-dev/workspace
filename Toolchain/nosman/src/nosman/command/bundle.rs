@@ -9,10 +9,10 @@ use crate::nosman::command::get::GetCommand;
 use crate::nosman::command::install::{InstallCommand, InstallFlags};
 use crate::nosman::command::CommandError::{InvalidArgument, IO};
 use crate::nosman::command::{Command, CommandError, CommandResult};
+use crate::nosman::command::sdk_info::get_engine_sdk_infos;
 use crate::nosman::common;
-use crate::nosman::index::PackageType;
+use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::package::PackageIdentifier;
-use crate::nosman::path::get_default_engines_dir;
 use crate::nosman::platform::get_host_platform;
 use crate::nosman::workspace::{RescanFlags, Workspace};
 
@@ -82,19 +82,40 @@ fn get_archive_path(out_dir: &Path) -> Result<PathBuf, CommandError> {
     Ok(out_dir.with_file_name(archive_name))
 }
 
-/// The engine keeps the modules it loads on startup in Config/Profile.json. Writing the
+/// The engine keeps the packages it loads on startup in Config/Profile.json. Writing the
 /// bundled packages there is what makes them load, and it doubles as the record of what
-/// the bundle holds.
-fn find_profile_file(root: &Path) -> Option<PathBuf> {
-    let entries = fs::read_dir(get_default_engines_dir(&root.to_path_buf())).ok()?;
-    let mut profiles: Vec<PathBuf> = entries
-        .flatten()
-        .map(|entry| entry.path().join("Config").join("Profile.json"))
-        .filter(|profile| profile.exists())
-        .collect();
-    // Sorted, so a folder that ended up with more than one engine bundles the same way twice.
-    profiles.sort();
-    profiles.into_iter().next()
+/// the bundle holds. Returns the version that landed too: what the command line asked for
+/// is a prefix, or "latest", so only the engine on disk says which profile it reads.
+fn find_engine_profile(workspace: &Workspace) -> Result<(PathBuf, SemVer), CommandError> {
+    let engine = get_engine_sdk_infos(workspace)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| IO {
+            file: workspace.root.display().to_string(),
+            message: "No engine in the bundle".to_string(),
+        })?;
+    let version = SemVer::parse_from_str(&engine.version).ok_or_else(|| IO {
+        file: engine.path.clone(),
+        message: format!("The engine gives '{}' as its version", engine.version),
+    })?;
+    // The SDK folder sits next to Config, in the engine's folder.
+    let profile_file = PathBuf::from(engine.path).with_file_name("Config").join("Profile.json");
+    Ok((profile_file, version))
+}
+
+/// A release brings no profile of its own, so bundling writes the first one. Nodos 1.4
+/// renamed the list, and stamps the profile with the schema it reads it as: an unstamped
+/// profile is migrated on every startup, and a failed migration drops it altogether.
+fn create_profile(profile_file: &Path, nodos_version: &SemVer) -> CommandResult {
+    let profile = if *nodos_version >= common::NODOS_1_4 {
+        serde_json::json!({ "schema_version": "1.4-v1", "loaded_plugins": [] })
+    } else {
+        serde_json::json!({ "loaded_modules": [] })
+    };
+    fs::write(profile_file, profile.to_string()).map_err(|e| IO {
+        file: profile_file.display().to_string(),
+        message: e.to_string(),
+    })
 }
 
 fn add_to_profile(profile_file: &Path, packages: &Vec<PackageIdentifier>) -> CommandResult {
@@ -330,10 +351,10 @@ impl BundleCommand {
         }
 
         if !installed.is_empty() {
-            let profile_file = find_profile_file(&out_dir).ok_or_else(|| IO {
-                file: out_dir.display().to_string(),
-                message: "No Engine/*/Config/Profile.json in the bundle".to_string(),
-            })?;
+            let (profile_file, nodos_version) = find_engine_profile(&workspace)?;
+            if !profile_file.exists() {
+                create_profile(&profile_file, &nodos_version)?;
+            }
             add_to_profile(&profile_file, &installed)?;
             println!("Wrote {} package(s) to {}", installed.len(), profile_file.display());
         }
@@ -625,12 +646,58 @@ mod tests {
     }
 
     #[test]
-    fn find_profile_file_finds_the_engine_profile() {
+    fn the_profile_and_version_come_from_the_installed_engine() {
         let root = tempfile::tempdir().unwrap();
-        let config_dir = root.path().join("Engine").join("1.4.0.b4846").join("Config");
-        fs::create_dir_all(&config_dir).unwrap();
-        let profile_file = write_profile(&config_dir, serde_json::json!({ "loaded_modules": [] }));
+        let engine_dir = root.path().join("Engine").join("1.4.0.b4846");
+        fs::create_dir_all(engine_dir.join("SDK")).unwrap();
+        fs::write(
+            engine_dir.join("SDK").join("info.json"),
+            serde_json::json!({
+                "version": "1.4.0.b4846",
+                "process_sdk_version": "1.0.0",
+                "plugin_sdk_version": "41.0.0"
+            })
+            .to_string(),
+        )
+        .unwrap();
+        // Not an engine, and it sorts first.
+        fs::write(root.path().join("Engine").join(".DS_Store"), "").unwrap();
 
-        assert_eq!(find_profile_file(root.path()), Some(profile_file));
+        let workspace = Workspace::from_root(&root.path().to_path_buf());
+        let (profile_file, version) = find_engine_profile(&workspace).unwrap();
+
+        assert_eq!(profile_file, engine_dir.join("Config").join("Profile.json"));
+        assert_eq!(version, SemVer::parse_from_str("1.4.0.b4846").unwrap());
+    }
+
+    #[test]
+    fn a_created_profile_takes_the_bundled_packages() {
+        let folder = tempfile::tempdir().unwrap();
+        let profile_file = folder.path().join("Profile.json");
+
+        create_profile(&profile_file, &SemVer::parse_from_str("1.4.0.b4846").unwrap()).unwrap();
+        add_to_profile(&profile_file, &bundled("nos.sys.vulkan", "8.0.7")).unwrap();
+
+        let profile = read_profile(&profile_file);
+        assert_eq!(profile["schema_version"], "1.4-v1");
+        let loaded = profile["loaded_plugins"].as_array().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0]["name"], "nos.sys.vulkan");
+        assert_eq!(loaded[0]["version"], "8.0.7");
+    }
+
+    #[test]
+    fn a_created_profile_is_unstamped_before_1_4() {
+        let folder = tempfile::tempdir().unwrap();
+        let profile_file = folder.path().join("Profile.json");
+
+        create_profile(&profile_file, &SemVer::parse_from_str("1.3.5.b4854").unwrap()).unwrap();
+        add_to_profile(&profile_file, &bundled("nos.utilities", "3.18.1")).unwrap();
+
+        let profile = read_profile(&profile_file);
+        assert!(profile.get("schema_version").is_none());
+        let loaded = profile["loaded_modules"].as_array().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0]["name"], "nos.utilities");
     }
 }
