@@ -29,6 +29,9 @@ const ARCHIVE_EXTENSION: &str = ".tar.gz";
 /// "1.4-v1" profile schema, and under `loaded_plugins` after it.
 const PROFILE_PACKAGE_LIST_KEYS: [&str; 2] = ["loaded_plugins", "loaded_modules"];
 
+/// The schema a 1.4 engine reads the profile as.
+const PROFILE_SCHEMA_1_4: &str = "1.4-v1";
+
 /// Reads a package to bundle, as given on the command line.
 fn parse_package(arg: &str) -> Result<PackageIdentifier, CommandError> {
     match arg.rsplit_once(':') {
@@ -108,7 +111,7 @@ fn find_engine_profile(workspace: &Workspace) -> Result<(PathBuf, SemVer), Comma
 /// profile is migrated on every startup, and a failed migration drops it altogether.
 fn create_profile(profile_file: &Path, nodos_version: &SemVer) -> CommandResult {
     let profile = if *nodos_version >= common::NODOS_1_4 {
-        serde_json::json!({ "schema_version": "1.4-v1", "loaded_plugins": [] })
+        serde_json::json!({ "schema_version": PROFILE_SCHEMA_1_4, "loaded_plugins": [] })
     } else {
         serde_json::json!({ "loaded_modules": [] })
     };
@@ -118,7 +121,28 @@ fn create_profile(profile_file: &Path, nodos_version: &SemVer) -> CommandResult 
     })
 }
 
-fn add_to_profile(profile_file: &Path, packages: &Vec<PackageIdentifier>) -> CommandResult {
+/// A release built before the rename brings a `loaded_modules` profile, which a 1.4 engine
+/// only reads by migrating it on every startup, and drops altogether if that migration
+/// fails. Renaming the list here, with the schema stamp, hands the engine what it reads.
+fn migrate_profile(profile: &mut serde_json::Value, nodos_version: &SemVer) {
+    if *nodos_version < common::NODOS_1_4 || profile.get("loaded_plugins").is_some() {
+        return;
+    }
+    let Some(fields) = profile.as_object_mut() else {
+        return;
+    };
+    let Some(loaded) = fields.remove("loaded_modules") else {
+        return;
+    };
+    fields.insert("loaded_plugins".to_string(), loaded);
+    fields.insert("schema_version".to_string(), serde_json::json!(PROFILE_SCHEMA_1_4));
+}
+
+fn add_to_profile(
+    profile_file: &Path,
+    nodos_version: &SemVer,
+    packages: &Vec<PackageIdentifier>,
+) -> CommandResult {
     let contents = fs::read_to_string(profile_file).map_err(|e| IO {
         file: profile_file.display().to_string(),
         message: e.to_string(),
@@ -127,6 +151,7 @@ fn add_to_profile(profile_file: &Path, packages: &Vec<PackageIdentifier>) -> Com
         file: profile_file.display().to_string(),
         message: e.to_string(),
     })?;
+    migrate_profile(&mut profile, nodos_version);
 
     let list_key = *PROFILE_PACKAGE_LIST_KEYS
         .iter()
@@ -355,7 +380,7 @@ impl BundleCommand {
             if !profile_file.exists() {
                 create_profile(&profile_file, &nodos_version)?;
             }
-            add_to_profile(&profile_file, &installed)?;
+            add_to_profile(&profile_file, &nodos_version, &installed)?;
             println!("Wrote {} package(s) to {}", installed.len(), profile_file.display());
         }
 
@@ -516,6 +541,10 @@ mod tests {
         vec![PackageIdentifier { name: name.to_string(), version: version.to_string() }]
     }
 
+    fn engine(version: &str) -> SemVer {
+        SemVer::parse_from_str(version).unwrap()
+    }
+
     #[test]
     fn parse_package_reads_name_and_version() {
         let package = parse_package("nos.sys.vulkan:8.0.3").unwrap();
@@ -608,7 +637,7 @@ mod tests {
             }),
         );
 
-        add_to_profile(&profile_file, &bundled("nos.sys.vulkan", "8.0.7")).unwrap();
+        add_to_profile(&profile_file, &engine("1.4.0.b4846"), &bundled("nos.sys.vulkan", "8.0.7")).unwrap();
 
         let profile = read_profile(&profile_file);
         assert_eq!(profile["schema_version"], "1.4-v1");
@@ -620,17 +649,18 @@ mod tests {
     }
 
     #[test]
-    fn add_to_profile_writes_the_key_the_profile_already_uses() {
+    fn add_to_profile_keeps_the_legacy_key_before_1_4() {
         let folder = tempfile::tempdir().unwrap();
         let profile_file = write_profile(
             folder.path(),
             serde_json::json!({ "loaded_modules": [ { "name": "nos.reflect", "version": "3.0.0" } ] }),
         );
 
-        add_to_profile(&profile_file, &bundled("nos.utilities", "3.18.1")).unwrap();
+        add_to_profile(&profile_file, &engine("1.3.5.b4854"), &bundled("nos.utilities", "3.18.1")).unwrap();
 
         let profile = read_profile(&profile_file);
         assert!(profile.get("loaded_plugins").is_none());
+        assert!(profile.get("schema_version").is_none());
         let loaded = profile["loaded_modules"].as_array().unwrap();
         assert_eq!(loaded.len(), 2);
         assert_eq!(loaded[1]["name"], "nos.utilities");
@@ -638,11 +668,30 @@ mod tests {
     }
 
     #[test]
+    fn add_to_profile_migrates_a_legacy_profile_on_1_4() {
+        let folder = tempfile::tempdir().unwrap();
+        let profile_file = write_profile(
+            folder.path(),
+            serde_json::json!({ "loaded_modules": [ { "name": "nos.reflect", "version": "3.0.0" } ] }),
+        );
+
+        add_to_profile(&profile_file, &engine("1.4.0.b4846"), &bundled("nos.utilities", "3.18.1")).unwrap();
+
+        let profile = read_profile(&profile_file);
+        assert!(profile.get("loaded_modules").is_none());
+        assert_eq!(profile["schema_version"], "1.4-v1");
+        let loaded = profile["loaded_plugins"].as_array().unwrap();
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0]["name"], "nos.reflect");
+        assert_eq!(loaded[1]["name"], "nos.utilities");
+    }
+
+    #[test]
     fn add_to_profile_fails_without_a_package_list() {
         let folder = tempfile::tempdir().unwrap();
         let profile_file = write_profile(folder.path(), serde_json::json!({ "schema_version": "1.4-v1" }));
 
-        assert!(add_to_profile(&profile_file, &bundled("nos.utilities", "3.18.1")).is_err());
+        assert!(add_to_profile(&profile_file, &engine("1.4.0.b4846"), &bundled("nos.utilities", "3.18.1")).is_err());
     }
 
     #[test]
@@ -675,8 +724,8 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let profile_file = folder.path().join("Profile.json");
 
-        create_profile(&profile_file, &SemVer::parse_from_str("1.4.0.b4846").unwrap()).unwrap();
-        add_to_profile(&profile_file, &bundled("nos.sys.vulkan", "8.0.7")).unwrap();
+        create_profile(&profile_file, &engine("1.4.0.b4846")).unwrap();
+        add_to_profile(&profile_file, &engine("1.4.0.b4846"), &bundled("nos.sys.vulkan", "8.0.7")).unwrap();
 
         let profile = read_profile(&profile_file);
         assert_eq!(profile["schema_version"], "1.4-v1");
@@ -691,8 +740,8 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let profile_file = folder.path().join("Profile.json");
 
-        create_profile(&profile_file, &SemVer::parse_from_str("1.3.5.b4854").unwrap()).unwrap();
-        add_to_profile(&profile_file, &bundled("nos.utilities", "3.18.1")).unwrap();
+        create_profile(&profile_file, &engine("1.3.5.b4854")).unwrap();
+        add_to_profile(&profile_file, &engine("1.3.5.b4854"), &bundled("nos.utilities", "3.18.1")).unwrap();
 
         let profile = read_profile(&profile_file);
         assert!(profile.get("schema_version").is_none());
