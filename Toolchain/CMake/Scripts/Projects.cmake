@@ -163,6 +163,95 @@ function(nos_find_package_path name version out_var)
 	set(${out_var} ${package_path} PARENT_SCOPE)
 endfunction()
 
+# Where a package's generated type headers live. Inside the project, so they
+# never land in a source folder that is being globbed, and keyed by package so
+# whoever needs them can find them without asking the package that owns them.
+function(_nos_get_generated_dir name version out_var)
+	set(${out_var} "${CMAKE_BINARY_DIR}/Generated/${name}/${version}" PARENT_SCOPE)
+endfunction()
+
+# Generates the type headers of a package from the schemas it ships, and returns
+# the target that regenerates them plus the folders to include them from.
+#
+# Nodos 1.4 packages ship their schemas, so every build generates the headers
+# with the flatc of the SDK it is building against. Earlier packages ship the
+# headers instead, and their schemas are not discoverable, so they are left
+# alone and their own Include folder serves.
+#
+# Calling this twice for the same package is fine: the first call generates and
+# the rest get the same target back.
+#
+# TODO: A package published from a working copy that still has the old headers
+# under Include will ship them, and they then compete with the generated ones on
+# a consumer's include path. Exclude *_generated.h from 1.4 releases in nosman.
+function(_nos_generate_package_types package_json out_target_name out_include_dirs)
+	set(${out_target_name} "" PARENT_SCOPE)
+	set(${out_include_dirs} "" PARENT_SCOPE)
+
+	string(JSON package_name GET "${package_json}" info id name)
+	string(JSON package_version GET "${package_json}" info id version)
+	string(JSON manifest_path GET "${package_json}" manifest_path)
+
+	nos_normalize_plugin_name(${package_name} types_folder_name)
+	_nos_get_generated_dir(${package_name} ${package_version} generated_dir)
+	set(include_dirs "${generated_dir}" "${generated_dir}/${types_folder_name}")
+
+	string(REPLACE "." "_" target_name "__nos_types__${package_name}-v${package_version}")
+	if (TARGET ${target_name})
+		set(${out_target_name} ${target_name} PARENT_SCOPE)
+		set(${out_include_dirs} "${include_dirs}" PARENT_SCOPE)
+		return()
+	endif()
+
+	get_filename_component(manifest_ext "${manifest_path}" LAST_EXT)
+	if (NOT manifest_ext STREQUAL ".nosplugin")
+		nos_message(STATUS "Package ${package_name}-${package_version} predates Nodos 1.4, using the type headers it ships")
+		return()
+	endif()
+
+	string(JSON schema_count ERROR_VARIABLE err LENGTH "${package_json}" type_schema_files)
+	if (err OR schema_count EQUAL 0)
+		nos_message(STATUS "Package ${package_name}-${package_version} has no type schemas")
+		return()
+	endif()
+
+	# Generating a package walks into its dependencies, and a nested call would
+	# otherwise keep appending to the list it inherited from this one.
+	set(schema_files "")
+
+	math(EXPR last_schema_idx "${schema_count} - 1")
+	foreach(idx RANGE ${last_schema_idx})
+		string(JSON schema_file GET "${package_json}" type_schema_files ${idx})
+		cmake_path(SET schema_file "${schema_file}")
+		list(APPEND schema_files "${schema_file}")
+	endforeach()
+
+	get_filename_component(package_root "${manifest_path}" DIRECTORY)
+	cmake_path(SET package_root "${package_root}")
+	set(schema_include_dirs "${package_root}")
+
+	# A package's schemas may include the schemas of the packages it depends on,
+	# so flatc needs to be able to find those too.
+	string(JSON dep_count ERROR_VARIABLE err LENGTH "${package_json}" info dependencies)
+	if (NOT err AND dep_count GREATER 0)
+		math(EXPR last_dep_idx "${dep_count} - 1")
+		foreach(idx RANGE ${last_dep_idx})
+			string(JSON dep_name GET "${package_json}" info dependencies ${idx} name)
+			string(JSON dep_version GET "${package_json}" info dependencies ${idx} version)
+			nos_get_package(${dep_name} ${dep_version} dep_target)
+			get_target_property(dep_root ${dep_target} NOS_PACKAGE_ROOT)
+			if (dep_root)
+				list(APPEND schema_include_dirs "${dep_root}")
+			endif()
+		endforeach()
+	endif()
+
+	nos_generate_flatbuffers("${schema_files}" "${generated_dir}/${types_folder_name}" "cpp" "${schema_include_dirs}" ${target_name})
+
+	set(${out_target_name} ${target_name} PARENT_SCOPE)
+	set(${out_include_dirs} "${include_dirs}" PARENT_SCOPE)
+endfunction()
+
 function(nos_get_package name version out_target_name)
 	if(NOT DEFINED NOSMAN_WORKSPACE_DIR)
 		nos_fatal_error("NOSMAN_WORKSPACE_DIR is not defined. Set it to the path of the workspace where modules will be installed.")
@@ -230,30 +319,28 @@ function(nos_get_package name version out_target_name)
 			string(JSON plugin_path GET "${nosman_output}" "manifest_path")
 			get_filename_component(plugin_path ${plugin_path} DIRECTORY)
 			cmake_path(SET plugin_path "${plugin_path}")
+			# Recorded before the types are generated: generating them walks this
+			# package's own dependencies, and a cycle comes back here to read it.
+			set_target_properties(${target_name} PROPERTIES NOS_PACKAGE_ROOT "${plugin_path}")
 
-			# Add fbs files to target
-			nos_get_files_recursive(${plugin_path} ".fbs" fbs_files)
-			list(LENGTH fbs_files fbs_count)
-			nos_message(STATUS "Found ${fbs_count} schema files in package ${name}-${version}")
-			foreach(fbs_file ${fbs_files})
-				nos_message(STATUS "${name}-${version} schema file: ${fbs_file}")
-			endforeach()
-			target_sources(${target_name} PRIVATE ${fbs_files})
-			source_group("Types" FILES ${fbs_files})
-			
+			_nos_generate_package_types("${nosman_output}" package_types_target package_types_include_dirs)
+			set_target_properties(${target_name} PROPERTIES
+				NOS_PACKAGE_TYPES_TARGET "${package_types_target}"
+				NOS_PACKAGE_TYPES_INCLUDE_DIRS "${package_types_include_dirs}")
+
+			nos_get_files_recursive(${plugin_path} ".natvis" natvis_files)
+			target_sources(${target_name} PRIVATE ${natvis_files})
+
 			# Optional: Get "public_include_folder" from JSON output. If not found skip it
 			cmake_path(SET ${target_name}_INCLUDE_DIR "${plugin_path}/Include")
 			string(JSON nos_plugin_include_folder ERROR_VARIABLE err GET "${nosman_output}" "public_include_folder")
 			if (err STREQUAL "NOTFOUND")
 				nos_message(STATUS "Found ${name} ${version} include folder: ${nos_plugin_include_folder}")
 				cmake_path(SET ${target_name}_INCLUDE_DIR "${nos_plugin_include_folder}")
-				nos_message(STATUS "Found public header files in package ${name}-${version}. Adding to target.")
-				nos_get_files_recursive(${${target_name}_INCLUDE_DIR} ".h;.hpp;.hxx;.hh" include_files)
-				target_sources(${target_name} PRIVATE ${include_files})
-				nos_get_files_recursive(${plugin_path} ".natvis" natvis_files)
-				target_sources(${target_name} PRIVATE ${natvis_files})
 			endif()
-			target_include_directories(${target_name} INTERFACE ${${target_name}_INCLUDE_DIR})
+			# Generated headers come first, so that copies left in the package's
+			# Include folder by an older toolchain cannot win.
+			target_include_directories(${target_name} INTERFACE ${package_types_include_dirs} ${${target_name}_INCLUDE_DIR})
 			set_target_properties(${target_name} PROPERTIES FOLDER "nosman")
 			target_link_directories(${target_name} INTERFACE ${plugin_path}/Libraries)
 		else()
@@ -530,6 +617,18 @@ function(nos_find_immediate_plugin_dependencies json out_target_names out_target
 		nos_find_module_path("${dep_name}" "${dep_version}" found_dir)
 		list(APPEND _deps "${found_target}")
 		list(APPEND _dep_dirs "${found_dir}")
+
+		# Build the dependency's type headers before anything that includes them,
+		# and find them ahead of any copy left in its Include folder.
+		get_target_property(dep_types_target ${found_target} NOS_PACKAGE_TYPES_TARGET)
+		if (dep_types_target)
+			list(APPEND _deps "${dep_types_target}")
+		endif()
+		get_target_property(dep_types_include_dirs ${found_target} NOS_PACKAGE_TYPES_INCLUDE_DIRS)
+		if (dep_types_include_dirs)
+			list(APPEND _dep_include_dirs ${dep_types_include_dirs})
+		endif()
+
 		nos_normalize_plugin_name(${dep_name} target_name)
 		list(APPEND _dep_include_dirs "${found_dir}/Include/${target_name}")
 	endforeach()

@@ -1,56 +1,5 @@
 # Copyright MediaZ Teknoloji A.S. All Rights Reserved.
 
-function(_nos_get_custom_type_paths_from_json JSON_FILE OUT_LIST)
-	if(NOT EXISTS "${JSON_FILE}")
-		message(FATAL_ERROR "JSON file not found: ${JSON_FILE}")
-	endif()
-
-	get_filename_component(plugin_root "${JSON_FILE}" DIRECTORY)
-
-	# Read file
-	file(READ "${JSON_FILE}" json_content)
-
-	# Check if field exists
-	string(JSON has_custom_types ERROR_VARIABLE err
-		GET "${json_content}" custom_types
-	)
-
-	if(err)
-		# Field does not exist → return empty list
-		if (EXISTS "${plugin_root}/Types")
-			set(${OUT_LIST} "${plugin_root}/Types" PARENT_SCOPE)
-		else()
-			set(${OUT_LIST} "" PARENT_SCOPE)
-		endif()
-		return()
-	endif()
-
-	# Get array length
-	string(JSON len LENGTH "${json_content}" custom_types)
-	if ("${len}" STREQUAL "0")
-		if (EXISTS "${plugin_root}/Types")
-			set(${OUT_LIST} "${plugin_root}/Types" PARENT_SCOPE)
-		else()
-			set(${OUT_LIST} "" PARENT_SCOPE)
-		endif()
-		return()
-	endif()
-
-	set(result "")
-	math(EXPR last "${len} - 1")
-
-	foreach(i RANGE 0 ${last})
-		string(JSON value GET "${json_content}" custom_types ${i})
-		if (IS_ABSOLUTE "${value}")
-			list(APPEND result "${value}")
-		else()
-			list(APPEND result "${plugin_root}/${value}")
-		endif()
-	endforeach()
-
-	set(${OUT_LIST} "${result}" PARENT_SCOPE)
-endfunction()
-
 function(_nos_generate_plugin_target plugin_manifest_file_path plugin_name manifest_json common_deps common_defs out_target_name)
 	get_filename_component(plugin_root "${plugin_manifest_file_path}" DIRECTORY)
 	nos_normalize_plugin_name(${plugin_name} target_name)
@@ -72,13 +21,11 @@ function(_nos_generate_plugin_target plugin_manifest_file_path plugin_name manif
 	endif()
 
 	nos_find_immediate_plugin_dependencies(${manifest_json} found_dependency_targets found_dep_dirs found_include_dirs)
+	_nos_generate_package_types("${manifest_json}" plugin_types_target plugin_types_include_dirs)
 	list(APPEND plugin_include_folders ${plugin_root} "${plugin_root}/Include" "${found_include_dirs}")
 	list(APPEND plugin_dep_targets ${NOS_PLUGIN_SDK_TARGET})
-
-	_nos_get_custom_type_paths_from_json(${plugin_manifest_file_path} TYPE_FOLDERS)
-	if(TYPE_FOLDERS)
-		nos_generate_flatbuffers("${TYPE_FOLDERS}" "${plugin_root}/Include/${target_name}" "cpp" "${NOS_SDK_TYPES_DIR};${found_dep_dirs}" ${target_name}_generated)
-		list(APPEND plugin_dep_targets ${target_name}_generated)
+	if(plugin_types_target)
+		list(APPEND plugin_dep_targets ${plugin_types_target})
 	endif()
 
 	list(APPEND
@@ -94,6 +41,17 @@ function(_nos_generate_plugin_target plugin_manifest_file_path plugin_name manif
 		set(${out_plugin_name} ${plugin_name} PARENT_SCOPE)
 
 		get_target_property(target_type ${target_name} TYPE)
+		if(target_type STREQUAL "INTERFACE_LIBRARY")
+			set(plugin_types_scope INTERFACE)
+		else()
+			set(plugin_types_scope PRIVATE)
+		endif()
+		if(plugin_types_include_dirs)
+			# Ahead of the plugin's own Include folder, so that headers left there
+			# by an older toolchain cannot win.
+			target_include_directories(${target_name} BEFORE ${plugin_types_scope} ${plugin_types_include_dirs})
+		endif()
+
 		if(target_type STREQUAL "INTERFACE_LIBRARY")
 			return()
 		endif()
