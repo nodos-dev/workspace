@@ -53,3 +53,20 @@ Out-of-tree plugin: `./nodos dev gen -p <project> --plugin-dirs "<repo>"` then
 - (For Nodos 1.4+) Object lifecycle: use `nos::ObjectRef` / `nos::TypedObjectRef`, not raw `nosObjectId`/C structs.
 - Versioning: on an API break, bump major in the affected `*.nosplugin`. Don't touch dependency versions
   unless that's the task.
+
+## Commit messages
+
+Subject: one line, verb first, naming the thing changed or the fault fixed.
+`Fix crash when a plugin fails to load`, not `Stop the engine falling over when
+a plugin will not load`. Around 50 to 70 characters, sentence case, no trailing
+period, no area prefix.
+
+Body: what was wrong, then why the change is what it is. Do not over-explain, use concise and simple language. Do not restate a code comment.
+
+- No `@` anywhere; GitHub reads it as a mention.
+- Ports and cherry-picks: prefix the subject with `From <source branch>:` and
+  end the body with `(cherry-picked from <sha>)`.
+- Only `Toolchain/nosman` changes take a prefix, `nosman:`.
+- One commit does one thing.
+- The pre-commit hook reformats and re-stages whole files, so staging a single
+  hunk does not survive it.
