@@ -154,7 +154,7 @@ pub fn ask(question: &str, default: bool, dont_ask: bool) -> bool {
 
 pub fn run_if_not(dry_run: bool, verbose: bool, cmd: &mut std::process::Command) -> Option<Output> {
     if dry_run {
-        ui::step("Would run", format!("{:?}", cmd));
+        ui::step("Dry run", format!("would run {:?}", cmd));
         None
     } else {
         if verbose {

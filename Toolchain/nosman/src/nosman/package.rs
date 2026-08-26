@@ -169,8 +169,16 @@ impl LocalPackageEntry {
             .map(|s| s.to_string());
         Ok(package)
     }
+    /// Where the package sits, as recorded: relative to the workspace root.
+    /// Good for showing a person, not for touching the filesystem.
     pub fn get_package_root(&self) -> PathBuf {
         self.manifest_path.parent().unwrap().to_path_buf()
+    }
+    /// Where the package sits on disk. Anything that reads or writes has to use
+    /// this, because nosman is often run from outside the workspace it is
+    /// pointed at with `--workspace`.
+    pub fn get_abs_package_root(&self, workspace: &Workspace) -> PathBuf {
+        self.get_abs_manifest_path(workspace).parent().unwrap().to_path_buf()
     }
     // Nodos 1.4 replaced the .noscfg/.nossys manifests with .nosplugin, so the file name tells us
     // which Nodos line the package is written for.
@@ -350,7 +358,7 @@ pub fn get_package_manifests(folder: &PathBuf, silent: bool) -> Vec<(PackageType
         }
     }
 
-    ui::finish_progress();
+    pb.finish_and_clear();
     package_manifest_files
 }
 

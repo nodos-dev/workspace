@@ -221,7 +221,7 @@ impl Command for TestCommand {
         let timeout = Duration::from_secs(timeout_secs);
         let tests = Self::collect_tests(&plugins_folder);
         if tests.is_empty() {
-            ui::step_skipped("None", "no plugin has tests");
+            ui::step_skipped("No tests", "were found in any plugin");
             return Ok(());
         }
         ui::step("Found", format!("{} in {}", ui::plural(tests.len(), "test"),

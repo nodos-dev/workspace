@@ -109,7 +109,7 @@ impl GetCommand {
                 ui::error(format!("failed to roll back: {}", e));
             }
         }
-        ui::step("Rolled back", "the workspace is as it was");
+        ui::step("Rolled back", "everything this update changed");
     }
     fn sort_paths(paths: &mut LinkedHashSet<PathBuf>) {
         // Sort paths such that children come before parents

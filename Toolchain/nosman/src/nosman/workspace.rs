@@ -163,7 +163,7 @@ fn fetch_releases_mt(
         Ok(list) => list,
         Err(e) => {
             ui::warn(format!("could not fetch the package list: {}", e));
-            ui::finish_progress();
+            pb.finish_and_clear();
             return releases.into_inner().unwrap();
         }
     };
@@ -195,7 +195,7 @@ fn fetch_releases_mt(
             entry.1.extend(releases_for_package);
         }
     });
-    ui::finish_progress();
+    pb.finish_and_clear();
     releases.into_inner().unwrap()
 }
 
@@ -440,7 +440,7 @@ impl Workspace {
                 ui::step_skipped("Kept", format!("development package at {}, its source is untouched", entry.get_package_root().display()));
                 kept.push(entry);
             } else {
-                fs::remove_dir_all(entry.get_package_root())?;
+                self.remove_package_dir(&entry.get_abs_package_root(self))?;
                 deleted += 1;
             }
         }
@@ -459,11 +459,24 @@ impl Workspace {
         }
         Ok(())
     }
+    /// Deletes a package folder, and the folder holding it once that is empty.
+    /// A downloaded package lives in `<name>/<version>`, so removing the last
+    /// version of it would otherwise leave an empty `<name>` behind.
+    fn remove_package_dir(&self, package_root: &Path) -> CommandResult {
+        fs::remove_dir_all(package_root)?;
+        if let Some(parent) = package_root.parent() {
+            let empty = fs::read_dir(parent).map(|mut d| d.next().is_none()).unwrap_or(false);
+            if empty && parent != self.root {
+                let _ = fs::remove_dir(parent);
+            }
+        }
+        Ok(())
+    }
     pub fn remove_all(&mut self) -> CommandResult {
         for (_name, versions) in self.packages.iter() {
             for module in versions.values().flatten() {
                 ui::detail(format!("removing {}", module.info.id));
-                fs::remove_dir_all(module.get_package_root())?;
+                self.remove_package_dir(&module.get_abs_package_root(self))?;
             }
         }
         self.packages.clear();
@@ -573,7 +586,7 @@ impl Workspace {
             }
             self.add(package);
         }
-        ui::finish_progress();
+        pb.finish_and_clear();
     }
     pub fn scan_packages(&mut self, flags: ScanPackagesFlags) {
        self.scan_packages_in_folder(self.root.clone(), flags);

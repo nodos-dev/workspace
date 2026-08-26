@@ -32,22 +32,35 @@ use crate::nosman::command::CommandError::InvalidArgument;
 use crate::nosman::index::SemVer;
 use crate::nosman::lang_tool::LangTool;
 
+/// Errors are printed behind an `error:` label, so the text after it reads as
+/// the sentence that follows and does not repeat the label.
 #[derive(Error, Debug)]
 pub enum CommandError {
-    #[error("I/O (file {}): {}", file, message)]
+    #[error("{}{}", message, blamed_file(file))]
     IO { file: String, message: String },
-    #[error("Invalid argument: {}", message)]
+    #[error("{}", message)]
     InvalidArgument { message: String },
-    #[error("Zip: {}", message)]
+    #[error("{}", message)]
     Zip { message: String },
     #[error("{}", message)]
     Runtime { message: String },
 }
 
+/// Names the file an error is about, unless nothing useful is known about it.
+fn blamed_file(file: &str) -> String {
+    if file.is_empty() || file == UNKNOWN_FILE {
+        String::new()
+    } else {
+        format!(" ({})", file)
+    }
+}
+
+const UNKNOWN_FILE: &str = "Unknown";
+
 impl From<io::Error> for CommandError {
     fn from(err: io::Error) -> Self {
         CommandError::IO {
-            file: "Unknown".to_string(),
+            file: UNKNOWN_FILE.to_string(),
             message: format!("{}", err),
         }
     }

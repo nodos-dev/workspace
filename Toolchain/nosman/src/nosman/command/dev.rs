@@ -280,6 +280,7 @@ impl DevPullCommand {
                 failed += 1;
                 ui::step_failed("Failed", subject);
                 ui::nested(err.trim());
+                ui::blank();
             } else if has_updates {
                 updated += 1;
                 ui::step("Updated", subject);
@@ -290,6 +291,7 @@ impl DevPullCommand {
                         ui::nested(line);
                     }
                 }
+                ui::blank();
             } else {
                 ui::step_skipped("Current", subject);
             }
@@ -516,6 +518,9 @@ impl DevStatusCommand {
                 for line in status.lines() {
                     ui::nested(line.trim_end());
                 }
+                // A repository with a long list of changes runs into the next
+                // one without this.
+                ui::blank();
             } else {
                 ui::step_skipped("Clean", subject);
             }
@@ -569,7 +574,7 @@ impl DevPushCommand {
         candidates.sort_by(|a, b| a.0.cmp(&b.0));
 
         if candidates.is_empty() {
-            ui::step_skipped("Current", "no repository has unpushed commits");
+            ui::step_skipped("Nothing", "to push, every repository matches its upstream");
             return Ok(());
         }
 
@@ -619,7 +624,7 @@ impl DevPushCommand {
             if to_push.len() == 1 { "y" } else { "ies" }
         );
         if !ask(&question, false, false) {
-            ui::step_skipped("Aborted", "nothing was pushed");
+            ui::step_skipped("Aborted", "without pushing anything");
             return Ok(());
         }
 

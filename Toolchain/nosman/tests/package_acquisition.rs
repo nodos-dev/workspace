@@ -156,3 +156,45 @@ fn install_with_only_major_version() {
     let versions = test.workspace.get_packages(package_name).unwrap();
     assert_eq!(versions.len(), 1);
 }
+
+#[test]
+fn remove_deletes_the_package_when_run_from_outside_the_workspace() {
+    let mut test = workspace!();
+    let package_name = "nos.sys.vulkan";
+    let version = String::from("6.2.1.b612");
+    InstallCommand {}
+        .run_install(
+            &mut test.workspace,
+            package_name,
+            Some(&version),
+            &Some(PathBuf::from(".")),
+            None,
+            InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
+        )
+        .unwrap_or_else(|e| panic!("Failed to install {}: {:?}", package_name, e));
+
+    let package_root = test
+        .workspace
+        .get_package(package_name, version.as_str())
+        .expect("just installed")
+        .get_abs_package_root(&test.workspace);
+    assert!(package_root.exists(), "the package should be on disk after installing");
+    let holding_folder = package_root.parent().expect("a version folder has a parent").to_path_buf();
+
+    // The working directory is the crate root, not the workspace. Anything that
+    // resolves a recorded path against the working directory misses the folder.
+    test.workspace
+        .remove(package_name, version.as_str())
+        .unwrap_or_else(|e| panic!("Failed to remove {}: {:?}", package_name, e));
+
+    assert!(!package_root.exists(), "removing the package should delete {}", package_root.display());
+    assert!(
+        !holding_folder.exists(),
+        "the last version is gone, so {} should not be left behind empty",
+        holding_folder.display()
+    );
+    assert!(
+        test.workspace.get_packages(package_name).map(|v| v.is_empty()).unwrap_or(true),
+        "the package should be out of the registry too"
+    );
+}

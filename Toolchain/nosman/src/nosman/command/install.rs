@@ -76,12 +76,12 @@ impl InstallCommand {
                 let version_prefix = SemVer::parse_from_str(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
                 if workspace.has_local_match(package_name, &version_prefix) {
                     let installed_package = workspace.get_latest_local_package_for_prefix(package_name, &version_prefix)?;
-                    ui::step_skipped("Satisfied", format!("{} {} by installed {}", package_name, version, installed_package.info.id.version));
+                    ui::step_skipped("Satisfied", format!("{} {} by the installed {}=={}", package_name, version, package_name, installed_package.info.id.version));
                     return Ok(Vec::new())
                 }
             } else if workspace.is_installed(package_name, version.as_str()) {
                 let existing = workspace.get_package(package_name, version.as_str())?;
-                if existing.get_package_root().exists() {
+                if existing.get_abs_package_root(workspace).exists() {
                     ui::step_skipped("Present", format!("{}=={}", package_name, version));
                     return Ok(Vec::new());
                 }

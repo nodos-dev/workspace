@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use colored::Colorize;
+use colored::{ColoredString, Colorize};
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 
 /// Width of the verb column. Same as cargo's, so the two look at home together.
@@ -61,12 +61,31 @@ pub fn set_color(choice: &str) {
     }
 }
 
-/// The progress bars currently on screen, if any. Lines printed while they are
-/// drawing have to go through them, or the bar and the line overwrite each other.
-static ACTIVE_PROGRESS: OnceLock<Mutex<Option<MultiProgress>>> = OnceLock::new();
+/// What is on screen: the group the bars are drawn in, and the bars themselves.
+/// Lines printed while they are drawing have to go through the group, or the bar
+/// and the line overwrite each other.
+///
+/// The bars are kept because clearing the group does not stop them. Each one
+/// has a ticker of its own that carries on redrawing, over whatever is printed
+/// next, until the bar is finished.
+struct Progress {
+    multi: MultiProgress,
+    bars: Vec<ProgressBar>,
+}
 
-fn progress_slot() -> &'static Mutex<Option<MultiProgress>> {
+static ACTIVE_PROGRESS: OnceLock<Mutex<Option<Progress>>> = OnceLock::new();
+
+fn progress_slot() -> &'static Mutex<Option<Progress>> {
     ACTIVE_PROGRESS.get_or_init(|| Mutex::new(None))
+}
+
+/// Hands a bar to the group so [`finish_progress`] can stop it later.
+fn remember(bar: &ProgressBar) {
+    if let Ok(mut guard) = progress_slot().lock() {
+        if let Some(progress) = guard.as_mut() {
+            progress.bars.push(bar.clone());
+        }
+    }
 }
 
 /// Writes one line to stderr, around whatever progress bars are drawing.
@@ -75,8 +94,8 @@ fn progress_slot() -> &'static Mutex<Option<MultiProgress>> {
 /// stderr is not a terminal, so fall back to a plain write in that case.
 fn emit(line: String) {
     if let Ok(guard) = progress_slot().lock() {
-        if let Some(multi) = guard.as_ref() {
-            if !multi.is_hidden() && multi.println(&line).is_ok() {
+        if let Some(progress) = guard.as_ref() {
+            if !progress.multi.is_hidden() && progress.multi.println(&line).is_ok() {
                 return;
             }
         }
@@ -90,34 +109,32 @@ fn emit_unless_quiet(line: String) {
     }
 }
 
+/// Lays out one step line. The colouring is the caller's, the column is not.
+fn step_line(verb: ColoredString, subject: impl Display) -> String {
+    debug_assert!(
+        verb.chars().count() <= VERB_WIDTH,
+        "the verb {:?} is wider than the column, so its line would not line up with the rest",
+        verb.to_string()
+    );
+    format!("{:>width$} {}", verb, subject, width = VERB_WIDTH)
+}
+
 /// `  Installing nos.aja` — a thing being done, or just done.
+///
+/// The verb and its subject are read as one sentence, so pick a verb the
+/// subject can follow: "Installing nos.aja", not "None no engine is installed".
 pub fn step(verb: &str, subject: impl Display) {
-    emit_unless_quiet(format!(
-        "{:>width$} {}",
-        verb.bold().green(),
-        subject,
-        width = VERB_WIDTH
-    ));
+    emit_unless_quiet(step_line(verb.bold().green(), subject));
 }
 
 /// A step that did not work out. The run may still carry on.
 pub fn step_failed(verb: &str, subject: impl Display) {
-    emit(format!(
-        "{:>width$} {}",
-        verb.bold().red(),
-        subject,
-        width = VERB_WIDTH
-    ));
+    emit(step_line(verb.bold().red(), subject));
 }
 
 /// A step that did nothing: already present, skipped, unchanged.
 pub fn step_skipped(verb: &str, subject: impl Display) {
-    emit_unless_quiet(format!(
-        "{:>width$} {}",
-        verb.dimmed(),
-        subject.to_string().dimmed(),
-        width = VERB_WIDTH
-    ));
+    emit_unless_quiet(step_line(verb.dimmed(), subject.to_string().dimmed()));
 }
 
 /// `Installed 3 packages in 1.20s` — closes a phase.
@@ -162,9 +179,20 @@ pub fn blank() {
     emit_unless_quiet(String::new());
 }
 
-/// A line of output produced by something nosman ran, indented under its step.
+/// A detail belonging to the step above it, lined up under that step's subject
+/// rather than under its verb, so it reads as part of the same entry.
+///
+/// Text that came from another program is often several lines, and every one of
+/// them has to be indented or the entry looks like it ended early.
 pub fn nested(msg: impl Display) {
-    emit_unless_quiet(format!("  {}", msg));
+    let msg = msg.to_string();
+    for line in msg.lines() {
+        if line.is_empty() {
+            blank();
+        } else {
+            emit_unless_quiet(format!("{:indent$}{}", "", line, indent = VERB_WIDTH + 1));
+        }
+    }
 }
 
 /// `1 package` / `3 packages` / `2 processes`.
@@ -210,12 +238,19 @@ pub fn progress_group() -> MultiProgress {
         Err(_) => return MultiProgress::with_draw_target(draw_target()),
     };
     guard
-        .get_or_insert_with(|| MultiProgress::with_draw_target(draw_target()))
+        .get_or_insert_with(|| Progress {
+            multi: MultiProgress::with_draw_target(draw_target()),
+            bars: Vec::new(),
+        })
+        .multi
         .clone()
 }
 
-/// A spinner for work with no measurable total. Opens a group of its own, so
-/// [`finish_progress`] ends it.
+/// A spinner for work with no measurable total. Joins the group on screen, or
+/// opens one, and [`finish_progress`] ends it.
+///
+/// Work that finishes before the command does should clear its own bar with
+/// `finish_and_clear` instead, so that it does not take the rest down with it.
 pub fn spinner(message: impl Into<String>) -> ProgressBar {
     let pb = progress_group().add(ProgressBar::new_spinner());
     pb.set_style(
@@ -224,16 +259,20 @@ pub fn spinner(message: impl Into<String>) -> ProgressBar {
     );
     pb.set_message(message.into());
     pb.enable_steady_tick(Duration::from_millis(100));
+    remember(&pb);
     pb
 }
 
-/// Takes down whatever progress is on screen and sends printed lines straight
-/// to stderr again.
+/// Stops every bar on screen and sends printed lines straight to stderr again.
 pub fn finish_progress() {
-    if let Ok(mut guard) = progress_slot().lock() {
-        if let Some(multi) = guard.take() {
-            multi.clear().ok();
+    // Taken out from under the lock first: finishing a bar draws, and drawing
+    // while holding the lock would deadlock against anything that prints.
+    let progress = progress_slot().lock().ok().and_then(|mut guard| guard.take());
+    if let Some(progress) = progress {
+        for bar in &progress.bars {
+            bar.finish_and_clear();
         }
+        progress.multi.clear().ok();
     }
 }
 
@@ -248,6 +287,7 @@ pub fn download_bar(multi: &MultiProgress, label: impl Into<String>) -> Progress
     );
     pb.set_prefix(label.into());
     pb.enable_steady_tick(Duration::from_millis(100));
+    remember(&pb);
     pb
 }
 
@@ -324,6 +364,25 @@ mod tests {
     }
 
     #[test]
+    fn a_step_subject_starts_where_a_nested_line_does() {
+        set_color("never");
+        let line = step_line("Changed".into(), "Module/dev/nos/ndi");
+        let subject_at = line.find("Module").expect("subject");
+        assert_eq!(
+            subject_at,
+            VERB_WIDTH + 1,
+            "details are indented by VERB_WIDTH + 1 to sit under the subject, so the              subject has to start there too: {line:?}"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "wider than the column")]
+    fn an_oversized_verb_is_caught() {
+        set_color("never");
+        step_line("Reinitializing".into(), "somewhere");
+    }
+
+    #[test]
     fn nouns_are_pluralised() {
         assert_eq!(plural(1, "package"), "1 package");
         assert_eq!(plural(3, "package"), "3 packages");
@@ -367,6 +426,50 @@ mod tests {
             term.contents().contains("Installed 2 packages in 43ms"),
             "a line printed while bars are drawing must still appear: {:?}",
             term.contents()
+        );
+    }
+
+    #[test]
+    fn finishing_progress_stops_the_bars_from_drawing() {
+        let bar = spinner("Reading status");
+        assert!(
+            !bar.is_finished(),
+            "a spinner is running until something finishes it"
+        );
+
+        finish_progress();
+
+        // Clearing the group is not enough: a bar keeps a ticker of its own,
+        // and an unfinished one carries on redrawing over the report that
+        // follows it.
+        assert!(
+            bar.is_finished(),
+            "finish_progress has to stop the bars, not just clear them"
+        );
+    }
+
+    #[test]
+    fn a_finished_bar_draws_no_more() {
+        let term = FakeTerm::default();
+        let multi = MultiProgress::with_draw_target(ProgressDrawTarget::term_like(Box::new(
+            term.clone(),
+        )));
+        let bar = multi.add(ProgressBar::new_spinner());
+        bar.set_message("Reading status");
+        bar.enable_steady_tick(Duration::from_millis(10));
+        std::thread::sleep(Duration::from_millis(60));
+        assert!(!term.contents().is_empty(), "the bar should have drawn by now");
+
+        bar.finish_and_clear();
+        let drawn_by_now = term.contents().len();
+        std::thread::sleep(Duration::from_millis(60));
+
+        // This is what went wrong on a real terminal: the ticker kept going and
+        // wrote the spinner over the report that came after it.
+        assert_eq!(
+            term.contents().len(),
+            drawn_by_now,
+            "a finished bar must not draw again over what is printed next"
         );
     }
 

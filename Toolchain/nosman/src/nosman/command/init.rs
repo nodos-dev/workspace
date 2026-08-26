@@ -5,6 +5,7 @@ use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument};
 use crate::nosman::workspace::{find_root_from, Workspace};
 use crate::nosman::ui;
+use std::time::Instant;
 
 pub struct InitCommand {
 }
@@ -32,13 +33,21 @@ impl InitCommand {
                 });
             }
         }
+        let started = Instant::now();
         if reinit {
-            ui::step("Reinitializing", format!("workspace under {}", directory.display()));
+            ui::step("Recreating", directory.display());
         } else {
-            ui::step("Creating", format!("workspace under {}", directory.display()));
+            ui::step("Creating", directory.display());
         }
         workspace.recreate()?;
-        ui::step("Initialized", format!("workspace with {}", ui::plural(workspace.packages.len(), "package")));
+        ui::summary_line(
+            format!(
+                "{} a workspace with {}",
+                if reinit { "Reinitialized" } else { "Initialized" },
+                ui::plural(workspace.packages.len(), "package")
+            ),
+            started,
+        );
         Ok(())
     }
 }

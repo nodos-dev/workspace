@@ -201,10 +201,10 @@ impl Command for EngineListCommand {
             return Ok(());
         }
         if engines.is_empty() {
-            ui::warn("no installed Nodos engine found in this workspace");
+            ui::step_skipped("No engines", "are installed in this workspace");
             return Ok(());
         }
-        ui::step("Installed", ui::plural(engines.len(), "engine"));
+        println!("{}", "Installed engines:".green());
         for e in &engines {
             println!("  {} ({})", e.to_string().cyan(), e.path.display());
         }
@@ -227,7 +227,7 @@ impl Command for EngineStopCommand {
         let force = args.get_flag("force");
         let stopped = stop_processes(&workspace.root, force);
         if stopped == 0 {
-            ui::warn("no running Nodos engine found for this workspace");
+            ui::step_skipped("Nothing", "to stop, no Nodos engine is running for this workspace");
         }
         Ok(())
     }
@@ -260,10 +260,10 @@ impl EngineStatusCommand {
         }
 
         if procs.is_empty() {
-            ui::step_skipped("Stopped", "Nodos is not running for this workspace");
+            ui::step_skipped("Nodos", "is not running for this workspace");
             return Ok(());
         }
-        ui::step("Running", ui::plural(procs.len(), "process"));
+        println!("{}", format!("Nodos is running, {}:", ui::plural(procs.len(), "process")).green());
         for p in &procs {
             println!(
                 "  {} (pid {}, up {})",

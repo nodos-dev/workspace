@@ -83,7 +83,7 @@ impl PublishBatchCommand {
                         let existing_release_ver = existing_release_ver.unwrap();
                         let existing_release_ver_excl_build_no = SemVer::new(existing_release_ver.major, existing_release_ver.minor, existing_release_ver.patch, None);
                         if existing_release_ver_excl_build_no == publish_version_excl_build_no {
-                            ui::step_skipped("Present", format!("release {:?} is already published", existing_release));
+                            ui::step_skipped("Skipped", format!("release {:?}, it is already published", existing_release));
                             skip = true;
                             break;
                         }
@@ -100,7 +100,7 @@ impl PublishBatchCommand {
         }
 
         if to_be_published.is_empty() {
-            ui::step_skipped("Current", "no package needs publishing");
+            ui::step_skipped("Nothing", "to publish, every package is already up to date");
             return Ok(());
         }
         // Fetch tags / unshallow once for the whole repo here, so each

@@ -7,10 +7,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::io::{Write};
 use std::{path};
 use std::path::{PathBuf};
-use std::time::Duration;
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
-use indicatif::ProgressBar;
 use libloading::{Symbol};
 use serde::{Deserialize, Serialize};
 use tempfile::{tempdir};
@@ -264,7 +262,7 @@ impl PublishCommand {
         }
         let tag = format!("release-{}-{}-{}", name, version, target_platform);
         if git::tag_exists(abs_path, &tag) {
-            ui::step_skipped("Tagged", format!("{} already exists", tag));
+            ui::step_skipped("Kept", format!("the git tag {} that is already there", tag));
             return None;
         }
         match git::create_annotated_tag(abs_path, &tag, &format!("{} {}", name, version)) {
@@ -454,10 +452,8 @@ impl PublishCommand {
             }
         }
 
-        let pb: ProgressBar = ProgressBar::new_spinner();
-        pb.enable_steady_tick(Duration::from_millis(100));
-        pb.println(format!("Publishing {}", tag).as_str().yellow().to_string());
-        pb.set_message("Preparing release");
+        ui::step("Publishing", &tag);
+        let pb = ui::spinner("Preparing release");
         if !Self::is_name_valid(&name) {
             return Err(InvalidArgument { message: format!("Name {} is not valid. It should match regex [a-z0-9._]", name) });
         }
@@ -574,9 +570,9 @@ impl PublishCommand {
 
         let mut created_tag = None;
         if dry_run {
-            ui::step("Would publish", format!("{}=={} for {}", name, version, target_platform));
+            ui::step("Dry run", format!("would publish {}=={} for {}", name, version, target_platform));
             if create_tag && publish_options.tag.enabled {
-                ui::step("Would tag", format!("release-{}-{}-{}", name, version, target_platform));
+                ui::step("Dry run", format!("would create the git tag release-{}-{}-{}", name, version, target_platform));
             }
         } else {
             if fetch_tags {

@@ -22,7 +22,7 @@ impl NodeCommand {
         if package.package_type != PackageType::Plugin {
             return Err(InvalidArgument { message: format!("Selected package {} is not a Nodos plugin. Only plugins can have nodes!", plugin_name) });
         }
-        let plugin = PluginEntry::new(package).map_err(|e| Runtime { message: e })?;
+        let plugin = PluginEntry::new(workspace.absolutize_paths(&package)).map_err(|e| Runtime { message: e })?;
         if remove {
             // Prefix node_class_name if it doesn't have the plugin name
             let node_class_name = if node_class_name.starts_with(plugin_name.as_str()) {

@@ -37,7 +37,7 @@ impl UnpublishCommand {
             }
 
             for release in matched {
-                ui::step("Would delete", format!("{} release {} (v{})", package_name, release.id, release.version));
+                ui::step("Dry run", format!("would delete {} release {} (v{})", package_name, release.id, release.version));
             }
         } else {
             if verbose {

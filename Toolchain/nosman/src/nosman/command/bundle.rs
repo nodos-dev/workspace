@@ -255,7 +255,7 @@ fn write_archive(bundle_dir: &Path, archive_file: &Path, silent: bool) -> Comman
         file: archive_file.display().to_string(),
         message: e.to_string(),
     })?;
-    ui::finish_progress();
+    pb.finish_and_clear();
     Ok(())
 }
 
