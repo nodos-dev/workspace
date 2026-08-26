@@ -3,7 +3,6 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use clap::{Arg, ArgAction, ArgMatches};
-use colored::Colorize;
 use crate::nosman::common::{copy_dir_recursive, copy_include_dir_recursive};
 use crate::nosman::command::{get_lang_tool_arg, get_nodos_version_from_args, Command, CommandResult};
 use crate::nosman::command::CommandError::InvalidArgument;
@@ -15,6 +14,7 @@ use crate::nosman::lang_tool::LangTool;
 use crate::nosman::module::get_dependency_arguments;
 use crate::nosman::package::{get_plugin_manifest_file_ext, PackageIdentifier};
 use crate::nosman::workspace::{ScanPackagesFlags, Workspace};
+use crate::nosman::ui;
 
 pub struct CreateCommand {}
 
@@ -327,10 +327,10 @@ impl CreateCommand {
         };
 
         if resolved_version >= NODOS_1_4 {
-            println!("{}", format!("Creating a new Nodos plugin project").green());
+            ui::step("Creating", "a Nodos plugin project");
         }
         else {
-            println!("{}", format!("Creating a new Nodos {:?} project", plugin_type).green());
+            ui::step("Creating", format!("a Nodos {:?} project", plugin_type));
         }
 
         if plugin_type == PluginType::SubsystemLegacy && resolved_version >= NODOS_1_4 {
@@ -433,7 +433,7 @@ impl CreateCommand {
             }))?;
         }
 
-        println!("{:?} project created at {:?}", plugin_type, output_dir);
+        ui::step("Created", format!("{:?} project at {}", plugin_type, output_dir.display()));
 
         if workspace.ready() {
             workspace.scan_packages_in_folder(output_dir.clone(), ScanPackagesFlags::ForceReplaceInRegistry);

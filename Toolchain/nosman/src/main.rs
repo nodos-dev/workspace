@@ -6,7 +6,7 @@ fn main() -> ExitCode {
     match nosman::nosman::cli::run_cli() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("Error: {e}");
+            nosman::nosman::ui::error(e);
             ExitCode::FAILURE
         }
     }

@@ -1,7 +1,7 @@
 use clap::{Arg, ArgAction, ArgMatches};
-use colored::Colorize;
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::workspace::{RescanFlags, Workspace};
+use crate::nosman::ui;
 
 pub struct RescanCommand {
 }
@@ -31,7 +31,7 @@ impl Command for RescanCommand {
             flags |= RescanFlags::FetchPackageIndex;
         }
         workspace.rescan(flags)?;
-        println!("{}", format!("Rescan completed in {:?}", std::time::Instant::now() - now).green());
+        ui::summary_line("Rescanned the workspace", now);
         Ok(())
     }
 }

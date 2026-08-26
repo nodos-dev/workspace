@@ -2,10 +2,11 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::mem;
-use clap::{Arg, ArgAction, Command};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 use clap::builder::StyledStr;
 use crate::nosman;
 use crate::nosman::command;
+use crate::nosman::ui;
 use crate::nosman::workspace::Workspace;
 
 /// A double-clicked console binary gets a console window from Windows. Hide
@@ -55,14 +56,86 @@ fn detach_console() {
 #[cfg(not(windows))]
 fn detach_console() {}
 
-fn get_workspace_dir_from_cmd(cmd: &Command) -> std::path::PathBuf {
+/// Reads the options that apply to every command and settles how output looks,
+/// then answers where the workspace is.
+///
+/// This runs before the real parse because the workspace is opened, and starts
+/// printing, while the command line is still being worked out.
+fn apply_global_options(cmd: &Command) -> std::path::PathBuf {
     let mut wcmd = cmd.clone();
     wcmd = wcmd.subcommand(Command::new("help")) // trick because we can't get workspace dir without parsing everything.
         .disable_help_subcommand(true)
         .ignore_errors(true);
     let matches = wcmd.get_matches();
+    ui::set_color(find_option(&matches, "color").map(|s| s.as_str()).unwrap_or("auto"));
+    if find_flag(&matches, "quiet") {
+        ui::set_verbosity(ui::Verbosity::Quiet);
+    } else if find_flag(&matches, "verbose") {
+        ui::set_verbosity(ui::Verbosity::Verbose);
+    }
     // TODO: Try to get --workspace option without having to clone command and parse all args.
     std::path::PathBuf::from(matches.get_one::<String>("workspace").unwrap_or(&".".to_string()))
+}
+
+/// The options that shape output are accepted next to any command, so look for
+/// them all the way down the chain of subcommands the user typed.
+fn find_flag(matches: &ArgMatches, id: &str) -> bool {
+    if matches.try_get_one::<bool>(id).ok().flatten() == Some(&true) {
+        return true;
+    }
+    matches.subcommand().is_some_and(|(_, sub)| find_flag(sub, id))
+}
+
+fn find_option<'a>(matches: &'a ArgMatches, id: &str) -> Option<&'a String> {
+    // The innermost mention wins, so that `nodos install --color never` reads
+    // the same as `nodos --color never install`.
+    if let Some((_, sub)) = matches.subcommand() {
+        if let Some(found) = find_option(sub, id) {
+            return Some(found);
+        }
+    }
+    matches.try_get_one::<String>(id).ok().flatten()
+}
+
+/// Adds the options that shape output to a command and to every command under
+/// it. clap's own global arguments only reach commands it has not built yet,
+/// and nosman renders subcommand help up front, which builds them.
+fn add_output_options(cmd: Command) -> Command {
+    let takes = |cmd: &Command, long: &str, short: Option<char>| {
+        cmd.get_arguments()
+            .any(|arg| arg.get_long() == Some(long) || (short.is_some() && arg.get_short() == short))
+    };
+    let mut cmd = cmd;
+    if !takes(&cmd, "quiet", Some('q')) {
+        cmd = cmd.arg(Arg::new("quiet")
+            .help("Only print warnings and errors")
+            .short('q')
+            .long("quiet")
+            .action(ArgAction::SetTrue)
+            .num_args(0)
+        );
+    }
+    if !takes(&cmd, "verbose", None) {
+        cmd = cmd.arg(Arg::new("verbose")
+            .help("Print more information about what is being done")
+            .long("verbose")
+            .action(ArgAction::SetTrue)
+            .num_args(0)
+        );
+    }
+    if !takes(&cmd, "color", None) {
+        cmd = cmd.arg(Arg::new("color")
+            .help("When to colour output: auto, always or never")
+            .long("color")
+            .num_args(1)
+            .value_parser(["auto", "always", "never"])
+        );
+    }
+    let subcommand_names: Vec<String> = cmd.get_subcommands().map(|s| s.get_name().to_string()).collect();
+    for name in subcommand_names {
+        cmd = cmd.mut_subcommand(name, add_output_options);
+    }
+    cmd
 }
 
 pub fn run_cli() -> Result<(), Box<dyn Error>> {
@@ -101,8 +174,9 @@ pub fn run_cli() -> Result<(), Box<dyn Error>> {
             .help("Prints help information about a command")
         );
     cli = command::register_cli(cli);
+    cli = add_output_options(cli);
 
-    let workspace_dir = get_workspace_dir_from_cmd(&cli);
+    let workspace_dir = apply_global_options(&cli);
     let workspace = Workspace::from_root(&workspace_dir);
 
     let mut subcommand_helps: HashMap<String, StyledStr> = HashMap::new();
@@ -116,6 +190,7 @@ pub fn run_cli() -> Result<(), Box<dyn Error>> {
     // Add commands from extensions
     if workspace.ready() {
         cli = nosman::extensions::add_extensions(&workspace, cli);
+        cli = add_output_options(cli);
     }
 
     let help_str = cli.render_help();
@@ -166,6 +241,6 @@ pub fn run_cli() -> Result<(), Box<dyn Error>> {
         };
     }
 
-    println!("{}", help_str.ansi());
+    eprintln!("{}", help_str.ansi());
     Err("No matching command found".into())
 }

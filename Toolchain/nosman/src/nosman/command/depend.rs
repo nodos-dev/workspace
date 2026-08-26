@@ -8,6 +8,7 @@ use crate::nosman::index::{SemVer};
 use crate::nosman::module::{get_dependency_arguments};
 use crate::nosman::package::PackageIdentifier;
 use crate::nosman::workspace::{Workspace};
+use crate::nosman::ui;
 
 pub struct DependCommand {
 }
@@ -46,7 +47,7 @@ impl DependCommand {
                 } else if let Some(store_package) = workspace.index_cache.get_latest_release(&dep_id.name) {
                     dep.name = dep_id.name.clone();
                     dep.version = store_package.1.version.clone();
-                    println!("Found latest version {} for {}", dep.version, dep.name);
+                    ui::detail(format!("{} resolves to {}", dep.name, dep.version));
                 }
             } else if workspace.is_installed_matching(&dep_id.name, &dep_id.version) {
                 let module = workspace.get_latest_local_package_for_version(&dep_id.name, &dep_id.version)?;
@@ -60,7 +61,7 @@ impl DependCommand {
                     &dep_id.name, &version_prefix) {
                     dep.name = dep_id.name.clone();
                     dep.version = store_package.1.version.clone();
-                    println!("Found latest version {} for {}", dep.version, dep.name);}
+                    ui::detail(format!("{} resolves to {}", dep.name, dep.version));}
             }
 
             if dep.name.is_empty() {

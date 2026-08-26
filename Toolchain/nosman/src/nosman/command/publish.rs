@@ -27,6 +27,7 @@ use crate::nosman::path::get_package_manifest_file;
 use crate::nosman::platform::{get_host_platform, Platform};
 use crate::nosman::workspace::Workspace;
 use crate::nosman::plugin::{PluginEntry};
+use crate::nosman::ui;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
@@ -111,7 +112,7 @@ impl PublishOptionsFileContent {
                     nospub = serde_json::from_str(&contents).unwrap();
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to read publish options file: {}", e);
+                    ui::warn(format!("could not read the publish options file: {}", e));
                     return (Self::empty(), false);
                 }
             }
@@ -178,7 +179,7 @@ impl PublishCommand {
     fn resolve_changelog(changelog_arg: Option<String>, abs_path: &PathBuf, name: &str,
                          target_platform: &Platform, cfg: &ChangelogOptions) -> Option<String> {
         if let Some(text) = changelog_arg {
-            println!("Using changelog from --changelog argument.");
+            ui::detail("using the changelog given on the command line");
             return Some(text);
         }
         if abs_path.is_dir() {
@@ -186,14 +187,14 @@ impl PublishCommand {
             if changelog_path.exists() {
                 match std::fs::read_to_string(&changelog_path) {
                     Ok(contents) => {
-                        println!("Using changelog from {}.", changelog_path.display());
+                        ui::detail(format!("using the changelog at {}", changelog_path.display()));
                         return Some(contents);
                     }
                     Err(e) => {
-                        eprintln!(
-                            "Warning: failed to read {}: {}. Falling back to git/artifact changelog.",
+                        ui::warn(format!(
+                            "could not read {} ({}), falling back to the git or artifact changelog",
                             changelog_path.display(), e
-                        );
+                        ));
                     }
                 }
             }
@@ -212,10 +213,10 @@ impl PublishCommand {
         match git::fetch_tags(abs_path, unshallow) {
             Ok(()) => {
                 if verbose {
-                    println!("Fetched git tags{}.", if unshallow { " and unshallowed history" } else { "" });
+                    ui::detail(format!("fetched git tags{}", if unshallow { " and unshallowed history" } else { "" }));
                 }
             }
-            Err(e) => eprintln!("{}", format!("Warning: could not fetch git tags ({}); changelog/tagging may be incomplete.", e).yellow()),
+            Err(e) => ui::warn(format!("could not fetch git tags ({}), so the changelog and tag may be incomplete", e)),
         }
     }
 
@@ -240,7 +241,7 @@ impl PublishCommand {
         if subjects.is_empty() {
             return None;
         }
-        println!("Using git-generated changelog ({} commit(s) since {}).", subjects.len(), baseline);
+        ui::detail(format!("using a changelog built from {} since {}", ui::plural(subjects.len(), "commit"), baseline));
         let mut out = format!("## Changes since {}\n\n", baseline);
         for s in subjects {
             out.push_str(&s);
@@ -257,26 +258,26 @@ impl PublishCommand {
                           target_platform: &Platform, push: bool, verbose: bool) -> Option<String> {
         if !git::is_inside_work_tree(abs_path) {
             if verbose {
-                println!("Not inside a git work tree; skipping release tag.");
+                ui::detail("not inside a git work tree, so no release tag");
             }
             return None;
         }
         let tag = format!("release-{}-{}-{}", name, version, target_platform);
         if git::tag_exists(abs_path, &tag) {
-            println!("{}", format!("Git tag {} already exists; leaving it as is.", tag).yellow());
+            ui::step_skipped("Tagged", format!("{} already exists", tag));
             return None;
         }
         match git::create_annotated_tag(abs_path, &tag, &format!("{} {}", name, version)) {
-            Ok(()) => println!("{}", format!("Created git tag {}", tag).green()),
+            Ok(()) => ui::step("Tagged", &tag),
             Err(e) => {
-                eprintln!("{}", format!("Warning: failed to create git tag {}: {}", tag, e).yellow());
+                ui::warn(format!("could not create git tag {}: {}", tag, e));
                 return None;
             }
         }
         if push {
             match git::push_tag(abs_path, &tag) {
-                Ok(()) => println!("{}", format!("Pushed git tag {}", tag).green()),
-                Err(e) => eprintln!("{}", format!("Warning: failed to push git tag {} (release already published): {}", tag, e).yellow()),
+                Ok(()) => ui::step("Pushed", format!("tag {}", tag)),
+                Err(e) => ui::warn(format!("could not push git tag {} ({}), the release is published either way", tag, e)),
             }
         }
         Some(tag)
@@ -293,7 +294,7 @@ impl PublishCommand {
         }
         let lib = load_module(verbose, package_type, manifest, manifest_dir.clone(), workspace)?;
         if verbose {
-            println!("Package binary {} loaded successfully. Checking Nodos {:?} API version...", binary_path.display(), package_type);
+            ui::detail(format!("loaded {}, reading its Nodos {:?} API version", binary_path.display(), package_type));
         }
         let get_api_version_func_name = "nosGetPluginAPIVersion";
         let mut api_version_opt: Option<SemVer>;
@@ -307,7 +308,7 @@ impl PublishCommand {
                 let mut patch = 0;
                 get_api_version_func(&mut major, &mut minor, &mut patch);
                 api_version_opt = Some(SemVer { major: (major as u32), minor: Some(minor as u32), patch: Some(patch as u32), build_number: None });
-                println!("{}", format!("Binary {:?} uses Nodos {:?} API version: {}.{}.{}", binary_path, package_type, major, minor, patch).as_str().yellow());
+                ui::detail(format!("{:?} uses Nodos {:?} API version {}.{}.{}", binary_path, package_type, major, minor, patch));
 
                 {
                     let get_min_required_minor_func_name = "nosGetMinimumRequiredPluginAPIMinorVersion";
@@ -316,7 +317,7 @@ impl PublishCommand {
                         get_min_required_minor_func(&mut min_required_minor);
                         if min_required_minor > 0 {
                             api_version_opt.as_mut().unwrap().minor = Some(min_required_minor as u32);
-                            println!("{}", format!("Binary {:?} requires minimum Nodos {:?} API  minor version {}", binary_path, package_type, min_required_minor).as_str().yellow());
+                            ui::detail(format!("{:?} needs at least Nodos {:?} API minor version {}", binary_path, package_type, min_required_minor));
                         }
                     }
                 }
@@ -338,7 +339,7 @@ impl PublishCommand {
             Some(platform_str) => Platform::from_str(platform_str).expect("Invalid target platform"),
             None => {
                 let current_platform = get_host_platform();
-                println!("{}", format!("Target platform is not provided. Using the current platform: {}", current_platform).yellow());
+                ui::detail(format!("no target platform given, using this one: {}", current_platform));
                 current_platform
             }
         };
@@ -363,7 +364,7 @@ impl PublishCommand {
             let (options, found) = PublishOptions::from_file(&abs_path.join(constants::PUBLISH_OPTIONS_FILE_NAME));
             publish_options = options;
             if !found {
-                println!("{}", format!("No {} file found in {}. All files will be included in the release.", constants::PUBLISH_OPTIONS_FILE_NAME, abs_path.display()).as_str().yellow());
+                ui::warn(format!("no {} in {}, so every file goes into the release", constants::PUBLISH_OPTIONS_FILE_NAME, abs_path.display()));
             } else if let Some(targets) = publish_options.target_platforms {
                 if !targets.contains(&target_platform.to_string()) {
                     return Err (InvalidArgument { message: format!("Target platform {} is not in the list of target platforms in {}", target_platform, constants::PUBLISH_OPTIONS_FILE_NAME) });
@@ -440,7 +441,7 @@ impl PublishCommand {
             return Err(InvalidArgument { message: "Version is not provided and could not be inferred".to_string() });
         }
 
-        println!("Target platform: {:?}", target_platform);
+        ui::detail(format!("target platform {:?}", target_platform));
 
         let name = name.unwrap();
         let version = version.unwrap() + version_suffix;
@@ -563,22 +564,19 @@ impl PublishCommand {
             artifact_file_path = abs_path.clone();
         }
 
-        pb.finish_and_clear();
+        ui::finish_progress();
 
         if !node_class_names.is_empty() && verbose {
-            println!("Node definitions discovered for {}: {:?}", name, node_class_names);
+            ui::detail(format!("node definitions found for {}: {:?}", name, node_class_names));
         }
 
-        println!("Publishing {}-{} to Nodos Store", name, version);
+        ui::step("Publishing", format!("{}=={} to the Nodos Store", name, version));
 
         let mut created_tag = None;
         if dry_run {
-            println!(
-                "Would publish {} {} for {}",
-                name, version, target_platform
-            );
+            ui::step("Would publish", format!("{}=={} for {}", name, version, target_platform));
             if create_tag && publish_options.tag.enabled {
-                println!("Would create git tag release-{}-{}-{}", name, version, target_platform);
+                ui::step("Would tag", format!("release-{}-{}-{}", name, version, target_platform));
             }
         } else {
             if fetch_tags {
@@ -622,7 +620,7 @@ impl PublishCommand {
                                                        push_tag && publish_options.tag.push, verbose);
             }
         }
-        println!("{}", format!("Release {}-{} created successfully", name, version).green());
+        ui::step("Published", format!("{}=={}", name, version));
         Ok(PublishOutcome { id: PackageIdentifier { name, version }, created_tag })
     }
 
@@ -685,13 +683,6 @@ pub fn get_cli() -> clap::Command {
             .action(ArgAction::SetTrue)
             .long("dry-run")
             .help("Do not actually publish the package, just show what would be done.")
-            .num_args(0)
-            .required(false)
-        )
-        .arg(Arg::new("verbose")
-            .action(ArgAction::SetTrue)
-            .long("verbose")
-            .help("Print more information about the process.")
             .num_args(0)
             .required(false)
         )
@@ -760,7 +751,7 @@ impl Command for PublishCommand {
         let version = opt_version.cloned();
         let name = opt_name.cloned();
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
-        let verbose = args.get_one::<bool>("verbose").unwrap();
+        let verbose = ui::is_verbose();
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
         let release_tags: Vec<String> = release_tags_ref.iter().map(|s| s.to_string()).collect();
         let target_platform: Option<&String> = args.get_one::<String>("target_platform");
@@ -772,7 +763,7 @@ impl Command for PublishCommand {
         self.run_publish(
             workspace,
             *dry_run,
-            *verbose,
+            verbose,
             &path,
             name,
             version,

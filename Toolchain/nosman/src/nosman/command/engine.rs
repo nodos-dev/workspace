@@ -7,6 +7,7 @@ use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::launch::{
     get_engine_args, launch_engine, launch_nodos, list_engines, select_engine,
 };
+use crate::nosman::ui;
 use crate::nosman::workspace::Workspace;
 
 /// Base names (without platform extension) of the processes that make up a
@@ -155,10 +156,10 @@ fn stop_processes(workspace_dir: &PathBuf, force: bool) -> usize {
     for p in &procs {
         if let Some(process) = sys.process(p.pid) {
             if terminate(process, force) {
-                println!("{} {} (pid {})", "Stopped".green(), p.name.cyan(), p.pid);
+                ui::step("Stopped", format!("{} (pid {})", p.name.cyan(), p.pid));
                 stopped += 1;
             } else {
-                println!("{} {} (pid {})", "Failed to stop".red(), p.name.cyan(), p.pid);
+                ui::step_failed("Failed", format!("to stop {} (pid {})", p.name.cyan(), p.pid));
             }
         }
     }
@@ -200,10 +201,10 @@ impl Command for EngineListCommand {
             return Ok(());
         }
         if engines.is_empty() {
-            println!("{}", "No installed Nodos engine found in workspace.".yellow());
+            ui::warn("no installed Nodos engine found in this workspace");
             return Ok(());
         }
-        println!("{}", "Installed engines:".green());
+        ui::step("Installed", ui::plural(engines.len(), "engine"));
         for e in &engines {
             println!("  {} ({})", e.to_string().cyan(), e.path.display());
         }
@@ -226,7 +227,7 @@ impl Command for EngineStopCommand {
         let force = args.get_flag("force");
         let stopped = stop_processes(&workspace.root, force);
         if stopped == 0 {
-            println!("{}", "No running Nodos engine found for this workspace.".yellow());
+            ui::warn("no running Nodos engine found for this workspace");
         }
         Ok(())
     }
@@ -259,10 +260,10 @@ impl EngineStatusCommand {
         }
 
         if procs.is_empty() {
-            println!("{}", "Nodos is not running for this workspace.".yellow());
+            ui::step_skipped("Stopped", "Nodos is not running for this workspace");
             return Ok(());
         }
-        println!("{}", "Nodos is running:".green());
+        ui::step("Running", ui::plural(procs.len(), "process"));
         for p in &procs {
             println!(
                 "  {} (pid {}, up {})",

@@ -5,6 +5,7 @@ pub mod workspace;
 pub mod path;
 pub mod constants;
 pub mod common;
+pub mod ui;
 mod dialog;
 pub mod eula;
 mod platform;

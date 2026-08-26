@@ -4,13 +4,13 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 use std::sync::{Mutex, OnceLock};
-use colored::Colorize;
 use include_dir::Dir;
 use indicatif::ProgressBar;
 use inquire::Confirm;
 use serde_json::Value;
 use crate::nosman::command::CommandError;
 use crate::nosman::index::SemVer;
+use crate::nosman::ui;
 
 pub type PromptHandler = dyn Fn(&str, bool, bool) -> bool + Send + Sync + 'static;
 static PROMPT_HANDLER: OnceLock<Mutex<Option<Box<PromptHandler>>>> = OnceLock::new();
@@ -147,18 +147,18 @@ pub fn ask(question: &str, default: bool, dont_ask: bool) -> bool {
         if let Ok(result) = res {
             return result;
         } else if let Err(e) = res {
-            eprintln!("{}", e);
+            ui::error(e);
         }
     }
 }
 
 pub fn run_if_not(dry_run: bool, verbose: bool, cmd: &mut std::process::Command) -> Option<Output> {
     if dry_run {
-        println!("{}", format!("Would run: {:?}", cmd).cyan());
+        ui::step("Would run", format!("{:?}", cmd));
         None
     } else {
         if verbose {
-            println!("{}", format!("Running: {:?}", cmd).cyan());
+            ui::detail(format!("running {:?}", cmd));
         }
         let res = cmd.output();
         if verbose && res.is_ok() {
@@ -175,11 +175,14 @@ pub fn get_hostname() -> String {
     hostname.into_string().expect("Failed to convert hostname to string")
 }
 
-pub fn get_progress_bar(silent: bool) -> ProgressBar{
+/// A spinner for a command that has its own reason to stay quiet, such as one
+/// whose output is data. It goes through [`ui::spinner`] so that lines printed
+/// while it turns are drawn above it rather than through it.
+pub fn get_progress_bar(silent: bool) -> ProgressBar {
     if silent {
         ProgressBar::hidden()
     } else {
-        ProgressBar::new_spinner()
+        ui::spinner("")
     }
 }
 

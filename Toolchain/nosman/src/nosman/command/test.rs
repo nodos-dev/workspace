@@ -1,9 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use clap::ArgMatches;
-use colored::Colorize;
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::workspace::Workspace;
+use crate::nosman::ui;
 use crate::nosman::{package};
 use std::fs::File;
 use crate::nosman::package::{get_package_info_from_manifest};
@@ -143,7 +143,7 @@ impl TestCommand {
     fn print_summary(results: &[TestResult], workspace: &Workspace) {
         use colored::*;
         use std::collections::BTreeMap;
-        println!("\n{}", "Test Results".bold().underline());
+        ui::blank();
         // Group by plugin name and plugin_dir
         let mut grouped: BTreeMap<(&str, &PathBuf), Vec<&TestResult>> = BTreeMap::new();
         for result in results {
@@ -160,7 +160,7 @@ impl TestCommand {
                 .unwrap_or_else(|| plugin_dir.to_path_buf())
                 .display()
                 .to_string();
-            println!("\n{} ({})", plugin.bold(), rel_dir.dimmed());
+            ui::step("Tested", format!("{} ({})", plugin.bold(), rel_dir.dimmed()));
             for result in tests {
                 let (icon, status) = if result.exit_code == 0 {
                     ("✓".green(), "PASS".green())
@@ -168,20 +168,17 @@ impl TestCommand {
                     ("✗".red(), "FAIL".red())
                 };
                 let test = result.test_graph.file_name().unwrap().to_string_lossy().dimmed();
-                print!("  {} {}  {}  ({:?})", icon, status, test, result.duration);
+                let mut line = format!("{} {}  {}  ({:?})", icon, status, test, result.duration);
                 if let Some(ref output_file) = result.output_file {
-                    print!(" ({})", output_file.display().to_string().dimmed());
+                    line.push_str(&format!(" ({})", output_file.display().to_string().dimmed()));
                 }
-                println!();
+                ui::nested(line);
             }
         }
         let passed = results.iter().filter(|r| r.exit_code == 0).count();
         let total = results.len();
-        println!(
-            "\n{} of {} tests passed.",
-            passed.to_string().bold().green(),
-            total.to_string().bold()
-        );
+        ui::blank();
+        ui::step("Passed", format!("{} of {}", passed, ui::plural(total, "test")));
     }
 }
 
@@ -224,20 +221,21 @@ impl Command for TestCommand {
         let timeout = Duration::from_secs(timeout_secs);
         let tests = Self::collect_tests(&plugins_folder);
         if tests.is_empty() {
-            println!("{}", "No plugins with tests found.".yellow());
+            ui::step_skipped("None", "no plugin has tests");
             return Ok(());
         }
-        println!("Found {} test(s) in {} plugin(s).", tests.len(), tests.iter().map(|t| &t.package_name).collect::<std::collections::HashSet<_>>().len());
+        ui::step("Found", format!("{} in {}", ui::plural(tests.len(), "test"),
+            ui::plural(tests.iter().map(|t| &t.package_name).collect::<std::collections::HashSet<_>>().len(), "plugin")));
         let mut results = Vec::new();
         for test in &tests {
             let test_graph_relpath = test.test_graph
                 .strip_prefix(&plugins_folder)
                 .unwrap_or(&test.test_graph);
-            println!("{} {} (plugin: {})", "Running test graph:".green(), test_graph_relpath.display(), test.package_name);
+            ui::step("Running", format!("{} (plugin {})", test_graph_relpath.display(), test.package_name));
             let start = Instant::now();
             let (exit_code, output_file) = Self::run_nodos_graph_test(workspace, engine_dir.as_deref(), &test.test_graph, timeout)
                 .unwrap_or_else(|e| {
-                    eprintln!("{} {}: {}", "Error when running test graph".red(), test_graph_relpath.display(), e);
+                    ui::error(format!("could not run the test graph {}: {}", test_graph_relpath.display(), e));
                     (-1, None)
                 });
             let duration = start.elapsed();

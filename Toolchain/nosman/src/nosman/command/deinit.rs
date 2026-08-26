@@ -1,10 +1,10 @@
 use std::{fs};
 use clap::{ArgMatches};
-use colored::Colorize;
 use inquire::Confirm;
 use crate::nosman::command::{Command, CommandError, CommandResult};
 
 use crate::nosman::workspace::{Workspace};
+use crate::nosman::ui;
 
 pub struct DeinitCommand {
 }
@@ -21,7 +21,7 @@ impl DeinitCommand {
                 workspace.remove_all()?;
             }
             fs::remove_file(nosman_fpath)?;
-            println!("{}", "Workspace removed".green());
+            ui::step("Removed", "the workspace");
             Ok(())
         } else {
             Err(CommandError::InvalidArgument { message: format!("No workspace found at {:?}", nosman_fpath) })

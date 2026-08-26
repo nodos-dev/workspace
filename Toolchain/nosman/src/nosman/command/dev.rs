@@ -4,17 +4,17 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::Instant;
 use clap::{Arg, ArgAction, ArgMatches};
 use colored::Colorize;
 use inquire::MultiSelect;
 use include_dir::{include_dir, Dir};
-use indicatif::ProgressBar;
 use rayon::prelude::*;
 use CommandError::InvalidArgument;
 use crate::nosman::common::{ask, copy_include_dir_recursive};
 use crate::nosman::command::{get_lang_tool_arg, Command, CommandError, CommandResult};
 use crate::nosman::lang_tool::LangTool;
+use crate::nosman::ui;
 use crate::nosman::workspace::Workspace;
 
 pub fn get_cli() -> clap::Command {
@@ -82,10 +82,6 @@ pub fn get_cli() -> clap::Command {
                 .long("clean-first")
                 .action(ArgAction::SetTrue)
                 .help("[CMake-only] clean before building (CMake --clean-first)"))
-            .arg(Arg::new("verbose")
-                .long("verbose")
-                .action(ArgAction::SetTrue)
-                .help("[CMake-only] verbose build output (CMake --verbose)"))
             .arg(Arg::new("job_count")
                 .long("jobs")
                 .short('j')
@@ -193,14 +189,13 @@ pub struct DevPullCommand {}
 impl DevPullCommand {
     fn run_pull(&self, dirs: Vec<PathBuf>) -> CommandResult {
         // Scan module folder for git repositories and run "git pull" on them
-        let pb = ProgressBar::new_spinner();
-        pb.enable_steady_tick(Duration::from_millis(100));
-        pb.set_message("Scanning for git repositories...");
+        let started = Instant::now();
+        let pb = ui::spinner("Scanning for git repositories");
         let git_dirs = find_git_repositories(dirs)?;
-        
+
         let total_count = git_dirs.len();
         let completed_count = Mutex::new(0usize);
-        
+
         pb.set_message(format!("Pulling (0/{})...", total_count));
         
         // Mutex locked mutable output map
@@ -263,7 +258,7 @@ impl DevPullCommand {
             pb.set_message(format!("({}/{}) Pulling {}", *count, total_count, path.display()));
         });
         
-        pb.finish_and_clear();
+        ui::finish_progress();
 
         // Sort: repos with updates first, then up-to-date, then errors
         let mut repos: Vec<_> = output_map_locked.into_inner().unwrap().into_iter().collect();
@@ -277,37 +272,34 @@ impl DevPullCommand {
             }
         });
 
+        let mut updated = 0usize;
+        let mut failed = 0usize;
         for (path, (branch, output, has_updates, error)) in repos {
+            let subject = format!("{} ({})", path.display(), branch.cyan());
             if let Some(err) = error {
-                println!(
-                    "{} ({}):",
-                    path.display().to_string().red().bold(),
-                    branch.cyan()
-                );
-                println!("  {}", err.trim());
-                println!();
+                failed += 1;
+                ui::step_failed("Failed", subject);
+                ui::nested(err.trim());
             } else if has_updates {
-                println!(
-                    "{} ({}):",
-                    path.display().to_string().green().bold(),
-                    branch.cyan()
-                );
+                updated += 1;
+                ui::step("Updated", subject);
                 // Show only meaningful lines from git pull output
                 for line in output.lines() {
                     let line = line.trim();
                     if !line.is_empty() && !line.starts_with("From ") {
-                        println!("  {}", line);
+                        ui::nested(line);
                     }
                 }
-                println!();
             } else {
-                println!("{}", format!(
-                    "{} ({}) {}",
-                    path.display().to_string().green(),
-                    branch.cyan(),
-                    "(already up to date)").dimmed()
-                );
+                ui::step_skipped("Current", subject);
             }
+        }
+        ui::summary_line(
+            format!("Pulled {} of {}", updated, ui::plural(total_count, "repo")),
+            started,
+        );
+        if failed > 0 {
+            ui::warn(format!("{} could not be pulled", ui::plural(failed, "repo")));
         }
         Ok(())
     }
@@ -380,7 +372,8 @@ impl DevGenCommand {
         }
                 let mut cmd = std::process::Command::new("cmake");
                 let cmd_args_str = cmake_args.iter().map(|s| s.as_ref()).collect::<Vec<&OsStr>>().join(OsStr::new(" "));
-                println!("{}: {:?}", "Running cmake with".green(), cmd_args_str);
+                ui::step("Generating", format!("project files in {}", project_folder));
+                ui::detail(format!("cmake {:?}", cmd_args_str));
                 let status = cmd
                     .args(&cmake_args)
                     .status();
@@ -469,11 +462,10 @@ pub struct DevStatusCommand {}
 impl DevStatusCommand {
     fn run_status(&self, dirs: Vec<PathBuf>) -> CommandResult {
         // Scan module folder for git repositories and run "git pull" on them
-        let pb = ProgressBar::new_spinner();
-        pb.enable_steady_tick(Duration::from_millis(100));
-        pb.set_message("Scanning for git repositories...");
+        let started = Instant::now();
+        let pb = ui::spinner("Scanning for git repositories");
         let git_dirs = find_git_repositories(dirs)?;
-        pb.set_message("Scanning...");
+        pb.set_message("Reading status");
         // Mutex locked mutable output map
         let output_map_locked = Mutex::new(HashMap::<PathBuf, (String, String, Vec<String>, bool)>::new());
         git_dirs.par_iter().for_each(|path| {
@@ -495,7 +487,7 @@ impl DevStatusCommand {
             let mut output_map = output_map_locked.lock().unwrap();
             output_map.insert(path.clone(), (branch_name, status_str, ahead_commits, has_changes));
         });
-        pb.finish_and_clear();
+        ui::finish_progress();
 
         // Sort: unchanged repos first, then changed; lexicographic within each group
         let mut repos: Vec<_> = output_map_locked.into_inner().unwrap().into_iter().collect();
@@ -503,39 +495,35 @@ impl DevStatusCommand {
             a_changed.cmp(b_changed).then_with(|| a_path.cmp(b_path))
         });
 
+        let total_count = repos.len();
+        let mut changed = 0usize;
         for (path, (branch, status, ahead_commits, has_changes)) in repos {
+            let subject = format!("{} ({})", path.display(), branch.cyan());
             if has_changes {
-                println!(
-                    "{} ({}):",
-                    path.display().to_string().green().bold(),
-                    branch.cyan()
-                );
+                changed += 1;
+                ui::step("Changed", subject);
 
                 if !ahead_commits.is_empty() {
-                    println!("{}", format!(
-                        "{} commit{} ahead of upstream:",
-                        ahead_commits.len(),
-                        if ahead_commits.len() == 1 { "" } else { "s" }
-                    ).yellow());
+                    ui::nested(format!(
+                        "{} ahead of upstream:",
+                        ui::plural(ahead_commits.len(), "commit")
+                    ));
                     for subject in &ahead_commits {
-                        println!("{}", format!("  {}", subject).yellow());
+                        ui::nested(format!("  {}", subject));
                     }
                 }
 
                 for line in status.lines() {
-                    let line = line.trim_end();
-                    println!("{}", line);
+                    ui::nested(line.trim_end());
                 }
-                println!();
             } else {
-                println!("{}", format!(
-                    "{} ({}) {}",
-                    path.display().to_string().green(),
-                    branch.cyan(),
-                    "(no changes)").dimmed()
-                );
+                ui::step_skipped("Clean", subject);
             }
         }
+        ui::summary_line(
+            format!("Checked {}, {} changed", ui::plural(total_count, "repo"), changed),
+            started,
+        );
         Ok(())
     }
 }
@@ -564,11 +552,9 @@ pub struct DevPushCommand {}
 impl DevPushCommand {
     fn run_push(&self, dirs: Vec<PathBuf>) -> CommandResult {
         // Scan for git repositories and collect the ones with unpushed commits
-        let pb = ProgressBar::new_spinner();
-        pb.enable_steady_tick(Duration::from_millis(100));
-        pb.set_message("Scanning for git repositories...");
+        let pb = ui::spinner("Scanning for git repositories");
         let git_dirs = find_git_repositories(dirs)?;
-        pb.set_message("Scanning...");
+        pb.set_message("Looking for unpushed commits");
         let candidates_locked = Mutex::new(Vec::<(PathBuf, String, Vec<String>)>::new());
         git_dirs.par_iter().for_each(|path| {
             let ahead_commits = git_ahead_commits(path);
@@ -577,26 +563,21 @@ impl DevPushCommand {
                 candidates_locked.lock().unwrap().push((path.clone(), branch_name, ahead_commits));
             }
         });
-        pb.finish_and_clear();
+        ui::finish_progress();
 
         let mut candidates = candidates_locked.into_inner().unwrap();
         candidates.sort_by(|a, b| a.0.cmp(&b.0));
 
         if candidates.is_empty() {
-            println!("{}", "No repositories with unpushed commits.".green());
+            ui::step_skipped("Current", "no repository has unpushed commits");
             return Ok(());
         }
 
         for (path, branch, commits) in &candidates {
-            println!(
-                "{} ({}):",
-                path.display().to_string().green().bold(),
-                branch.cyan()
-            );
+            ui::step("Ahead", format!("{} ({})", path.display(), branch.cyan()));
             for subject in commits {
-                println!("{}", format!("  {}", subject).yellow());
+                ui::nested(subject);
             }
-            println!();
         }
 
         // Choose which repositories to push.
@@ -628,7 +609,7 @@ impl DevPushCommand {
         };
 
         if to_push.is_empty() {
-            println!("Nothing selected. Nothing to do.");
+            ui::step_skipped("Nothing", "selected, so there was nothing to do");
             return Ok(());
         }
 
@@ -638,14 +619,13 @@ impl DevPushCommand {
             if to_push.len() == 1 { "y" } else { "ies" }
         );
         if !ask(&question, false, false) {
-            println!("Aborted. Nothing pushed.");
+            ui::step_skipped("Aborted", "nothing was pushed");
             return Ok(());
         }
 
+        let started = Instant::now();
         let total_count = to_push.len();
-        let pb = ProgressBar::new_spinner();
-        pb.enable_steady_tick(Duration::from_millis(100));
-        pb.set_message(format!("Pushing (0/{})...", total_count));
+        let pb = ui::spinner(format!("Pushing (0/{})...", total_count));
         let completed_count = Mutex::new(0usize);
 
         // Push in parallel. git output is captured (not inherited) so concurrent pushes don't
@@ -658,12 +638,7 @@ impl DevPushCommand {
                 .output();
             match output {
                 Ok(o) if o.status.success() => {
-                    pb.println(format!(
-                        "{} {} ({})",
-                        "Pushed".green().bold(),
-                        path.display(),
-                        branch.cyan()
-                    ));
+                    ui::step("Pushed", format!("{} ({})", path.display(), branch.cyan()));
                 }
                 Ok(o) => failures.lock().unwrap().push(format!(
                     "git push in {} exited with status {}: {}",
@@ -677,18 +652,18 @@ impl DevPushCommand {
             *count += 1;
             pb.set_message(format!("({}/{}) pushing...", *count, total_count));
         });
-        pb.finish_and_clear();
+        ui::finish_progress();
 
         let failures = failures.into_inner().unwrap();
+        ui::summary("Pushed", total_count - failures.len(), "repo", started);
         if failures.is_empty() {
-            println!("{}", "Done.".green().bold());
             Ok(())
         } else {
-            for f in &failures {
-                eprintln!("{}", f.red());
+            for failure in &failures {
+                ui::error(failure);
             }
             Err(CommandError::Runtime {
-                message: format!("{} repository/repositories failed to push.", failures.len()),
+                message: format!("{} failed to push.", ui::plural(failures.len(), "repo")),
             })
         }
     }
@@ -770,7 +745,8 @@ impl DevBuildCommand {
                 }
                 let mut cmd = std::process::Command::new("cmake");
                 let cmd_args_str = build_args.iter().map(|s| s.as_ref()).collect::<Vec<&std::ffi::OsStr>>().join(std::ffi::OsStr::new(" "));
-                println!("{}: {:?}", "Running cmake build with".green(), cmd_args_str);
+                ui::step("Building", project_folder);
+                ui::detail(format!("cmake {:?}", cmd_args_str));
                 let status = cmd
                     .args(&build_args)
                     .status();
@@ -800,7 +776,7 @@ impl Command for DevBuildCommand {
         let cmake_config = args.get_one::<String>("config");
         let cmake_target = args.get_one::<String>("target");
         let clean_first = args.get_flag("clean_first");
-        let verbose = args.get_flag("verbose");
+        let verbose = ui::is_verbose();
         let extra_args = args
             .get_many::<String>("extra_args")
             .map(|vals| vals.cloned().collect())
@@ -835,10 +811,7 @@ impl DevInitCommand {
                 }
                 fs::create_dir_all(&toolchain_root)?;
                 copy_include_dir_recursive(&CMAKE_TOOLCHAIN_DIR, &toolchain_dir, None)?;
-                println!(
-                    "{}",
-                    format!("Initialized CMake toolchain under {}", toolchain_dir.display()).green()
-                );
+                ui::step("Initialized", format!("CMake toolchain under {}", toolchain_dir.display()));
                 Ok(())
             }
             _ => Err(InvalidArgument {
@@ -905,16 +878,15 @@ impl DevSetupCommand {
     fn run_setup(&self, dirs: Vec<PathBuf>, ssh: bool, clone_all: bool) -> CommandResult {
         // Recursively scan the workspace for git repositories and collect their origin URLs so we
         // can tell which of the core repos are already present (under any folder, any name).
-        let pb = ProgressBar::new_spinner();
-        pb.enable_steady_tick(Duration::from_millis(100));
-        pb.set_message("Scanning for existing repositories...");
+        let started = Instant::now();
+        ui::spinner("Scanning for existing repositories");
         let scanned = find_git_repositories(dirs)?;
         let existing_urls: Vec<String> = scanned
             .iter()
             .filter_map(git_origin_url)
             .map(|u| u.to_lowercase())
             .collect();
-        pb.finish_and_clear();
+        ui::finish_progress();
 
         // A repo counts as already present if some scanned repo points at nodos-dev/<name>, or if
         // its default destination folder already exists on disk.
@@ -939,14 +911,11 @@ impl DevSetupCommand {
         }
 
         for (name, dest_dir) in &present {
-            println!(
-                "{}",
-                format!("{} → {}/{} (already present, skipping)", name, dest_dir, name).dimmed()
-            );
+            ui::step_skipped("Present", format!("{} at {}/{}", name, dest_dir, name));
         }
 
         if missing.is_empty() {
-            println!("{}", "All core repositories are already present.".green());
+            ui::summary_line("Checked every core repository, all present", started);
             return Ok(());
         }
 
@@ -958,25 +927,21 @@ impl DevSetupCommand {
 
         // Some core repos are private; the invoker may not be a member. Probe access and drop the
         // ones they can't reach so the prompt only lists repos that would actually clone.
-        let pb = ProgressBar::new_spinner();
-        pb.enable_steady_tick(Duration::from_millis(100));
-        pb.set_message("Checking repository access...");
+        let pb = ui::spinner("Checking repository access");
         let (accessible, inaccessible): (Vec<(&str, &str)>, Vec<(&str, &str)>) = missing
             .par_iter()
             .map(|t| *t)
             .partition(|(name, _)| has_repo_access(&format!("{}{}.git", base, name)));
-        pb.finish_and_clear();
+        ui::finish_progress();
+        drop(pb);
 
         for (name, dest_dir) in &inaccessible {
-            println!(
-                "{}",
-                format!("{} → {}/{} (no access, skipping)", name, dest_dir, name).dimmed()
-            );
+            ui::step_skipped("No access", format!("{} → {}/{}", name, dest_dir, name));
         }
 
         let missing = accessible;
         if missing.is_empty() {
-            println!("{}", "No accessible repositories left to clone.".yellow());
+            ui::warn("none of the missing repositories can be reached with these credentials");
             return Ok(());
         }
 
@@ -1008,14 +973,13 @@ impl DevSetupCommand {
         };
 
         if to_clone.is_empty() {
-            println!("Nothing selected. Nothing to do.");
+            ui::step_skipped("Nothing", "selected, so there was nothing to do");
             return Ok(());
         }
 
+        let cloning = Instant::now();
         let total_count = to_clone.len();
-        let pb = ProgressBar::new_spinner();
-        pb.enable_steady_tick(Duration::from_millis(100));
-        pb.set_message(format!("Cloning (0/{})...", total_count));
+        let pb = ui::spinner(format!("Cloning (0/{})...", total_count));
         let completed_count = Mutex::new(0usize);
 
         // Clone repositories in parallel. git output is captured (not inherited) so concurrent
@@ -1024,12 +988,12 @@ impl DevSetupCommand {
         to_clone.par_iter().for_each(|(name, dest_dir)| {
             let dest = PathBuf::from(dest_dir).join(name);
             if dest.exists() {
-                pb.println(format!("{} already exists, skipping.", dest.display()).yellow().to_string());
+                ui::step_skipped("Present", dest.display());
             } else if let Err(e) = fs::create_dir_all(dest_dir) {
                 failures.lock().unwrap().push(format!("Failed to create {}: {}", dest_dir, e));
             } else {
                 let url = format!("{}{}.git", base, name);
-                pb.println(format!("{} {} → {}", "Cloning".green().bold(), url.cyan(), dest.display()));
+                ui::step("Cloning", format!("{} → {}", url.cyan(), dest.display()));
                 let output = std::process::Command::new("git")
                     .arg("clone")
                     .arg("--recursive")
@@ -1051,18 +1015,18 @@ impl DevSetupCommand {
             *count += 1;
             pb.set_message(format!("({}/{}) cloning...", *count, total_count));
         });
-        pb.finish_and_clear();
+        ui::finish_progress();
 
         let failures = failures.into_inner().unwrap();
+        ui::summary("Cloned", total_count - failures.len(), "repo", cloning);
         if failures.is_empty() {
-            println!("{}", "Done.".green().bold());
             Ok(())
         } else {
-            for f in &failures {
-                eprintln!("{}", f.red());
+            for failure in &failures {
+                ui::error(failure);
             }
             Err(CommandError::Runtime {
-                message: format!("{} repository/repositories failed to clone.", failures.len()),
+                message: format!("{} failed to clone.", ui::plural(failures.len(), "repo")),
             })
         }
     }

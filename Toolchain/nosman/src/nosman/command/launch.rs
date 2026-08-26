@@ -8,6 +8,7 @@ use crate::nosman;
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::index::SemVer;
 use crate::nosman::workspace::Workspace;
+use crate::nosman::ui;
 
 pub struct LaunchCommand {}
 
@@ -161,7 +162,7 @@ pub fn select_engine(
 
 /// `engine_args` are forwarded verbatim to nosLauncher.
 pub fn launch_engine(engine: EngineInfo, hide_output: bool, engine_args: &[String]) -> CommandResult {
-    println!("{} {}", "Launching Nodos".green(), engine.to_string().cyan());
+    ui::step("Launching", engine.to_string().cyan());
     let mut editor_cmd = std::process::Command::new(&engine.editor_path);
     editor_cmd.arg("--no-duplicate-instance")
         .arg("--dont-wait-engine")

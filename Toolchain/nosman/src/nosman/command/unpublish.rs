@@ -1,10 +1,10 @@
 use clap::{Arg, ArgAction, ArgMatches};
-use colored::Colorize;
 use crate::nosman;
 use crate::nosman::command::{Command, CommandResult};
 
 use nosman::workspace::Workspace;
 use crate::nosman::command::CommandError::Runtime;
+use crate::nosman::ui;
 
 pub struct UnpublishCommand {
 }
@@ -12,7 +12,7 @@ pub struct UnpublishCommand {
 impl UnpublishCommand {
     pub fn run_unpublish(&self, workspace: &mut Workspace, dry_run: bool, verbose: bool, package_name: &String, version: Option<&String>) -> CommandResult {
         if version.is_none() {
-            println!("Unpublishing all versions of package {}", package_name);
+            ui::step("Unpublishing", format!("every version of {}", package_name));
         }
 
         let client = workspace.authenticated_store_client_mut()?;
@@ -37,14 +37,11 @@ impl UnpublishCommand {
             }
 
             for release in matched {
-                println!(
-                    "Would delete package {} release {} (v{})",
-                    package_name, release.id, release.version
-                );
+                ui::step("Would delete", format!("{} release {} (v{})", package_name, release.id, release.version));
             }
         } else {
             if verbose {
-                println!("Requesting deletion of {} {}", package_name, version.map_or("(all versions)".to_string(), |v| format!("v{}", v)));
+                ui::detail(format!("requesting deletion of {} {}", package_name, version.map_or("(all versions)".to_string(), |v| format!("v{}", v))));
             }
             client
                 .delete_release(package_name, version.map(|v| v.as_str()))
@@ -52,10 +49,10 @@ impl UnpublishCommand {
         }
 
         if let Some(version) = version {
-            println!("{}", format!("Package {} version {} unpublished", package_name, version).yellow());
+            ui::removed(package_name, version);
         }
         else {
-            println!("{}", format!("All releases of package {} are unpublished", package_name).yellow());
+            ui::step("Unpublished", format!("every release of {}", package_name));
         }
         Ok(())
     }
@@ -75,13 +72,6 @@ pub fn get_cli() -> clap::Command {
             .num_args(0)
             .required(false)
         )
-        .arg(Arg::new("verbose")
-            .action(ArgAction::SetTrue)
-            .long("verbose")
-            .help("Print more information about the process.")
-            .num_args(0)
-            .required(false)
-        )
 }
 
 impl Command for UnpublishCommand {
@@ -93,8 +83,8 @@ impl Command for UnpublishCommand {
         let package_name = args.get_one::<String>("package_name").unwrap();
         let version = args.get_one::<String>("version");
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
-        let verbose = args.get_one::<bool>("verbose").unwrap();
-        self.run_unpublish(workspace, *dry_run, *verbose, package_name, version)
+        let verbose = ui::is_verbose();
+        self.run_unpublish(workspace, *dry_run, verbose, package_name, version)
     }
 
     fn needs_workspace(&self) -> bool {

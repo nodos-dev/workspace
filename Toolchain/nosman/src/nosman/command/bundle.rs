@@ -3,7 +3,6 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use clap::{Arg, ArgAction, ArgMatches};
-use colored::Colorize;
 
 use crate::nosman::command::get::GetCommand;
 use crate::nosman::command::install::{InstallCommand, InstallFlags};
@@ -15,6 +14,7 @@ use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::package::PackageIdentifier;
 use crate::nosman::platform::get_host_platform;
 use crate::nosman::workspace::{RescanFlags, Workspace};
+use crate::nosman::ui;
 
 pub struct BundleCommand {}
 
@@ -255,7 +255,7 @@ fn write_archive(bundle_dir: &Path, archive_file: &Path, silent: bool) -> Comman
         file: archive_file.display().to_string(),
         message: e.to_string(),
     })?;
-    pb.finish_and_clear();
+    ui::finish_progress();
     Ok(())
 }
 
@@ -342,7 +342,7 @@ impl BundleCommand {
             message: e.to_string(),
         })?;
 
-        println!("Bundling {} {} into {}", release.name, release.version, out_dir.display());
+        ui::step("Bundling", format!("{}=={} into {}", release.name, release.version, out_dir.display()));
 
         // The bundle is a workspace of its own, and it usually gets built inside another
         // one, so it is scanned into place directly: init would also fetch the whole store
@@ -381,15 +381,15 @@ impl BundleCommand {
                 create_profile(&profile_file, &nodos_version)?;
             }
             add_to_profile(&profile_file, &nodos_version, &installed)?;
-            println!("Wrote {} package(s) to {}", installed.len(), profile_file.display());
+            ui::detail(format!("wrote {} to {}", ui::plural(installed.len(), "package"), profile_file.display()));
         }
 
         if let Some(archive_file) = archive_file {
-            println!("Compressing to {}", archive_file.display());
+            ui::step("Compressing", archive_file.display());
             write_archive(&out_dir, &archive_file, workspace.is_silent())?;
         }
 
-        println!("{}", format!("Bundle ready at {}", out_dir.display()).green());
+        ui::step("Bundled", out_dir.display());
         Ok(())
     }
 }

@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
+use crate::nosman::ui;
 use crate::nosman::common::{collect_files_recursive, get_progress_bar, NODOS_1_4};
 use crate::nosman::{constants, extensions};
 use crate::nosman::command::CommandError::Runtime;
@@ -292,7 +293,7 @@ impl LocalPackageEntry {
                                          /* we might consider not loading CLI extensions here and discarding it from comparison at return */
                                          compare_commands);
         if let Err(msg) = res {
-            eprintln!("{}", msg);
+            ui::warn(msg);
             return true;
         }
         let package = res.unwrap();
@@ -344,12 +345,12 @@ pub fn get_package_manifests(folder: &PathBuf, silent: bool) -> Vec<(PackageType
                 }
             }
             Err(e) => {
-                pb.println(format!("Error while walking: {}", e));
+                ui::warn(format!("could not walk the folder: {}", e));
             }
         }
     }
 
-    pb.finish_and_clear();
+    ui::finish_progress();
     package_manifest_files
 }
 

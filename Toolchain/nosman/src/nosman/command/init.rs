@@ -1,10 +1,10 @@
 use clap::{Arg, ArgAction, ArgMatches};
-use colored::Colorize;
 
 use crate::nosman::command::{Command, CommandResult};
 
 use crate::nosman::command::CommandError::{InvalidArgument};
 use crate::nosman::workspace::{find_root_from, Workspace};
+use crate::nosman::ui;
 
 pub struct InitCommand {
 }
@@ -33,12 +33,12 @@ impl InitCommand {
             }
         }
         if reinit {
-            println!("Reinitializing workspace under {:?}", directory);
+            ui::step("Reinitializing", format!("workspace under {}", directory.display()));
         } else {
-            println!("Creating a new workspace under {:?}", directory);
+            ui::step("Creating", format!("workspace under {}", directory.display()));
         }
         workspace.recreate()?;
-        println!("{}", format!("Workspace initialized with {} packages", workspace.packages.len()).as_str().green());
+        ui::step("Initialized", format!("workspace with {}", ui::plural(workspace.packages.len(), "package")));
         Ok(())
     }
 }

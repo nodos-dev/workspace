@@ -2,6 +2,7 @@ use clap::ArgMatches;
 
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::workspace::Workspace;
+use crate::nosman::ui;
 
 pub struct AuthCommand {}
 
@@ -10,15 +11,12 @@ impl AuthCommand {
         let client = workspace.authenticated_store_client_mut()?;
         let start = client.start_device_login()
             .map_err(|e| CommandError::Runtime { message: e.to_string() })?;
-        println!(
-            "Open this URL in your browser to log in:\n  {}\n\nOr visit {} and enter code: {}",
-            start.verification_uri_complete,
-            start.verification_uri,
-            start.user_code,
-        );
+        ui::step("Waiting", "for the browser to confirm the login");
+        ui::nested(format!("open {}", start.verification_uri_complete));
+        ui::nested(format!("or visit {} and enter code {}", start.verification_uri, start.user_code));
         client.complete_device_login(&start)
             .map_err(|e| CommandError::Runtime { message: e.to_string() })?;
-        println!("Logged in successfully.");
+        ui::step("Logged in", "to the Nodos Store");
         Ok(())
     }
 
@@ -26,7 +24,7 @@ impl AuthCommand {
         workspace.authenticated_store_client_mut()?
             .logout()
             .map_err(|e| CommandError::Runtime { message: e.to_string() })?;
-        println!("Logged out.");
+        ui::step("Logged out", "of the Nodos Store");
         Ok(())
     }
 }

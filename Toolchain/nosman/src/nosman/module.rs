@@ -1,11 +1,10 @@
 use crate::nosman::command::CommandError::{InvalidArgument, Runtime};
 use crate::nosman::command::CommandError;
+use crate::nosman::ui;
 use crate::nosman::index::PackageType;
 use crate::nosman::platform::get_host_platform;
 use crate::nosman::workspace::Workspace;
 use crate::nosman::common;
-#[cfg(target_os = "windows")]
-use colored::Colorize;
 use libloading::Library;
 #[cfg(unix)]
 use std::env;
@@ -18,7 +17,7 @@ use clap::ArgMatches;
 
 pub fn load_dylib_with_search_paths(verbose: bool, binary_path: &OsString, additional_search_paths: Vec<PathBuf>) -> Result<Library, CommandError> {
     if verbose {
-        eprintln!("Loading dynamic library: {}", binary_path.to_str().unwrap());
+        ui::detail(format!("loading dynamic library {}", binary_path.to_str().unwrap()));
     }
     #[cfg(unix)]
     {
@@ -94,12 +93,12 @@ pub fn load_dylib_with_search_paths(verbose: bool, binary_path: &OsString, addit
         let mut dll_cookies = vec![];
         for lib_dir in additional_search_paths {
             if !lib_dir.exists() {
-                eprintln!("{}", format!("Warning: DLL search path {} does not exist", lib_dir.display()).yellow().to_string());
+                ui::warn(format!("DLL search path {} does not exist", lib_dir.display()));
                 continue;
             }
             let lib_dir_canonical = dunce::canonicalize(&lib_dir).unwrap_or_else(|e| panic!("Failed to canonicalize path {:?}: {}", lib_dir, e));
             if verbose {
-                eprintln!("\tAdding DLL search path: {}", lib_dir_canonical.display());
+                ui::detail(format!("adding DLL search path {}", lib_dir_canonical.display()));
             }
             let wdir: Vec<u16> = lib_dir_canonical.as_os_str().encode_wide().chain(Some(0)).collect();
             let cookie = AddDllDirectory(wdir.as_ptr());
@@ -228,7 +227,7 @@ pub fn get_dependency_arguments(args: &ArgMatches, allow_any: bool, success: &mu
         }
         else{
             *success = false;
-            println!("Invalid dependency format: {}", dep);
+            ui::warn(format!("dependency {} is not in name-version form", dep));
         }
         deps.push(PackageIdentifier {
             name: parts[0].to_string(),

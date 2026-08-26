@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 use clap::{Arg, ArgAction, ArgMatches};
-use colored::Colorize;
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument};
 use crate::nosman::command::publish::{PublishCommand, PublishOptions};
@@ -11,6 +10,7 @@ use crate::nosman::index::SemVer;
 use crate::nosman::package::{get_package_info_from_manifest, get_package_manifests};
 use crate::nosman::platform::{get_host_platform, Platform};
 use crate::nosman::workspace::Workspace;
+use crate::nosman::ui;
 
 pub struct PublishBatchCommand {
 }
@@ -31,7 +31,7 @@ impl PublishBatchCommand {
             Some(platform_str) => Platform::from_str(platform_str).expect("Invalid target platform"),
             None => {
                 let current_platform = get_host_platform();
-                println!("{}", format!("Target platform is not provided. Using the current platform: {}", current_platform).yellow());
+                ui::detail(format!("no target platform given, using this one: {}", current_platform));
                 current_platform
             }
         };
@@ -41,25 +41,25 @@ impl PublishBatchCommand {
         // Find all modules in the repo
         let mut to_be_published: Vec<PathBuf> = vec![];
         let package_manifests = get_package_manifests(&directory, false);
-        println!("Found {} packages in {}", package_manifests.len(), directory.display());
+        ui::step("Scanned", format!("{} in {}", ui::plural(package_manifests.len(), "package"), directory.display()));
         for (_plugin_type, manifest_file_path) in package_manifests {
             let parent = manifest_file_path.parent().unwrap();
             let relative_path = parent.strip_prefix(&directory).unwrap();
             let (publish_options, found) = PublishOptions::from_file(&parent.join(constants::PUBLISH_OPTIONS_FILE_NAME));
             if !found {
-                println!("{}", format!("Package at {} does not contain a {} file, skipping release", relative_path.display(), constants::PUBLISH_OPTIONS_FILE_NAME).dimmed());
+                ui::step_skipped("Skipped", format!("{}, it has no {}", relative_path.display(), constants::PUBLISH_OPTIONS_FILE_NAME));
                 continue;
             }
             if let Some(targets) = publish_options.target_platforms {
                 if !targets.contains(&target_platform.to_string()) {
-                    println!("Target platform {} is not in the list of target platforms in {} for package at {}", target_platform, constants::PUBLISH_OPTIONS_FILE_NAME, relative_path.display());
+                    ui::step_skipped("Skipped", format!("{}, {} does not list target platform {}", relative_path.display(), constants::PUBLISH_OPTIONS_FILE_NAME, target_platform));
 					continue;
 				}
             }
             let package_info = get_package_info_from_manifest(&manifest_file_path)
                 .map_err(|e| InvalidArgument { message: format!("Failed to get package info from manifest at {}: {}", relative_path.display(), e) })?;
             if !packages.is_empty() && !packages.contains(&&package_info.id.name) {
-                println!("{}", format!("Package {} is not in the list of packages to be published, skipping", package_info.id.name).dimmed());
+                ui::step_skipped("Skipped", format!("{}, it was not asked for", package_info.id.name));
                 continue;
             }
             let mut skip = false;
@@ -83,7 +83,7 @@ impl PublishBatchCommand {
                         let existing_release_ver = existing_release_ver.unwrap();
                         let existing_release_ver_excl_build_no = SemVer::new(existing_release_ver.major, existing_release_ver.minor, existing_release_ver.patch, None);
                         if existing_release_ver_excl_build_no == publish_version_excl_build_no {
-                            println!("Release {:?} already exists, skipping publish", existing_release);
+                            ui::step_skipped("Present", format!("release {:?} is already published", existing_release));
                             skip = true;
                             break;
                         }
@@ -96,11 +96,11 @@ impl PublishBatchCommand {
         }
 
         for package_root in &to_be_published {
-            println!("{}", format!("Will publish package at {:?}", package_root).green());
+            ui::step("Selected", format!("{:?}", package_root));
         }
 
         if to_be_published.is_empty() {
-            println!("{}", "No packages need publishing".yellow());
+            ui::step_skipped("Current", "no package needs publishing");
             return Ok(());
         }
         // Fetch tags / unshallow once for the whole repo here, so each
@@ -121,17 +121,17 @@ impl PublishBatchCommand {
                 published.push(outcome);
             }
             else {
-                println!("{}", format!("Failed to publish package at {:?}: {}", package_root, res.err().unwrap()).red());
+                ui::error(format!("could not publish the package at {:?}: {}", package_root, res.err().unwrap()));
                 rollback = true;
                 break;
             }
         }
         if rollback {
-            println!("{}", "Rolling back published packages".red());
+            ui::warn("rolling back the packages that were published");
             for outcome in published {
                 UnpublishCommand {}.run_unpublish(workspace, dry_run, false, &outcome.id.name, Option::from(&outcome.id.version))?;
                 if let Some(tag) = &outcome.created_tag {
-                    println!("{}", format!("Deleting git tag {}", tag).red());
+                    ui::step("Deleting", format!("git tag {}", tag));
                     git::delete_tag(&directory, tag, push_tag);
                 }
             }
@@ -163,13 +163,6 @@ pub fn get_cli() -> clap::Command {
             .action(ArgAction::SetTrue)
             .long("dry-run")
             .help("Do not actually publish the package, just show what would be done.")
-            .num_args(0)
-            .required(false)
-        )
-        .arg(Arg::new("verbose")
-            .action(ArgAction::SetTrue)
-            .long("verbose")
-            .help("Print more information about the process.")
             .num_args(0)
             .required(false)
         )
@@ -236,7 +229,7 @@ impl Command for PublishBatchCommand {
 
     fn run(&self, workspace: &mut Workspace, _command_name: Option<&str>, args: &ArgMatches) -> CommandResult {
         let dry_run = args.get_one::<bool>("dry_run").unwrap();
-        let verbose = args.get_one::<bool>("verbose").unwrap();
+        let verbose = ui::is_verbose();
         let directory = PathBuf::from(args.get_one::<String>("directory").unwrap());
         let version_suffix = args.get_one::<String>("version_suffix").unwrap();
         let release_tags_ref: Vec<&String> = args.get_many::<String>("tag").unwrap_or_default().collect();
@@ -253,7 +246,7 @@ impl Command for PublishBatchCommand {
         self.run_publish_batch(
             workspace,
             *dry_run,
-            *verbose,
+            verbose,
             &directory,
             version_suffix,
             &release_tags,

@@ -1,9 +1,8 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::Instant;
 
 use clap::{Arg, ArgAction, ArgMatches};
-use colored::Colorize;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::nosman;
@@ -12,8 +11,9 @@ use crate::nosman::command::{Command, CommandError, CommandResult};
 use zip::result::ZipError;
 use nosman::workspace::Workspace;
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
-use crate::nosman::common::get_progress_bar;
 use crate::nosman::index::{PackageType, SemVer};
+use crate::nosman::ui;
+use nodos_store_client::TransferProgress;
 use bitflags::bitflags;
 use crate::nosman::package::PackageIdentifier;
 use crate::nosman::workspace::ScanPackagesFlags;
@@ -76,20 +76,20 @@ impl InstallCommand {
                 let version_prefix = SemVer::parse_from_str(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
                 if workspace.has_local_match(package_name, &version_prefix) {
                     let installed_package = workspace.get_latest_local_package_for_prefix(package_name, &version_prefix)?;
-                    println!("{}", format!("Found an already installed compatible version for {} version {}: {}", package_name, version, installed_package.info.id.version).as_str().yellow());
+                    ui::step_skipped("Satisfied", format!("{} {} by installed {}", package_name, version, installed_package.info.id.version));
                     return Ok(Vec::new())
                 }
             } else if workspace.is_installed(package_name, version.as_str()) {
                 let existing = workspace.get_package(package_name, version.as_str())?;
                 if existing.get_package_root().exists() {
-                    println!("{}", format!("package {} version {} is already installed", package_name, version).as_str().yellow());
+                    ui::step_skipped("Present", format!("{}=={}", package_name, version));
                     return Ok(Vec::new());
                 }
             }
         }
         // Fetch package metadata from the Nodos Store.
         if flags.contains(InstallFlags::UpdatePackageIndex) {
-            println!("Fetching index...");
+            ui::detail("fetching the package index");
             workspace.fetch_package_releases(package_name);
             if install_with_deps {
                 workspace.fetch_releases(None);
@@ -103,13 +103,13 @@ impl InstallCommand {
                 return Err(InvalidArgument { message: format!("No versions found for package {}", package_name) });
             }
             let ver = latest.unwrap().1.version.clone();
-            println!("Installing latest version {} of {}", ver, package_name);
+            ui::detail(format!("{} resolves to {}", package_name, ver));
             return self.plan_install(workspace, package_name, Some(&ver), output_dir, prefix, exact_no_fetch);
         };
         if !flags.contains(InstallFlags::InstallExactVersion) {
             // Find or download a version matching the provided prefix
             let version_prefix = SemVer::parse_from_str(version.as_str()).unwrap_or_else(|| panic!("Failed to parse semantic version"));
-            println!("Installing {} matching version prefix '{}'", package_name, version_prefix);
+            ui::detail(format!("{} matching version prefix {}", package_name, version_prefix));
             return {
                 let latest_compatible_opt = workspace.index_cache.get_latest_compatible_release(package_name, &version_prefix);
                 let compatible_package = if let Some((package_type, release)) = latest_compatible_opt {
@@ -150,7 +150,7 @@ impl InstallCommand {
                     }
                     let opt_absent_release = res?;
                     if opt_absent_release.is_none() {
-                        println!("Dependency {} {} already installed", dep_name, dep_version);
+                        ui::detail(format!("dependency {} {} already installed", dep_name, dep_version));
                         continue;
                     }
                     let (_, resolved_dep_pkg) = opt_absent_release.unwrap();
@@ -172,10 +172,10 @@ impl InstallCommand {
                 let dep_name = dep.name.clone();
                 let dep_version = dep.version.clone();
                 if !workspace.is_installed(&dep_name, &dep_version) {
-                    println!("Installing dependency {} {}", dep_name, dep_version);
+                    ui::detail(format!("resolving dependency {} {}", dep_name, dep_version));
                     plans.extend(self.plan_install(workspace, &dep_name, Some(&dep_version), output_dir, prefix, dep_install_flags)?);
                 } else {
-                    println!("Dependency {} {} already installed", dep_name, dep_version);
+                    ui::detail(format!("dependency {} {} already installed", dep_name, dep_version));
                 }
             }
         }
@@ -216,8 +216,8 @@ impl InstallCommand {
 
     /// Downloads the planned artifacts, several at a time, then registers what landed.
     fn install_planned(&self, workspace: &mut Workspace, plans: &[PlannedInstall]) -> CommandResult {
-        let pb = get_progress_bar(workspace.is_silent());
-        pb.enable_steady_tick(Duration::from_millis(100));
+        let downloading = Instant::now();
+        let bars = ui::progress_group();
         {
             // One shared client, so the downloads overlap instead of queueing up.
             let client = workspace.authenticated_store_client()?;
@@ -227,18 +227,38 @@ impl InstallCommand {
                 .map_err(|e| Runtime { message: format!("Failed to start downloads: {}", e) })?;
             pool.install(|| {
                 plans.par_iter().try_for_each(|planned| {
-                    pb.println(format!("Downloading {} {}-{}", planned.type_name(), planned.id.name, planned.id.version));
-                    pb.set_message(format!("Downloading {}-{}", planned.id.name, planned.id.version));
-                    client.install_artifact(planned.artifact_id, &planned.target_dir)
-                        .map_err(|e| Runtime { message: format!("Failed to install artifact: {}", e) })
+                    let bar = ui::download_bar(&bars, planned.id.name.clone());
+                    let result = client.install_artifact_with_progress(
+                        planned.artifact_id,
+                        &planned.target_dir,
+                        &|progress| match progress {
+                            TransferProgress::Started { total_bytes: Some(total) } => {
+                                ui::set_download_total(&bar, total)
+                            }
+                            TransferProgress::Started { total_bytes: None } => {}
+                            TransferProgress::Downloaded { bytes } => bar.set_position(bytes),
+                            TransferProgress::Extracting => bar.set_prefix("Extracting"),
+                        },
+                    );
+                    bar.finish_and_clear();
+                    result.map_err(|e| Runtime {
+                        message: format!("Failed to install {}: {}", planned.id.name, e),
+                    })
                 })
             })?;
         }
-        pb.finish_and_clear();
+        ui::finish_progress();
+        ui::summary("Prepared", plans.len(), "package", downloading);
 
+        let installing = Instant::now();
         let mut any_under_workspace = false;
         for planned in plans {
-            println!("Extracted {} {} to {}", planned.type_name(), planned.id.name, planned.target_dir.display());
+            ui::detail(format!(
+                "extracted {} {} to {}",
+                planned.type_name(),
+                planned.id.name,
+                planned.target_dir.display()
+            ));
             // If the package is installed under workspace, register it.
             if planned.target_dir.starts_with(&workspace.root) {
                 let mut scan_flags = ScanPackagesFlags::ForceReplaceInRegistry;
@@ -248,22 +268,33 @@ impl InstallCommand {
                 workspace.scan_packages_in_folder(planned.target_dir.clone(), scan_flags);
                 any_under_workspace = true;
             } else {
-                println!("{}", "Note: Package is installed outside the workspace.".yellow());
+                ui::warn(format!(
+                    "{} is installed outside the workspace, at {}",
+                    planned.id.name,
+                    planned.target_dir.display()
+                ));
             }
-            println!("{}", format!("{}-{} installed successfully", planned.id.name, planned.id.version).as_str().green());
         }
         if any_under_workspace {
-            println!("Adding to workspace file");
             workspace.save()?;
+        }
+        ui::summary("Installed", plans.len(), "package", installing);
+        // Listed by name, so two runs of the same install read the same way.
+        let mut installed: Vec<&PackageIdentifier> = plans.iter().map(|planned| &planned.id).collect();
+        installed.sort_by(|a, b| a.name.cmp(&b.name).then(a.version.cmp(&b.version)));
+        for id in installed {
+            ui::added(&id.name, &id.version);
         }
         Ok(())
     }
 
     pub fn run_install(&self, workspace: &mut Workspace, package_name: &str, version_opt: Option<&String>, output_dir: &Option<PathBuf>, prefix: Option<&String>, flags : InstallFlags) -> Result<InstallOp, CommandError> {
+        let resolving = Instant::now();
         let plans = self.plan_install(workspace, package_name, version_opt, output_dir, prefix, flags)?;
         if plans.is_empty() {
             return Ok(InstallOp::Skipped);
         }
+        ui::summary("Resolved", plans.len(), "package", resolving);
         self.install_planned(workspace, &plans)?;
         Ok(InstallOp::Installed)
     }
@@ -271,6 +302,7 @@ impl InstallCommand {
     /// Installs several packages: everything is resolved first, then all of the downloads
     /// run together. A package two of them depend on is only fetched once.
     pub fn run_install_many(&self, workspace: &mut Workspace, packages: &[PackageIdentifier], output_dir: &Option<PathBuf>, prefix: Option<&String>, flags : InstallFlags) -> CommandResult {
+        let resolving = Instant::now();
         let mut plans: Vec<PlannedInstall> = Vec::new();
         let mut planned_ids = HashSet::new();
         for package in packages {
@@ -283,6 +315,7 @@ impl InstallCommand {
         if plans.is_empty() {
             return Ok(());
         }
+        ui::summary("Resolved", plans.len(), "package", resolving);
         self.install_planned(workspace, &plans)
     }
 }

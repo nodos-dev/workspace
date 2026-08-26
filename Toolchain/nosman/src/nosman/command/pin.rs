@@ -1,10 +1,10 @@
 use clap::{Arg, ArgAction, ArgMatches};
-use colored::Colorize;
 use inquire::{MultiSelect, Select, Text};
 use crate::nosman::command::{Command, CommandResult};
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
 use crate::nosman::constants;
 use crate::nosman::workspace::{Workspace};
+use crate::nosman::ui;
 
 pub struct PinCommand {
 }
@@ -63,7 +63,7 @@ impl PinCommand {
                     .map_err(|e| Runtime { message: format!("Failed to open node class definition file {:?} for writing: {}", node_def_obj.defined_in, e) })?;
                 serde_json::to_writer_pretty(out_file, &node_def_obj.json)
                     .map_err(|e| Runtime { message: format!("Failed to write node class definition file {:?}: {}", node_def_obj.defined_in, e)})?;
-                println!("{}", format!("Pin '{}' removed from node class '{}'", pin_name, node_class_name).green());
+                ui::step("Removed", format!("pin {} from node class {}", pin_name, node_class_name));
             } else {
                 return Err(InvalidArgument { message: format!("Pin '{}' not found in node class '{}'", pin_name, node_class_name) });
             }
@@ -145,7 +145,7 @@ impl PinCommand {
                 .map_err(|e| Runtime { message: format!("Failed to open node class definition file {:?} for writing: {}", node_def_obj.defined_in, e) })?;
             serde_json::to_writer_pretty(out_file, &node_def_obj.json)
                 .map_err(|e| Runtime { message: format!("Failed to write node class definition file {:?}: {}", node_def_obj.defined_in, e)})?;
-            println!("{}", format!("Pin '{}' added to node class '{}'", pin_name, node_class_name).green());
+            ui::step("Added", format!("pin {} to node class {}", pin_name, node_class_name));
         }
         Ok(())
     }

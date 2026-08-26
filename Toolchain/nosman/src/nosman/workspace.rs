@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration};
 use bitflags::bitflags;
-use colored::Colorize;
 use crate::nosman::common::get_progress_bar;
 use inquire::Select;
 use rayon::iter::IntoParallelRefIterator;
@@ -18,6 +17,7 @@ use crate::nosman::index::{Index, PackageReleaseEntry, PackageType, SemVer};
 use crate::nosman::plugin::{NodeDefinition, PluginEntry};
 use crate::nosman::package::{get_package_manifests, LocalPackageEntry};
 use crate::nosman::path::get_rel_path_based_on;
+use crate::nosman::ui;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
 pub enum WorkspaceStatus {
@@ -162,12 +162,13 @@ fn fetch_releases_mt(
     let package_list = match client.list_packages().map_err(|e| e.to_string()) {
         Ok(list) => list,
         Err(e) => {
-            pb.println(format!("Failed to fetch package list: {}", e));
+            ui::warn(format!("could not fetch the package list: {}", e));
+            ui::finish_progress();
             return releases.into_inner().unwrap();
         }
     };
 
-    pb.println(format!("Fetched {} packages from Nodos Store", package_list.len()));
+    ui::detail(format!("fetched {} from the Nodos Store", ui::plural(package_list.len(), "package")));
     package_list.par_iter().for_each(|package| {
         if let Some(ref package_names) = package_names {
             if !package_names.contains(&package.name) {
@@ -177,7 +178,7 @@ fn fetch_releases_mt(
         let package_type = PackageType::from_str(&package.package_type);
         let res = client.get_releases(&package.name).map_err(|e| e.to_string());
         if let Err(e) = res {
-            pb.println(format!("Failed to fetch package releases for {}: {}", package.name, e));
+            ui::warn(format!("could not fetch releases for {}: {}", package.name, e));
             return;
         }
         let releases_for_package = releases_to_index_entries(&package_type, res.unwrap());
@@ -194,6 +195,7 @@ fn fetch_releases_mt(
             entry.1.extend(releases_for_package);
         }
     });
+    ui::finish_progress();
     releases.into_inner().unwrap()
 }
 
@@ -219,7 +221,7 @@ impl Workspace {
             let mut parsed_ws = match serde_json::from_reader(file) {
                 Ok(workspace) => workspace,
                 Err(e) => {
-                    eprintln!("{}", format!("Failed to parse workspace file: {}. Rescanning...", e).red());
+                    ui::warn(format!("the workspace file could not be read ({}), rescanning", e));
                     workspace.rescan(RescanFlags::all()).unwrap_or_else(|e| panic!("Failed to rescan workspace: {}", e));
                     workspace.save().unwrap_or_else(|e| panic!("Failed to save workspace: {}", e));
                     workspace
@@ -229,7 +231,7 @@ impl Workspace {
             parsed_ws.runtime.status = WorkspaceStatus::Ready;
             workspace = parsed_ws;
         } else {
-            eprintln!("{}", format!("Failed to open workspace file: {}", index_filepath.display()).red());
+            ui::warn(format!("could not open the workspace file {}", index_filepath.display()));
             workspace.runtime.status = WorkspaceStatus::FailedToOpen;
         }
         workspace
@@ -429,13 +431,13 @@ impl Workspace {
             Some(entries) if !entries.is_empty() => entries.clone(),
             _ => return Err(CommandError::InvalidArgument { message: format!("Package {} version {} is not installed", name, version) }),
         };
-        println!("Removing package {} version {}", name, version);
+        ui::step("Removing", format!("{}=={}", name, version));
         // Delete fetched entries; never delete a development checkout.
         let mut kept = Vec::new();
         let mut deleted = 0;
         for entry in entries {
             if entry.is_development_package(self) {
-                println!("{}", format!("Keeping development package at {} (source not deleted)", entry.get_package_root().display()).yellow());
+                ui::step_skipped("Kept", format!("development package at {}, its source is untouched", entry.get_package_root().display()));
                 kept.push(entry);
             } else {
                 fs::remove_dir_all(entry.get_package_root())?;
@@ -451,22 +453,22 @@ impl Workspace {
         }
         self.save()?;
         if deleted > 0 {
-            println!("{}", format!("Module {} version {} removed successfully", name, version).as_str().green());
+            ui::removed(name, version);
         } else {
-            println!("{}", format!("Module {} version {} kept; only a development package is present", name, version).as_str().yellow());
+            ui::step_skipped("Kept", format!("{}=={}, only a development package is present", name, version));
         }
         Ok(())
     }
     pub fn remove_all(&mut self) -> CommandResult {
         for (_name, versions) in self.packages.iter() {
             for module in versions.values().flatten() {
-                println!("Removing module {}", module.info.id);
+                ui::detail(format!("removing {}", module.info.id));
                 fs::remove_dir_all(module.get_package_root())?;
             }
         }
         self.packages.clear();
         self.save()?;
-        println!("{}", "All modules removed successfully".green());
+        ui::step("Removed", "every module");
         Ok(())
     }
     pub fn is_silent(&self) -> bool {
@@ -548,13 +550,13 @@ impl Workspace {
         let pb = get_progress_bar(self.is_silent());
         pb.enable_steady_tick(Duration::from_millis(100));
 
-        pb.println(format!("Found {} packages in {}", package_manifests.len(), folder.display()).as_str().green().to_string());
+        ui::detail(format!("found {} in {}", ui::plural(package_manifests.len(), "package"), folder.display()));
 
         for (ty, path) in package_manifests {
             pb.set_message(format!("Scanning: {}", path.display()));
             let res = LocalPackageEntry::new(self, get_rel_path_based_on(&path, &self.root), ty, flags.contains(ScanPackagesFlags::RegisterCommands));
             if let Err(msg) = res {
-                pb.println(format!("Error while scanning {}: {}", path.display(), msg).red().to_string());
+                ui::warn(format!("could not scan {}: {}", path.display(), msg));
                 continue;
             }
             let package = res.unwrap();
@@ -567,10 +569,11 @@ impl Workspace {
                     .collect())
                 .unwrap_or_default();
             if !other_paths.is_empty() {
-                pb.println(format!("Multiple entries for {} found; keeping all: {} alongside {}", package.info.id, path.display(), other_paths.join(", ")));
+                ui::detail(format!("{} appears more than once, keeping all: {} alongside {}", package.info.id, path.display(), other_paths.join(", ")));
             }
             self.add(package);
         }
+        ui::finish_progress();
     }
     pub fn scan_packages(&mut self, flags: ScanPackagesFlags) {
        self.scan_packages_in_folder(self.root.clone(), flags);
@@ -607,7 +610,7 @@ impl Workspace {
             let client = match self.store_client() {
                 Ok(c) => c,
                 Err(e) => {
-                    eprintln!("Warning: {}", e);
+                    ui::warn(e);
                     return;
                 }
             };
@@ -631,7 +634,7 @@ impl Workspace {
         let client = match self.store_client() {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("Warning: {}", e);
+                ui::warn(e);
                 return;
             }
         };

@@ -1,11 +1,11 @@
 use clap::{Arg, ArgAction, ArgMatches};
-use colored::Colorize;
 use crate::nosman::command::{get_nodos_version_from_args, Command, CommandResult};
 use crate::nosman::command::CommandError::{InvalidArgument, Runtime};
 use crate::nosman::common::SUPPORTED_NODOS_VERSIONS;
 use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::plugin::PluginEntry;
 use crate::nosman::workspace::{Workspace};
+use crate::nosman::ui;
 
 pub struct NodeCommand {}
 
@@ -34,13 +34,13 @@ impl NodeCommand {
             plugin.remove_node_definition(&node_class_name).map_err(|e| {
                 Runtime { message: e.to_string() }
             })?;
-            println!("{}", format!("Node class {} removed from plugin {}", node_class_name, plugin.package.info.id.name).yellow());
+            ui::step("Removed", format!("node class {} from {}", node_class_name, plugin.package.info.id.name));
         }
         else {
             plugin.add_node_definition(&node_class_name, display_name, description, category, hide_in_context_menu, nodos_version).map_err(|e| {
                 Runtime { message: e.to_string() }
             })?;
-            println!("{}", format!("Node class {} added to plugin {}", node_class_name, plugin.package.info.id.name).green());
+            ui::step("Added", format!("node class {} to {}", node_class_name, plugin.package.info.id.name));
         }
         Ok(())
     }

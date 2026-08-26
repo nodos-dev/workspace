@@ -3,9 +3,9 @@ use std::collections::HashSet;
 use std::fmt::Display;
 use std::path::PathBuf;
 use inquire::Text;
-use colored::Colorize;
 use crate::nosman::common::NODOS_1_4;
 use crate::nosman::constants;
+use crate::nosman::ui;
 use crate::nosman::index::SemVer;
 use crate::nosman::package::LocalPackageEntry;
 
@@ -69,7 +69,7 @@ impl PluginEntry {
         for node_defs_path in node_defs_paths {
             let node_defs_file_content = fs::read_to_string(&node_defs_path);
             if let Err(e) = node_defs_file_content {
-                eprintln!("{}", format!("Failed to read node definitions file ({}): {}", node_defs_path.display(), e).red());
+                ui::warn(format!("could not read the node definitions file {}: {}", node_defs_path.display(), e));
                 continue;
             }
             let node_defs_file_content = node_defs_file_content.unwrap();
@@ -150,7 +150,7 @@ impl PluginEntry {
 
     pub fn add_node_definition(&self, node_class_name: &String, display_name: Option<String>, description: Option<String>, category: Option<String>,
                                hide_in_context_menu: bool, nodos_version: Option<SemVer>) -> Result<(), String> {
-        println!("{}", format!("Adding a node '{}' to plugin: {}", node_class_name, self.package).green());
+        ui::step("Adding", format!("node {} to {}", node_class_name, self.package));
         let node_class_name = if node_class_name.starts_with(self.package.info.id.name.as_str()) {
             node_class_name.clone()
         }
@@ -201,7 +201,7 @@ impl PluginEntry {
         };
 
         let out_node_defs_file = format!("Nodes/{}", node_class_name.strip_prefix(format!("{}.", &self.package.info.id.name).as_str()).unwrap_or_else(|| &node_class_name));
-        println!("Node definition file: {}", out_node_defs_file);
+        ui::detail(format!("node definition file: {}", out_node_defs_file));
         let node_def_path = PathBuf::from(&out_node_defs_file).with_extension(node_def_file_ext).to_path_buf();
         node_defs_rel_paths.push(serde_json::Value::String(node_def_path.to_str()
             .unwrap_or_else(|| panic!("Failed to convert path to string: {}", node_def_path.display())).to_string()));

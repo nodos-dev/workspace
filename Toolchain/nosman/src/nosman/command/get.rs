@@ -2,9 +2,8 @@ use std::{fs, io};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::Instant;
 use clap::{Arg, ArgAction, ArgMatches};
-use colored::Colorize;
 use filetime::FileTime;
 use indicatif::ProgressBar;
 use linked_hash_set::LinkedHashSet;
@@ -14,6 +13,7 @@ use crate::nosman::command::CommandError::{InvalidArgument, IO};
 use crate::nosman::command::init::InitCommand;
 use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::{common, constants};
+use crate::nosman::ui;
 use crate::nosman::workspace::{Workspace};
 
 pub struct GetCommand {
@@ -74,12 +74,12 @@ impl GetCommand {
         }
         let mut res = Self::move_file_or_dir(src, dst);
         if let Err(e) = res.as_ref() {
-            pb.println(format!("Unable to remove {}: {}", src.display(), e).red().to_string());
+            ui::error(format!("unable to remove {}: {}", src.display(), e));
             pb.suspend(|| {
                 while common::ask("Retry removing", false, dont_ask) {
                     res = Self::move_file_or_dir(src, dst);
                     if let Err(e) = res.as_ref() {
-                        println!("{}", format!("Unable to remove {}: {}", src.display(), e).red());
+                        ui::error(format!("unable to remove {}: {}", src.display(), e));
                         continue;
                     }
                     break;
@@ -89,12 +89,12 @@ impl GetCommand {
         res.is_ok()
     }
     fn rollback(pb: &ProgressBar, removed: &Vec<(PathBuf, PathBuf)>, new_paths: &LinkedHashSet<PathBuf>) {
-        pb.println("Rolling back changes".yellow().to_string());
-        pb.set_message("Rolling back changes".yellow().to_string());
+        ui::warn("update failed, rolling back");
+        pb.set_message("Rolling back changes");
         let mut remove_order = new_paths.clone();
         Self::sort_paths(&mut remove_order);
         for path in remove_order {
-            pb.println(format!("Rolling back: Remove {}", path.display()).yellow().dimmed().to_string());
+            ui::detail(format!("rolling back: remove {}", path.display()));
             if path.is_dir() {
                 let _ = fs::remove_dir_all(path);
             }
@@ -103,13 +103,13 @@ impl GetCommand {
             }
         }
         for (removed_path, original_path) in removed {
-            pb.println(format!("Rolling back: Restore {}", original_path.display()).yellow().dimmed().to_string());
+            ui::detail(format!("rolling back: restore {}", original_path.display()));
             let res = Self::move_file_or_dir(removed_path, original_path);
             if let Err(e) = res {
-                pb.println(format!("Failed to rollback: {}", e).red().to_string());
+                ui::error(format!("failed to roll back: {}", e));
             }
         }
-        pb.println("Rollback complete".yellow().to_string());
+        ui::step("Rolled back", "the workspace is as it was");
     }
     fn sort_paths(paths: &mut LinkedHashSet<PathBuf>) {
         // Sort paths such that children come before parents
@@ -126,7 +126,7 @@ impl GetCommand {
     }
     fn remove_or_rollback(pb: &ProgressBar, cur_dst_path: &PathBuf, removed_path: &PathBuf, removed: &Vec<(PathBuf, PathBuf)>, new_paths: &LinkedHashSet<PathBuf>, dont_ask: bool) -> Result<(), CommandError> {
         if !Self::temp_remove(pb, cur_dst_path, removed_path, dont_ask) {
-            pb.println(format!("Failed to remove file: {}", cur_dst_path.display()).red().to_string());
+            ui::error(format!("failed to remove {}", cur_dst_path.display()));
             Self::rollback(pb, removed, new_paths);
             return Err(IO { file: cur_dst_path.display().to_string(), message: "Failed to remove file".to_string() });
         }
@@ -136,18 +136,16 @@ impl GetCommand {
         // If not under a workspace, init
         let path = workspace.root.clone();
         if !workspace.ready() {
-            println!("No workspace found, initializing one under {:?}", path);
+            ui::step("Creating", format!("a workspace under {}", path.display()));
             InitCommand{}.run_init(workspace, false, false)?;
         }
 
-        let pb: ProgressBar = ProgressBar::new_spinner();
-        let progress_tick_duration = Duration::from_millis(100);
-        pb.enable_steady_tick(progress_tick_duration);
-        pb.set_message(format!("Bringing {}", nodos_name));
-        
+        let started = Instant::now();
+        let pb = ui::spinner(format!("Looking up {}", nodos_name));
+
         if fetch_index {
-            pb.println("Updating index");
-            pb.finish_and_clear();
+            ui::detail("updating the package index");
+            ui::finish_progress();
             workspace.fetch_package_releases(nodos_name);
             workspace.save()?;
             return self.run_get(workspace, nodos_name, version, false, dont_ask, clean_modules)
@@ -171,11 +169,15 @@ impl GetCommand {
                 message: format!("No artifact ID found for {} version {}", nodos_name, release.version),
             })?, release.version.clone())
         };
+        ui::summary_line(format!("Resolved {} {}", nodos_name, release_version), started);
+
+        let downloading = Instant::now();
         let tmpdir = tempfile::tempdir()?;
         let downloaded_path = tmpdir.path().to_path_buf();
-        pb.println(format!("Downloading and extracting {}-{}", nodos_name, release_version));
+        pb.set_message(format!("Downloading {}-{}", nodos_name, release_version));
         workspace.download_and_extract_artifact(artifact_id, &downloaded_path)?;
-        pb.println(format!("Installing {}-{}", nodos_name, release_version));
+        ui::summary_line(format!("Prepared {} {}", nodos_name, release_version), downloading);
+        let installing = Instant::now();
 
         // Get current executable's absolute path
         let dst_path = dunce::canonicalize(path)?;
@@ -226,7 +228,7 @@ impl GetCommand {
                     // Check "text" field in JSON
                     let res= serde_json::from_str::<serde_json::Value>(&contents);
                     if let Err(e) = res {
-                        pb.println(format!("Error parsing {}: {}", curr_file_path.display(), e).yellow().to_string());
+                        ui::warn(format!("could not parse {}: {}", curr_file_path.display(), e));
                     }
                     else
                     {
@@ -234,13 +236,13 @@ impl GetCommand {
                         if let Some(text) = json.get("license_text") {
                             let res = serde_json::from_str::<serde_json::Value>(eula_confirmed_contents);
                             if let Err(e) = res {
-                                pb.println(format!("Error parsing new EULA_CONFIRMED.json: {}", e).yellow().to_string());
+                                ui::warn(format!("could not parse the new EULA_CONFIRMED.json: {}", e));
                             }
                             else {
                                 let eula_confirmed_json: serde_json::Value = res.unwrap();
                                 if let Some(eula_confirmed_text) = eula_confirmed_json.get("license_text") {
                                     if text == eula_confirmed_text {
-                                        pb.println("The accepted EULA has not changed. Skipping EULA confirmation.".yellow().to_string());
+                                        ui::detail("the accepted EULA has not changed, not asking again");
                                         // Write eula_confirmed_contents to EULA_CONFIRMED.json
                                         let eula_confirmed_path = cur_dst_path.parent().unwrap().join("EULA_CONFIRMED.json");
                                         let mut file = File::create(&eula_confirmed_path)?;
@@ -284,12 +286,12 @@ impl GetCommand {
             {
                 let mut res = fs::copy(curr_file_path, &cur_dst_path);
                 if let Err(e) = res.as_ref() {
-                    pb.println(format!("Error copying {}: {}", cur_dst_path.display(), e).red().to_string());
+                    ui::error(format!("could not copy {}: {}", cur_dst_path.display(), e));
                     pb.suspend(|| {
                         while common::ask("Retry copying", false, dont_ask) {
                             res = fs::copy(curr_file_path, &cur_dst_path);
                             if let Err(e) = res.as_ref() {
-                                println!("{}", format!("Error copying {}: {}",  cur_dst_path.display(), e).red());
+                                ui::error(format!("could not copy {}: {}", cur_dst_path.display(), e));
                                 continue;
                             }
                             break;
@@ -303,7 +305,7 @@ impl GetCommand {
                 new_paths.insert(cur_dst_path.clone());
             }
         }
-        pb.println("Removing previous files");
+        pb.set_message("Removing previous files");
         for path in prev_paths {
             let mut parent_opt = path.parent();
             while let Some(parent) = parent_opt {
@@ -346,7 +348,7 @@ impl GetCommand {
             let relative_path = file.strip_prefix(&dst_path).unwrap();
             if !clean_modules && relative_path.starts_with("Module/") {
                 // TODO: Don't simply skip removing, remove the older one.
-                pb.println(format!("Skip deleting: {}", file.display()).yellow().dimmed().to_string());
+                ui::detail(format!("kept, because modules are being preserved: {}", file.display()));
                 continue;
             }
             {
@@ -357,7 +359,7 @@ impl GetCommand {
         }
 
         if let Some(file_path) = replace_nosman_with {
-            pb.println("Updating nosman");
+            pb.set_message("Updating nosman");
             let res = self_replace::self_replace(&file_path);
             if let Err(e) = res {
                 return Err(IO { file: current_exe.display().to_string(), message: format!("Error replacing executable: {}", e) });
@@ -365,11 +367,14 @@ impl GetCommand {
         }
 
         if !clean_modules {
-            pb.println("Rescanning...");
-            drop(pb);
+            pb.set_message("Rescanning");
             workspace.recreate()?;
         }
+        ui::finish_progress();
+        drop(pb);
 
+        ui::summary_line(format!("Installed {} {}", nodos_name, release_version), installing);
+        ui::added(nodos_name, &release_version);
         Ok(())
     }
 }
