@@ -205,6 +205,56 @@ fn test_pin_add_remove(mut test: WorkspaceGen, version: SemVer) {
     assert!(!pins.iter().any(|p| p["name"] == "myPin"));
 }
 
+// Nodos reads hide_in_context_menu next to class_name. Written inside menu_info it is
+// silently dropped, so --hide looks like it worked and the node still shows up.
+#[test]
+fn node_hide_flag_sits_next_to_class_name() {
+    let mut test = workspace!();
+    let version = SemVer::new(1, Some(3), None, None);
+    let module_name = "test1.plugin".to_string();
+    let module_dir = test.workspace.root.join("Module").join(&module_name);
+    CreateCommand {}
+        .run_create(
+            &mut test.workspace,
+            &module_name,
+            Some(PluginType::Default),
+            LangTool::CppCMake,
+            &module_dir,
+            Vec::new(),
+            "Hidden node test plugin",
+            Some(version),
+        )
+        .expect("Failed to create plugin");
+
+    NodeCommand {}
+        .run_node(
+            &mut test.workspace,
+            &module_name,
+            &"HiddenNode".to_string(),
+            false,
+            Some("HiddenNode".to_string()),
+            Some("A hidden test node".to_string()),
+            Some("TestCategory".to_string()),
+            true,
+            None,
+        )
+        .expect("Failed to add node");
+
+    let plugin = test.workspace.get_or_select_package(&module_name).unwrap();
+    let manifest = plugin.read_manifest();
+    let node_defs = manifest["node_definitions"]
+        .as_array()
+        .expect("No node_definitions");
+    let node_def_path = plugin.get_package_root().join(node_defs[0].as_str().unwrap());
+    let json = read_node_def_json(&node_def_path);
+    let node = &json["nodes"][0];
+    assert_eq!(node["hide_in_context_menu"], true);
+    assert!(
+        node["menu_info"]["hide_in_context_menu"].is_null(),
+        "hide_in_context_menu must not be written inside menu_info"
+    );
+}
+
 #[test]
 fn node_add_remove_1_3() {
     test_node_add_remove(workspace!(), SemVer::new(1, Some(3), None, None));

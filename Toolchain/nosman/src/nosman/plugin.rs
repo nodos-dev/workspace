@@ -211,10 +211,11 @@ impl PluginEntry {
             "nodes": [
                 {
                     "class_name": node_class_name,
+                    // Nodos reads this next to class_name, not inside menu_info.
+                    "hide_in_context_menu": hide_in_context_menu,
                     "menu_info": {
                         "category": category,
                         "display_name": display_name,
-                        "hide_in_context_menu": hide_in_context_menu,
                     },
                     "node": {
                         "contents_type": "Job",
