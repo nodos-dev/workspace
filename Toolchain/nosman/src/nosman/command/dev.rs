@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::ffi::OsStr;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -371,16 +370,35 @@ impl DevGenCommand {
 
         for arg in extra_args.iter() {
             cmake_args.push(arg);
-        }
+                }
                 let mut cmd = std::process::Command::new("cmake");
-                let cmd_args_str = cmake_args.iter().map(|s| s.as_ref()).collect::<Vec<&OsStr>>().join(OsStr::new(" "));
+                let cmd_args_str = cmake_args
+                    .iter()
+                    .map(|arg| format!("{:?}", arg))
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 ui::step("Generating", format!("project files in {}", project_folder));
-                ui::detail(format!("cmake {:?}", cmd_args_str));
+                ui::detail(format!("cmake {}", cmd_args_str));
                 let status = cmd
                     .args(&cmake_args)
-                    .status();
-                if !status.is_ok() || !status.unwrap().success() {
-                    return Err(CommandError::Runtime { message: format!("Error during running '{:?}'. See output.", cmake_args)});
+                    .status()
+                    .map_err(|error| CommandError::Runtime {
+                        message: format!(
+                            "Failed to start CMake configure command `cmake {}`: {}",
+                            cmd_args_str, error
+                        ),
+                    })?;
+                if !status.success() {
+                    let exit_description = status
+                        .code()
+                        .map(|code| format!("exit code {}", code))
+                        .unwrap_or_else(|| "process termination".to_string());
+                    return Err(CommandError::Runtime {
+                        message: format!(
+                            "CMake configure failed with {}. Command: `cmake {}`. See the CMake output above for the underlying error.",
+                            exit_description, cmd_args_str
+                        ),
+                    });
                 }
                 Ok(())
             }
