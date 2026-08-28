@@ -450,6 +450,18 @@ function(_nos_add_plugin NAME DEPENDENCIES INCLUDE_FOLDERS MANIFEST_FILE_EXT ADD
 	endforeach()
 	set(INCLUDED_IN_PROJECT ${source_files} ${header_files} ${config_files} ${node_definition_files} ${node_definition_files_legacy} 
 		${natvis_files} ${type_schema_files} ${shader_files} ${additional_files} ${PLUGIN_MANIFEST_FILE} ${ALTERNATIVE_PLUGIN_MANIFEST_FILES})
+
+	# CMake hangs its regeneration rule on the CMakeLists.txt of whichever
+	# directory declares the target. The toolchain declares plugin targets, so
+	# that rule reads as the plugin's own CMakeLists.txt while opening the
+	# toolchain's. Name it for what it is, and show the plugin's real one.
+	if (NOT "${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${plugin_root}")
+		source_group("CMake Rules" FILES "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
+		if (EXISTS "${plugin_root}/CMakeLists.txt")
+			list(APPEND INCLUDED_IN_PROJECT "${plugin_root}/CMakeLists.txt")
+		endif()
+	endif()
+
 	add_library(${NAME} ${NOS_PLUGIN_TYPE} ${INCLUDED_IN_PROJECT})
 	set_target_properties(${NAME} PROPERTIES
 		PREFIX ""

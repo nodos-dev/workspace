@@ -84,6 +84,18 @@ function(_nos_configure_plugin plugin_manifest_file common_dependencies common_d
 		nos_colored_message(DIMMED COLOR CYAN "Including custom CMake file for plugin: ${plugin_name}")
 		set(NOS_PLUGIN_TARGET ${plugin_target})
 		add_subdirectory("${dir}" "${CMAKE_CURRENT_BINARY_DIR}/PluginDir_${plugin_target}")
+
+		# Third party targets a plugin's own CMake brings in have no folder, so
+		# they end up at the top of Solution Explorer beside the plugins. Ones the
+		# plugin already placed itself are left where it put them.
+		set(plugin_subtargets "")
+		nos_get_targets(plugin_subtargets "${CMAKE_CURRENT_BINARY_DIR}/PluginDir_${plugin_target}")
+		foreach(subtarget ${plugin_subtargets})
+			get_target_property(subtarget_folder ${subtarget} FOLDER)
+			if (NOT subtarget_folder)
+				set_target_properties(${subtarget} PROPERTIES FOLDER "External")
+			endif()
+		endforeach()
 	endif()
 	nos_get_short_vendor_name(${plugin_name} plugin_vendor)
 	string(TOUPPER "${plugin_vendor}" plugin_vendor_upper)
@@ -136,15 +148,37 @@ function(_nos_process_plugin_directories_recursive dir common_dependencies commo
 		_nos_configure_plugin(${plugin_manifest_filepath} "${common_dependencies}" "${common_definitions}")
 	endif()
 
-	file(GLOB SUBDIRS CONFIGURE_DEPENDS RELATIVE ${dir} ${dir}/*)
+	# Deliberately not watched. A whole directory listing regenerated the project
+	# whenever anything at all appeared next to a plugin, down to a new README or
+	# the Binaries folder the first build makes. The root's manifest list is what
+	# is watched instead.
+	file(GLOB SUBDIRS RELATIVE ${dir} ${dir}/*)
 
 	foreach(subdir ${SUBDIRS})
+		# The listing returns files as well as directories. Descending into those
+		# rooted globs at paths like <plugin>/README.md, and descending into .git
+		# searched a repository's whole object store for plugins.
+		if (NOT IS_DIRECTORY "${dir}/${subdir}")
+			continue()
+		endif()
+		if (subdir MATCHES "^\\." OR subdir STREQUAL "Binaries")
+			continue()
+		endif()
+
 		include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/DefaultNosPluginCommon.cmake)
-		
-		# try to find a *.nosplugin, if not, skip
-		# TODO: Ideally, this should done only at the start and only the directories containing plugins should be processed
-		file(GLOB_RECURSE FOUND_PLUGINS CONFIGURE_DEPENDS RELATIVE "${dir}" "${dir}/${subdir}/*.nosplugin")
-		if (NOT FOUND_PLUGINS)
+
+		# Whether this subtree holds a plugin is read off the manifest list taken
+		# once for the whole root, instead of searching the subtree again here.
+		set(subtree_prefix "${dir}/${subdir}/")
+		set(subtree_has_plugin FALSE)
+		foreach(manifest ${NOS_PLUGIN_MANIFESTS_IN_ROOT})
+			string(FIND "${manifest}" "${subtree_prefix}" prefix_at)
+			if (prefix_at EQUAL 0)
+				set(subtree_has_plugin TRUE)
+				break()
+			endif()
+		endforeach()
+		if (NOT subtree_has_plugin)
 			continue()
 		endif()
 		_nos_process_plugin_directories_recursive(
@@ -168,5 +202,11 @@ foreach(cur_plugin_dir ${MODULE_DIRS})
 		set(cur_plugin_dir "${NODOS_WORKSPACE_DIR}/${cur_plugin_dir}")
 	endif()
 	nos_colored_message(COLOR GREEN "Scanning for plugins in ${cur_plugin_dir}")
+	# Every manifest under this root, found once. The scan below walks only the
+	# directories that lead to one of these, and reads nothing it does not reach
+	# through one, so this is also the only glob under a plugin root that needs
+	# watching: a manifest appearing or disappearing is what a project has to be
+	# regenerated for.
+	file(GLOB_RECURSE NOS_PLUGIN_MANIFESTS_IN_ROOT CONFIGURE_DEPENDS "${cur_plugin_dir}/*.nosplugin")
 	_nos_process_plugin_directories_recursive("${cur_plugin_dir}" "" "")
 endforeach()
