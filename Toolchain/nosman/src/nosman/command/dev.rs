@@ -52,10 +52,18 @@ pub fn get_cli() -> clap::Command {
                 .help("[CMake-only] delete the CMake output directory before generating"))
             .arg(Arg::new("plugin_dirs")
                 .long("plugin-dirs")
+                .visible_alias("plugin-dir")
                 .alias("module_dirs")
-                .help("Plugin directories to generate if only one of them is wanted")
-                .num_args(0..=1) // 0 or 1 argument allowed
-                .allow_hyphen_values(true))
+                .action(ArgAction::Append)
+                .help("Plugin directory to scan. Repeat the flag, or give several at once separated by ';'. Pass * to reset, scanning the whole Module folder"))
+            .arg(Arg::new("engine_folder")
+                .long("engine-folder")
+                .short('e')
+                .help("Engine folder supplying the SDK, relative to the workspace, e.g. Engine/nodos-1.3. Pass * to reset, offering every engine under Engine so each plugin takes the one its manifest names in sdk_version"))
+            .arg(Arg::new("project_name")
+                .long("project-name")
+                .short('n')
+                .help("Name of the generated solution. Pass * to reset, naming it NodosWorkspace"))
             .arg(Arg::new("extra_args")
                 .trailing_var_arg(true)
                 .num_args(1..)
@@ -327,12 +335,35 @@ impl Command for DevPullCommand {
 
 pub struct DevGenCommand {}
 
+/// Value of a flag that ends up in the CMake cache. Not given means leave the
+/// cached entry alone; `*` means drop it, so CMake falls back to its default.
+fn cache_define(args: &ArgMatches, name: &str) -> Option<String> {
+    match args.get_one::<String>(name) {
+        None => None,
+        Some(value) if value == "*" => Some(String::new()),
+        Some(value) => Some(value.clone()),
+    }
+}
+
+/// Same, for a repeatable flag whose values CMake reads as a ';' separated
+/// list. `--plugin-dir A --plugin-dir B` and `--plugin-dirs "A;B"` both come
+/// out as `A;B`, and the two forms can be mixed.
+fn cache_define_list(args: &ArgMatches, name: &str) -> Option<String> {
+    let values: Vec<&String> = args.get_many::<String>(name)?.collect();
+    if values.iter().any(|value| *value == "*") {
+        return Some(String::new());
+    }
+    Some(values.iter().map(|value| value.as_str()).collect::<Vec<_>>().join(";"))
+}
+
 impl DevGenCommand {
     fn run_gen(
         &self,
         lang_tool: LangTool,
         project_folder: &String,
         plugin_dirs: Option<String>,
+        engine_folder: Option<String>,
+        project_name: Option<String>,
         extra_args: Vec<String>,
         rm_cache: bool,
         clean: bool
@@ -354,23 +385,31 @@ impl DevGenCommand {
                         })?;
                     }
                 }
-                let mut cmake_args = vec!["-S", "Toolchain/CMake", "-B", project_folder];
+                let mut cmake_args: Vec<String> = vec![
+                    "-S".into(),
+                    "Toolchain/CMake".into(),
+                    "-B".into(),
+                    project_folder.clone(),
+                ];
 
-        let mut formatted_args = Vec::new(); // holds the actual Strings
-        if let Some(val) = plugin_dirs {
-            if val.is_empty() {
-                cmake_args.push("-U MODULE_DIRS");
-            } else {
-                // store formatted string so it lives long enough
-                formatted_args.push(format!("-DMODULE_DIRS={}", val));
-                // push a reference to it
-                cmake_args.push(formatted_args.last().unwrap().as_str());
-            }
-        }
-
-        for arg in extra_args.iter() {
-            cmake_args.push(arg);
+                // These stay in the CMake cache, so leaving a flag off keeps
+                // whatever the project was last generated with. An empty value
+                // is the `*` form, which drops the entry and lets CMake go back
+                // to its own default.
+                for (name, value) in [
+                    ("MODULE_DIRS", plugin_dirs),
+                    ("ENGINE_FOLDER", engine_folder),
+                    ("PROJECT_NAME", project_name),
+                ] {
+                    match value {
+                        None => {}
+                        Some(value) if value.is_empty() => cmake_args.push(format!("-U{}", name)),
+                        Some(value) => cmake_args.push(format!("-D{}={}", name, value)),
+                    }
                 }
+
+                cmake_args.extend(extra_args);
+
                 let mut cmd = std::process::Command::new("cmake");
                 let cmd_args_str = cmake_args
                     .iter()
@@ -426,19 +465,16 @@ impl Command for DevGenCommand {
             .unwrap_or_default();
         let rm_cache = args.get_flag("rm_cache");
         let clean = args.get_flag("clean");
-        let plugin_dirs: Option<String>;
-        match args.get_one::<String>("plugin_dirs"){
-            None => {
-                plugin_dirs = None;
-            }
-            Some(p) if p == "*" => {
-                plugin_dirs = Some(String::from(""));
-            }
-            Some(p) => {
-                plugin_dirs = Some(p.clone());
-            }
-        }
-        self.run_gen(lang_tool, project_folder, plugin_dirs, extra_args, rm_cache, clean)
+        self.run_gen(
+            lang_tool,
+            project_folder,
+            cache_define_list(args, "plugin_dirs"),
+            cache_define(args, "engine_folder"),
+            cache_define(args, "project_name"),
+            extra_args,
+            rm_cache,
+            clean,
+        )
     }
 
     fn needs_workspace(&self) -> bool {
