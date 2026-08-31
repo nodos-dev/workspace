@@ -109,6 +109,12 @@ Subject: one line, verb first, naming the thing changed or the fault fixed.
 a plugin will not load`. Around 50 to 70 characters, sentence case, no trailing
 period, no area prefix.
 
+Imperative mood, in the verb vocabulary the history already uses: the subject
+completes "applying this commit will ...". Name the concrete identifier or
+subsystem the change acts on, not the property it restores or the principle
+behind it, those belong the commit body. A subject that reads as a statement about
+the code rather than an instruction to it is wrong.
+
 Body: what was wrong, then why the change is what it is. Do not over-explain, use concise and simple language. Do not restate a code comment.
 
 - No `@` anywhere; GitHub reads it as a mention.
