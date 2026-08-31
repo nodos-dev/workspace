@@ -23,6 +23,14 @@ pins, resolved by the graph, and subsystem APIs, imported as C function tables a
 - `Project*/` — Generated project trees (CMake output + runtime). Disposable; regenerate, don't hand-edit.
 - `Toolchain/` — Workspace CMake entrypoint (`Toolchain/CMake`) and nosman.
 
+## Sub-repo docs
+`Engine/*` and `Module/*` can contain separate repos that carry their own notes. Before working in one, read its
+`AGENTS.md`/`CLAUDE.md` if it has one, and skim its `Docs/` folder; both override this file inside that repo.
+- `Engine/nodos-dev/AGENTS.md` — component map for the engine sources.
+- `Engine/<line>/Docs/` — engine architecture, coding convention, et cetera.
+- `Module/**/Docs/` — plugin notes, e.g. `vulkan/Docs/GPU-Events.md` on GPU synchronization.
+Read the ones that cover what you are about to touch. `External/` or `ThirdParty/` usually holds vendored third-party docs, not ours.
+
 ## Anatomy of a plugin
 A plugin is a folder containing:
 - `*.nosplugin` (`*.noscfg` or `*.nossys` for Nodos 1.3) — manifest: `info.id.{name,version}`, `dependencies` (name + version), `sdk_version`,
