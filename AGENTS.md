@@ -93,11 +93,11 @@ along never copies the GPU allocation.
 
 ## Conventions
 - C++ constants: `SCREAMING_SNAKE_CASE` (never `kCamelCase`).
-- Never use anonymous namespaces. Mark file-local functions and variables `static` instead. An anonymous
-  namespace is usually reached for to silence a linker error when two translation units in the same target
-  define the same function name. That is a duplicate, not a naming problem: delete one copy and share the
-  other, or give the two functions the names their different jobs deserve. One target must never carry two
-  functions with the same name.
+- Never use anonymous namespaces. An anonymous namespace is usually reached for to silence a linker error
+  when two translation units in the same target define the same function name. That is a duplicate, not a
+  naming problem: delete one copy and share the other, or give the two functions the names their different
+  jobs deserve. One target must never carry two functions with the same name. `static` on a file-local
+  function is fine but not required; external linkage is not itself a problem.
 - `always_execute`: leave false (default) if the node does not need executing when no input is dirty, and
   `SetPinValue` on an input pin (e.g. from a function) dirties the node and re-triggers `ExecuteNode`. Set it true
   only when output must refresh without an input change: time-varying sources, per-frame side effects / edge
