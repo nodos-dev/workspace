@@ -1,6 +1,6 @@
 [package]
 name = "nosman"
-version = "0.20.3"
+version = "0.20.4"
 edition = "2021"
 description = "Nodos Package/Module Manager: a command-line tool to install, upgrade, configure, and remove modules from a Nodos system."
 license = "MIT"
@@ -51,7 +51,8 @@ rayon = "1.10.0"
 hostname = "0.4.0"
 thiserror = "2.0.9"
 wait-timeout = "0.2"
-nodos-store-client = "0.9.0"
+nodos-store-client = "0.10.0"
+ctrlc = "3.5.0"
 
 [dev-dependencies]
 log = "0.4.21"

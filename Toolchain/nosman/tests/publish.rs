@@ -1,6 +1,7 @@
 mod support;
 
 use nosman::nosman::command::publish::PublishCommand;
+use nosman::nosman::command::publish_interrupt::watching_for_interrupts;
 use nosman::nosman::workspace::Workspace;
 use std::fs;
 use std::path::Path;
@@ -41,6 +42,33 @@ fn publish_dry_run_without_workspace_for_modern_plugin() {
             false, false, false,
         )
         .expect("dry-run publish should succeed outside a workspace for a 1.4+ plugin");
+}
+
+/// A dry run stages nothing in the store, so there is no draft an interrupt
+/// would have to take away and no reason to take Ctrl-C over.
+#[test]
+fn publish_dry_run_does_not_listen_for_interrupts() {
+    let dir = uninitialized_workspace!();
+    let pkg_dir = dir.join("pkg");
+    write_plugin_manifest(&pkg_dir, "test.plugin.dryrun", "1.0.0", Some("1.4.0"));
+
+    let mut ws = Workspace::from_root(&dir);
+
+    PublishCommand {}
+        .publish(
+            &mut ws, true, false, &pkg_dir,
+            None, None, "", None,
+            &vec![], None,
+            nodos_store_client::PackageVisibility::Public,
+            None,
+            false, false, false,
+        )
+        .expect("dry-run publish should succeed");
+
+    assert!(
+        !watching_for_interrupts(),
+        "a dry run must leave Ctrl-C alone"
+    );
 }
 
 #[test]

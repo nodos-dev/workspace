@@ -17,6 +17,7 @@ use zip::write::{SimpleFileOptions};
 use globwalk::{GlobWalkerBuilder};
 use crate::nosman::command::{Command, CommandError, CommandResult};
 use crate::nosman::command::CommandError::{Runtime, InvalidArgument};
+use crate::nosman::command::publish_interrupt;
 use crate::nosman::{common, constants, git};
 use crate::nosman::index::{PackageType, SemVer};
 use crate::nosman::module::{get_resolved_binary_path, load_module};
@@ -591,25 +592,43 @@ impl PublishCommand {
                     version: d.version.clone(),
                 })
                 .collect();
-            let artifact_data = std::fs::read(&artifact_file_path)
-                .map_err(|e| Runtime {
-                    message: format!("Failed to read artifact {}: {}", artifact_file_path.display(), e),
-                })?;
+            {
+                let target_platform_name = target_platform.to_string();
+                let client = workspace.authenticated_store_client_mut()?;
+                client
+                    .discard_drafts_for_release(&name, &version, &target_platform_name)
+                    .map_err(|e| Runtime { message: e.to_string() })?;
+                let session = client
+                    .create_publish_session(&nodos_store_client::PublishSessionCreateRequest {
+                        name: name.clone(),
+                        package_type: nodos_store_client::PackageType::from_str(&package_type.to_string()),
+                        version: version.clone(),
+                        api_version,
+                        dependencies: deps,
+                        tags: combined_tags,
+                        artifacts: vec![nodos_store_client::PublishDraftArtifact {
+                            target_platform: target_platform_name.clone(),
+                        }],
+                        visibility,
+                        changelog,
+                    })
+                    .map_err(|e| Runtime { message: e.to_string() })?;
+                let session_id = session.session.id;
+                let cleanup = nodos_store_client::PublishSessionCleanup::new(client, session_id);
+                let _watching =
+                    publish_interrupt::watch(session_id, &name, &version, &target_platform_name);
 
-            workspace.authenticated_store_client_mut()?
-                .publish_release(
-                    &name,
-                    &package_type.to_string(),
-                    &version,
-                    api_version.as_ref(),
-                    deps,
-                    combined_tags,
-                    &target_platform.to_string(),
-                    artifact_data,
-                    visibility,
-                    changelog,
-                )
-                .map_err(|e| Runtime { message: e.to_string() })?;
+                client
+                    .upload_release_artifact(
+                        session_id,
+                        &target_platform_name,
+                        nodos_store_client::ArtifactSource::File(&artifact_file_path),
+                    )
+                    .and_then(|_| client.finalize_publish_session(session_id))
+                    .map_err(|e| Runtime { message: e.to_string() })?;
+
+                cleanup.keep();
+            }
 
             if create_tag && publish_options.tag.enabled {
                 created_tag = Self::create_release_tag(&abs_path, &name, &version, &target_platform,

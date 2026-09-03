@@ -16,6 +16,7 @@ pub mod node;
 pub mod pin;
 pub mod publish;
 pub mod publish_batch;
+pub mod publish_interrupt;
 mod remove;
 mod rescan;
 pub mod sample;
