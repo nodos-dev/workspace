@@ -68,8 +68,17 @@ function(_nos_generate_plugin_target plugin_manifest_file_path plugin_name manif
 	endif()
 endfunction()
 
-function(_nos_configure_plugin plugin_manifest_file common_dependencies common_definitions)
+function(_nos_configure_plugin dir plugin_manifest_file common_dependencies common_definitions)
+	if(NOT IS_DIRECTORY ${dir})
+		nos_colored_message(COLOR RED "Can't process plugin because it's not folder: ${dir}")
+		return()
+	endif()
+
 	nos_get_package_info_by_path(${plugin_manifest_file} plugin_name plugin_version manifest_json)
+	if("${plugin_version}" MATCHES "b")
+		return()
+	endif()
+	
 	nos_colored_message(COLOR CYAN "Configuring ${plugin_name} (${plugin_version})")
 
 	get_filename_component(dir "${plugin_manifest_file}" DIRECTORY)
@@ -145,7 +154,7 @@ function(_nos_process_plugin_directories_recursive dir common_dependencies commo
 		list(GET PLUGINS 0 plugin_manifest_filepath)
 		get_filename_component(plugin_name "${plugin_manifest_filepath}" NAME)
 		
-		_nos_configure_plugin(${plugin_manifest_filepath} "${common_dependencies}" "${common_definitions}")
+		_nos_configure_plugin(${dir} ${plugin_manifest_filepath} "${common_dependencies}" "${common_definitions}")
 	endif()
 
 	# Deliberately not watched. A whole directory listing regenerated the project
