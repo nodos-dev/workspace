@@ -210,6 +210,12 @@ impl LocalPackageEntry {
     pub fn get_abs_manifest_path(&self, workspace: &Workspace) -> PathBuf {
         workspace.root.join(&self.manifest_path)
     }
+    /// True if the package is still where the registry says it is. The entry was read from
+    /// the manifest, so a missing manifest is what makes it stale. The folder around it is
+    /// no answer: an interrupted install leaves one behind with nothing in it.
+    pub fn is_present(&self, workspace: &Workspace) -> bool {
+        self.get_abs_manifest_path(workspace).is_file()
+    }
     /// True if this entry is a source checkout rather than a fetched entry: it lives in a
     /// git working tree below the workspace root and outside the type's `Downloaded/` root.
     /// A source plugin tracked only by the workspace-root repo (no nested `.git`) reads as

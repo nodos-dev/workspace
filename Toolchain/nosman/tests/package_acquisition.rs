@@ -102,6 +102,49 @@ fn install_skips_if_already_installed() {
 }
 
 #[test]
+fn install_redoes_a_package_whose_manifest_is_gone() {
+    let mut test = workspace!();
+    let package_name = "nos.sys.vulkan";
+    let version = String::from("6.2.1.b612");
+    let op = InstallCommand {}
+        .run_install(
+            &mut test.workspace,
+            package_name,
+            Some(&version),
+            &Some(PathBuf::from(".")),
+            None,
+            InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
+        )
+        .unwrap_or_else(|_| panic!("Failed to install {}", package_name));
+    assert_eq!(op, InstallOp::Installed);
+
+    // An interrupted install leaves the folder behind with no manifest in it.
+    let manifest = test
+        .workspace
+        .get_package(package_name, version.as_str())
+        .expect("The package was just installed")
+        .get_abs_manifest_path(&test.workspace);
+    std::fs::remove_file(&manifest).expect("Failed to remove the manifest");
+    assert!(
+        test.workspace.is_installed_matching(package_name, version.as_str()),
+        "The index has to still name the package, or this test proves nothing"
+    );
+
+    let op_again = InstallCommand {}
+        .run_install(
+            &mut test.workspace,
+            package_name,
+            Some(&version),
+            &Some(PathBuf::from(".")),
+            None,
+            InstallFlags::UpdatePackageIndex | InstallFlags::WithoutDependencies,
+        )
+        .unwrap_or_else(|_| panic!("Failed to reinstall {}", package_name));
+    assert_eq!(op_again, InstallOp::Installed);
+    assert!(manifest.is_file(), "The manifest should be back");
+}
+
+#[test]
 fn install_many_brings_every_package() {
     let mut test = workspace!();
     let package_name = "nos.sys.vulkan";
